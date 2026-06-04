@@ -4,10 +4,24 @@ Date: Tue, 20 Jan 2026 15:57:06 +0100
 Subject: [PATCH] Fix rendering backend detection
 
 ---
+ c/context_c_api.cxx      |  2 +-
  library/public/context.h | 16 +++++++++-------
  library/src/context.cxx  | 32 ++++++++++++++++++++++----------
- 2 files changed, 31 insertions(+), 17 deletions(-)
+ 3 files changed, 32 insertions(+), 18 deletions(-)
 
+diff --git a/c/context_c_api.cxx b/c/context_c_api.cxx
+index fd307c2..c251d40 100644
+--- a/c/context_c_api.cxx
++++ b/c/context_c_api.cxx
+@@ -49,7 +49,7 @@ f3d_context_t* f3d_context_get_symbol(const char* lib, const char* func)
+     return nullptr;
+   }
+
+-  return new f3d_context_t(f3d::context::getSymbol(lib, func));
++  return new f3d_context_t(f3d::context::getSymbol({lib}, func));
+ }
+
+ //----------------------------------------------------------------------------
 diff --git a/library/public/context.h b/library/public/context.h
 index f30cca8..dcdd4a3 100644
 --- a/library/public/context.h

@@ -12,7 +12,7 @@
         "-DF3D_MODULE_EXR=ON",
         "-DF3D_BINDINGS_PYTHON=ON",
         "-DF3D_BINDINGS_JAVA=OFF",
-        "-DF3D_BINDINGS_C=OFF",
+        "-DF3D_BINDINGS_C=ON",
         "-DF3D_LINUX_GENERATE_MAN=OFF",
         "-DF3D_PLUGINS_STATIC_BUILD=ON",
         "-DF3D_PLUGIN_BUILD_ALEMBIC=ON",
@@ -25,11 +25,22 @@
         "-DBUILD_TESTING=OFF",
         "-DF3D_LINUX_LINK_FILESYSTEM=OFF"
     ],
+    "post-install": [
+        "install -d /app/lib/pkgconfig",
+        "printf '%s\n' \"prefix=/app\" \"exec_prefix=/app\" \"libdir=/app/lib\" \"includedir=/app/include\" \"\" \"Name: libf3d\" \"Description: F3D C bindings\" \"Version: 3.3.0\" \"Libs: -L/app/lib -lf3d\" \"Cflags: -I/app/include\" > /app/lib/pkgconfig/libf3d.pc",
+        "printf '%s\n' \"prefix=/app\" \"exec_prefix=/app\" \"libdir=/app/lib\" \"includedir=/app/include\" \"\" \"Name: libf3d_c_api\" \"Description: F3D C API bindings\" \"Version: 3.3.0\" \"Libs: -L/app/lib -lf3d_c_api -lf3d\" \"Cflags: -I/app/include\" \"Requires: libf3d\" > /app/lib/pkgconfig/libf3d_c_api.pc"
+    ],
+    "build-commands": [
+        "cmake --install . --component library",
+        "cmake --install . --component sdk",
+        "cmake --install . --component plugin_sdk",
+        "cmake --install . --component dependencies"
+    ],
     "sources": [
         {
             "type": "git",
             "url": "https://github.com/f3d-app/f3d",
-            "branch": "master"
+            "tag": "v3.4.1"
         },
         {
             "type": "patch",
