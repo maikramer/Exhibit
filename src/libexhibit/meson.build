@@ -5,7 +5,8 @@ libf3d_dep = dependency('libf3d', required: false)
 libexhibit_deps = [
   dependency('glib-2.0'),
   dependency('gobject-2.0'),
-  dependency('gtk4')
+  dependency('gtk4'),
+  dependency('graphene-1.0')
 ]
 
 # If we found the dependencies via pkgconfig, use them

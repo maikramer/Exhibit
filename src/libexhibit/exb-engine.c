@@ -28,7 +28,6 @@
 #include <f3d/log_c_api.h>
 #include <f3d/options_c_api.h>
 #include <f3d/scene_c_api.h>
-#include <f3d/utils_c_api.h>
 #include <f3d/window_c_api.h>
 
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_engine_t, f3d_engine_delete)
@@ -51,6 +50,10 @@ typedef struct
 
   bool orthographic;
 
+  int width;
+  int height;
+  double distance;
+
   GFile *file;
 } ExbEnginePrivate;
 
@@ -65,6 +68,86 @@ enum
 };
 
 static GParamSpec *properties[N_PROPS];
+
+enum
+{
+  SIGNAL_CHANGED,
+  N_SIGNALS
+};
+
+static guint signals[N_SIGNALS];
+
+typedef struct
+{
+  const char *prop_name;
+  const char *f3d_key;
+} OptionMap;
+
+static const OptionMap option_maps[] = {
+  { "grid",                   "render.grid.enable"                },
+  { "grid-absolute",          "render.grid.absolute"              },
+  { "grid-unit",              "render.grid.unit"                  },
+  { "grid-subdivisions",      "render.grid.subdivisions"          },
+  { "grid-color",             "render.grid.color"                 },
+  { "translucency-support",   "render.effect.blending.enable"     },
+  { "tone-mapping",           "render.effect.tone_mapping"        },
+  { "ambient-occlusion",      "render.effect.ambient_occlusion"   },
+  { "anti-aliasing",          "render.effect.antialiasing.enable" },
+  { "hdri-ambient",           "render.hdri.ambient"               },
+  { "hdri-skybox",            "render.background.skybox"          },
+  { "hdri-file",              "render.hdri.file"                  },
+  { "blur-background",        "render.background.blur.enable"     },
+  { "blur-coc",               "render.background.blur.coc"        },
+  { "light-intensity",        "render.light.intensity"            },
+  { "bg-color",               "render.background.color"           },
+  { "show-edges",             "render.show_edges"                 },
+  { "edges-width",            "render.line_width"                 },
+  { "point-size",             "render.point_size"                 },
+  { "armature",               "render.armature.enable"            },
+  { "final-shader",           "render.effect.final_shader"        },
+  { "model-color",            "model.color.rgb"                   },
+  { "model-metallic",         "model.material.metallic"           },
+  { "model-roughness",        "model.material.roughness"          },
+  { "model-opacity",          "model.color.opacity"               },
+  { "texture-matcap",         "model.matcap.texture"              },
+  { "texture-base-color",     "model.color.texture"               },
+  { "texture-emissive",       "model.emissive.texture"            },
+  { "texture-material",       "model.material.texture"            },
+  { "texture-normal",         "model.normal.texture"              },
+  { "emissive-factor",        "model.emissive.factor"             },
+  { "normal-scale",           "model.normal.scale"                },
+  { "volume",                 "model.volume.enable"               },
+  { "inverse",                "model.volume.inverse"              },
+  { "sprite-enabled",         "model.point_sprites.enable"        },
+  { "sprites-size",           "model.point_sprites.size"          },
+  { "sprites-type",           "model.point_sprites.type"          },
+  { "scivis-enabled",         "model.scivis.enable"               },
+  { "scivis-component",       "model.scivis.component"            },
+  { "cells",                  "model.scivis.cells"                },
+  { "scalar",                 "model.scivis.array_name"           },
+  { "up",                     "scene.up_direction"                },
+  { "orthographic",           "scene.camera.orthographic"         },
+  { "animation-index",        "scene.animation.index"             }
+};
+
+static const gsize option_maps_len = G_N_ELEMENTS(option_maps);
+
+static const char *
+options_map_lookup (const char *prop_name)
+{
+  for (gsize i = 0; i < option_maps_len; i++)
+    if (g_str_equal(option_maps[i].prop_name, prop_name))
+      return option_maps[i].f3d_key;
+  return NULL;
+}
+
+static double
+get_gimble_limit (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  return priv->distance / 10.0;
+}
 
 /**
  * exb_engine_get_allowed_extensions:
@@ -145,13 +228,23 @@ _exb_engine_load_file (ExbEngine  *self,
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
 
   if (!priv->scene)
-    return FALSE;
+    {
+      g_message ("ExbEngine: No scene");
+      return FALSE;
+    }
 
   if (!f3d_scene_supports (priv->scene, g_file_get_path (file)))
-    return FALSE;
+    {
+      g_message ("ExbEngine: File not supported");
+      return FALSE;
+    }
 
   f3d_scene_clear (priv->scene);
   f3d_scene_add (priv->scene, g_file_get_path (file));
+
+  f3d_camera_reset_to_bounds (priv->camera, 0.9);
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 
   return TRUE;
 }
@@ -214,36 +307,121 @@ exb_engine_set_size (ExbEngine *self,
 
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  g_return_if_fail (priv->window != NULL);
+
   f3d_window_set_size (priv->window, width, height);
+
+  priv->width = width;
+  priv->height = height;
 }
 
-bool
-exb_engine_get_orthographic (ExbEngine *self)
+static bool
+exb_engine_get_f3d_option (ExbEngine    *self,
+                           GValue       *value,
+                           GParamSpec   *pspec)
 {
-  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  g_autofree const char *f3d_key = NULL;
+  f3d_options_t *options = NULL;
+  GType type;
 
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
-  return priv->orthographic;
+  options = f3d_engine_get_options (priv->engine);
+
+  if (!(f3d_key = options_map_lookup (pspec->name)))
+    {
+      g_message ("ExbEngine: Invalid key while setting option: not in map");
+      return FALSE;
+    }
+
+  if (!f3d_options_has_value (options, f3d_key))
+    {
+      g_message ("ExbEngine: Invalid key while setting option: not in f3d");
+      return FALSE;
+    }
+
+  type = G_PARAM_SPEC_VALUE_TYPE (pspec);
+
+  if (type == G_TYPE_BOOLEAN)
+    {
+      g_value_set_boolean (value, f3d_options_get_as_bool (options, f3d_key));
+    }
+  else if (type == G_TYPE_DOUBLE)
+    {
+      g_value_set_double (value, f3d_options_get_as_double (options, f3d_key));
+    }
+  else if (type == G_TYPE_INT)
+    {
+      g_value_set_int (value, f3d_options_get_as_int (options, f3d_key));
+    }
+  else if (type == GDK_TYPE_RGBA)
+    {
+      const GdkRGBA *rgba = g_value_get_boxed (value);
+
+      if (rgba)
+        {
+          g_autofree char *rgba_string = NULL;
+          rgba_string = g_strdup_printf ("%lf,%lf,%lf", rgba->red, rgba->green, rgba->blue);
+          f3d_options_set_as_string_representation (options, f3d_key, rgba_string);
+        }
+    }
+
+  return TRUE;
 }
 
-void
-exb_engine_set_orthographic (ExbEngine *self,
-                             bool       orthographic)
+static bool
+exb_engine_set_f3d_option (ExbEngine    *self,
+                           const GValue *value,
+                           GParamSpec   *pspec)
 {
-  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_autofree const char *f3d_key = NULL;
+  f3d_options_t *options = NULL;
+  GType type;
 
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
-  priv->orthographic = orthographic;
-  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_ORTHOGRAPHIC]);
+  options = f3d_engine_get_options (priv->engine);
+
+  if (!(f3d_key = options_map_lookup (pspec->name)))
+    {
+      g_message ("ExbEngine: Invalid key while setting option: not in map");
+      return FALSE;
+    }
+
+  if (!f3d_options_has_value (options, f3d_key))
+    {
+      g_message ("ExbEngine: Invalid key while setting option: not in f3d");
+      return FALSE;
+    }
+
+  type = G_PARAM_SPEC_VALUE_TYPE (pspec);
+
+  if (type == G_TYPE_BOOLEAN)
+    {
+      f3d_options_set_as_bool (options, f3d_key, g_value_get_boolean (value));
+    }
+  else if (type == G_TYPE_DOUBLE)
+    {
+      f3d_options_set_as_double (options, f3d_key, g_value_get_double (value));
+    }
+  else if (type == G_TYPE_INT)
+    {
+      f3d_options_set_as_int (options, f3d_key, g_value_get_int (value));
+    }
+  else if (type == GDK_TYPE_RGBA)
+    {
+
+    }
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+  return TRUE;
 }
 
 static void
 exb_engine_get_property (GObject    *object,
                          guint       prop_id,
                          GValue     *value,
-                         GParamSpec *pspec G_GNUC_UNUSED)
+                         GParamSpec *pspec)
 {
   ExbEngine *self = EXB_ENGINE (object);
 
@@ -252,9 +430,9 @@ exb_engine_get_property (GObject    *object,
     case PROP_FILE:
       g_value_set_object (value, exb_engine_get_file (self));
       break;
-    case PROP_ORTHOGRAPHIC:
-      g_value_set_boolean (value, exb_engine_get_orthographic (self));
     default:
+      if (!exb_engine_get_f3d_option (self, value, pspec))
+        G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
     }
 }
@@ -263,7 +441,7 @@ static void
 exb_engine_set_property (GObject      *object,
                          guint         prop_id,
                          const GValue *value,
-                         GParamSpec   *pspec G_GNUC_UNUSED)
+                         GParamSpec   *pspec)
 {
   ExbEngine *self = EXB_ENGINE (object);
 
@@ -272,9 +450,9 @@ exb_engine_set_property (GObject      *object,
     case PROP_FILE:
       exb_engine_set_file (self, g_value_get_object (value));
       break;
-    case PROP_ORTHOGRAPHIC:
-      exb_engine_set_orthographic (self, g_value_get_boolean (value));
     default:
+      if (!exb_engine_set_f3d_option (self, value, pspec))
+        G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
     }
 }
@@ -324,10 +502,17 @@ _exb_engine_initialize (ExbEngine *self,
 
   priv->window = f3d_engine_get_window (priv->engine);
   priv->scene = f3d_engine_get_scene (priv->engine);
+  priv->camera = f3d_window_get_camera (priv->window);
+
+  g_message ("ExbViewer: Window=%p, Scene=%p", priv->window, priv->scene);
 
   priv->orthographic = FALSE;
+  priv->distance = 1;
 
   f3d_engine_autoload_plugins ();
+
+  if (priv->file)
+    _exb_engine_load_file (self, priv->file);
 }
 
 static void
@@ -345,6 +530,10 @@ exb_engine_class_init (ExbEngineClass *klass)
   object_class->get_property = exb_engine_get_property;
   object_class->set_property = exb_engine_set_property;
 
+  signals[SIGNAL_CHANGED] =
+      g_signal_new ("changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
+                    NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
+
   properties[PROP_FILE] =
       g_param_spec_object ("file",
                            NULL, NULL,
@@ -359,6 +548,24 @@ exb_engine_class_init (ExbEngineClass *klass)
 
   g_object_class_install_properties (object_class, N_PROPS, properties);
 }
+
+static void
+update_distance (ExbEngine *self)
+{
+  double f3d_camera_position[3];
+  graphene_vec3_t camera_position;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  g_return_if_fail (priv->camera);
+
+  f3d_camera_get_position (priv->camera, f3d_camera_position);
+  graphene_vec3_init_from_float (&camera_position, (float *) f3d_camera_position);
+  priv->distance = graphene_vec3_length (&camera_position);
+}
+
 
 /**
  * exb_engine_new_standalone:
@@ -385,6 +592,8 @@ void
 exb_engine_zoom (ExbEngine *self,
                  double     factor)
 {
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   g_return_if_fail (EXB_IS_ENGINE (self));
@@ -400,4 +609,81 @@ exb_engine_zoom (ExbEngine *self,
     {
       f3d_camera_dolly (priv->camera, factor);
     }
+
+  update_distance (self);
+}
+
+/**
+ * exb_engine_pan:
+ * @self: a #ExbEngine
+ * @dx: dx factor
+ * @dy: dy factor
+ *
+ */
+void
+exb_engine_pan (ExbEngine *self,
+                double     dx,
+                double     dy)
+{
+  double factor;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  if (!priv->camera)
+    return;
+
+  factor = 0.0000001 * priv->width + 0.001 * priv->distance;
+  f3d_camera_pan (priv->camera, -dx * factor, dy * factor, 0);
+
+  update_distance (self);
+}
+
+/**
+ * exb_engine_rotate:
+ * @self: a #ExbEngine
+ * @dx: dx factor
+ * @dy: dy factor
+ *
+ */
+void
+exb_engine_rotate (ExbEngine *self,
+                   double     dx,
+                   double     dy)
+{
+  double azimuth, elevation;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  if (!priv->camera)
+    return;
+
+  azimuth = -dx * 0.5;
+  elevation = dy * 0.5;
+
+  f3d_camera_azimuth (priv->camera, azimuth);
+  f3d_camera_elevation (priv->camera, elevation);
+
+  update_distance (self);
+}
+
+/**
+ * exb_engine_reset_camera:
+ * @self: a #ExbEngine
+ *
+ */
+void
+exb_engine_reset_camera (ExbEngine *self)
+{
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  f3d_camera_reset_to_bounds (priv->camera, 1.0);
+  update_distance (self);
+
+  g_signal_emit (self, signals [SIGNAL_CHANGED], 0);
 }

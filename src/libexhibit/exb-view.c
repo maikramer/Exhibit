@@ -31,7 +31,13 @@ typedef struct
 {
   ExbEngine *engine;
 
+  GtkGesture *drag_gesture;
+  GtkGesture *zoom_gesture;
   GtkEventController *scroll_controller;
+
+  double prev_scale;
+  double drag_prev_x;
+  double drag_prev_y;
 
 } ExbViewPrivate;
 
@@ -87,9 +93,6 @@ exb_view_set_property (GObject      *object,
 
   switch (prop_id)
     {
-    case PROP_ENGINE:
-      /* exb_view_set_file (self, g_value_get_object (value)); */
-      break;
     default:
       break;
     }
@@ -132,10 +135,9 @@ exb_view_render(GtkGLArea    *gl_area,
   height = gtk_widget_get_height (GTK_WIDGET (gl_area));
 
   exb_engine_set_size(priv->engine, width, height);
-
   exb_engine_render(priv->engine);
 
-  return true;
+  return TRUE;
 }
 
 static gboolean
@@ -153,6 +155,75 @@ on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
 }
 
 static void
+on_zoom_begin (ExbView *self)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  priv->prev_scale = 1.0;
+}
+
+static void
+on_zoom_changed (ExbView *self,
+                 gdouble scale)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  g_message ("ExbView: scale is: %f", scale);
+
+  exb_engine_zoom (priv->engine, (scale - priv->prev_scale) * 0.1);
+
+  priv->prev_scale = scale;
+
+  gtk_gl_area_queue_render (GTK_GL_AREA (self));
+}
+
+static void
+on_drag_begin (ExbView        *self)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  g_message ("ExbView: drag begin");
+
+  priv->drag_prev_x = 0;
+  priv->drag_prev_y = 0;
+}
+
+static void
+on_drag_update (ExbView        *self,
+                gdouble         offset_x,
+                gdouble         offset_y,
+                GtkGestureDrag *gesture)
+{
+  double dx, dy;
+
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  g_message ("ExbView: drag update");
+
+  dx = offset_x - priv->drag_prev_x;
+  dy = offset_y - priv->drag_prev_y;
+
+  g_message ("ExbView: drag: %f %f", dx, dy);
+
+  guint button =
+      gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+
+  if (button == 1)
+    {
+      exb_engine_rotate (priv->engine, dx, dy);
+    }
+  else if (button == 2)
+    {
+      exb_engine_pan (priv->engine, dx, dy);
+    }
+
+  gtk_gl_area_queue_render (GTK_GL_AREA (self));
+
+  priv->drag_prev_x = offset_x;
+  priv->drag_prev_y = offset_y;
+}
+
+static void
 exb_view_init (ExbView *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
@@ -165,17 +236,38 @@ exb_view_init (ExbView *self)
 
   priv->engine = g_object_new (EXB_TYPE_ENGINE, NULL);
 
-  g_signal_connect (self, "realize", G_CALLBACK (exb_view_realize), NULL);
-  g_signal_connect (self, "render", G_CALLBACK (exb_view_render), NULL);
+  g_signal_connect_object (priv->engine, "changed",
+                           G_CALLBACK (gtk_gl_area_queue_render), GTK_GL_AREA (self), G_CONNECT_SWAPPED);
+
+  g_signal_connect_object (self, "realize",
+                           G_CALLBACK (exb_view_realize), NULL, G_CONNECT_DEFAULT);
+  g_signal_connect_object (self, "render",
+                           G_CALLBACK (exb_view_render), NULL, G_CONNECT_DEFAULT);
+
+  priv->drag_gesture = gtk_gesture_drag_new ();
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (priv->drag_gesture), 0);
+  g_signal_connect_object (priv->drag_gesture, "drag-begin",
+                           G_CALLBACK (on_drag_begin), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (priv->drag_gesture, "drag-update",
+                           G_CALLBACK (on_drag_update), self, G_CONNECT_SWAPPED);
+  gtk_widget_add_controller (GTK_WIDGET (self),
+                             GTK_EVENT_CONTROLLER (priv->drag_gesture));
+
+  priv->zoom_gesture = gtk_gesture_zoom_new ();
+  g_signal_connect_object (priv->zoom_gesture, "begin",
+                           G_CALLBACK (on_zoom_begin), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (priv->zoom_gesture, "scale-changed",
+                           G_CALLBACK (on_zoom_changed), self, G_CONNECT_SWAPPED);
+  gtk_widget_add_controller (GTK_WIDGET (self),
+                             GTK_EVENT_CONTROLLER (priv->zoom_gesture));
 
   priv->scroll_controller =
       gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_VERTICAL |
                                        GTK_EVENT_CONTROLLER_SCROLL_DISCRETE);
-  g_signal_connect (priv->scroll_controller,
-                    "scroll",
-                    G_CALLBACK (on_scroll),
-                    self);
-  gtk_widget_add_controller (GTK_WIDGET (self), priv->scroll_controller);
+  g_signal_connect_object (priv->scroll_controller, "scroll",
+                           G_CALLBACK (on_scroll), self, G_CONNECT_DEFAULT);
+  gtk_widget_add_controller (GTK_WIDGET (self),
+                             priv->scroll_controller);
 }
 
 static void
