@@ -50,4 +50,7 @@ void        exb_engine_set_size (ExbEngine *self,
 
 ExbEngine  *exb_engine_new_standalone (void);
 
+void        exb_engine_zoom (ExbEngine *self,
+                             double     factor);
+
 G_END_DECLS

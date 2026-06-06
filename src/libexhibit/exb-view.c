@@ -24,12 +24,15 @@
 #include "exb-view.h"
 
 struct _ExbView {
-    GtkGLArea parent_instance;
+  GtkGLArea parent_instance;
 };
 
 typedef struct
 {
   ExbEngine *engine;
+
+  GtkEventController *scroll_controller;
+
 } ExbViewPrivate;
 
 G_DEFINE_FINAL_TYPE_WITH_PRIVATE (ExbView, exb_view, GTK_TYPE_GL_AREA)
@@ -60,7 +63,7 @@ static void
 exb_view_get_property (GObject    *object,
                        guint       prop_id,
                        GValue     *value,
-                       GParamSpec *pspec)
+                       GParamSpec *pspec G_GNUC_UNUSED)
 {
   ExbView *self = EXB_VIEW (object);
 
@@ -77,8 +80,8 @@ exb_view_get_property (GObject    *object,
 static void
 exb_view_set_property (GObject      *object,
                        guint         prop_id,
-                       const GValue *value,
-                       GParamSpec   *pspec)
+                       const GValue *value G_GNUC_UNUSED,
+                       GParamSpec   *pspec G_GNUC_UNUSED)
 {
   ExbView *self = EXB_VIEW (object);
 
@@ -115,7 +118,7 @@ exb_view_realize (GtkWidget *widget)
 
 static gboolean
 exb_view_render(GtkGLArea    *gl_area,
-                GdkGLContext *gl_context)
+                GdkGLContext *gl_context G_GNUC_UNUSED)
 {
   ExbView *self = EXB_VIEW (gl_area);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
@@ -135,6 +138,20 @@ exb_view_render(GtkGLArea    *gl_area,
   return true;
 }
 
+static gboolean
+on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
+           gdouble                   dx G_GNUC_UNUSED,
+           gdouble                   dy,
+           ExbView                  *self)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  exb_engine_zoom (priv->engine, 1.0 - 0.1 * dy);
+
+  gtk_gl_area_queue_render (GTK_GL_AREA (self));
+  return TRUE;
+}
+
 static void
 exb_view_init (ExbView *self)
 {
@@ -150,6 +167,15 @@ exb_view_init (ExbView *self)
 
   g_signal_connect (self, "realize", G_CALLBACK (exb_view_realize), NULL);
   g_signal_connect (self, "render", G_CALLBACK (exb_view_render), NULL);
+
+  priv->scroll_controller =
+      gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_VERTICAL |
+                                       GTK_EVENT_CONTROLLER_SCROLL_DISCRETE);
+  g_signal_connect (priv->scroll_controller,
+                    "scroll",
+                    G_CALLBACK (on_scroll),
+                    self);
+  gtk_widget_add_controller (GTK_WIDGET (self), priv->scroll_controller);
 }
 
 static void

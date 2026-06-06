@@ -49,6 +49,8 @@ typedef struct
   f3d_scene_t *scene;
   f3d_camera_t *camera;
 
+  bool orthographic;
+
   GFile *file;
 } ExbEnginePrivate;
 
@@ -218,7 +220,7 @@ static void
 exb_engine_get_property (GObject    *object,
                          guint       prop_id,
                          GValue     *value,
-                         GParamSpec *pspec)
+                         GParamSpec *pspec G_GNUC_UNUSED)
 {
   ExbEngine *self = EXB_ENGINE (object);
 
@@ -236,7 +238,7 @@ static void
 exb_engine_set_property (GObject      *object,
                          guint         prop_id,
                          const GValue *value,
-                         GParamSpec   *pspec)
+                         GParamSpec   *pspec G_GNUC_UNUSED)
 {
   ExbEngine *self = EXB_ENGINE (object);
 
@@ -296,11 +298,13 @@ _exb_engine_initialize (ExbEngine *self,
   priv->window = f3d_engine_get_window (priv->engine);
   priv->scene = f3d_engine_get_scene (priv->engine);
 
+  priv->orthographic = FALSE;
+
   f3d_engine_autoload_plugins ();
 }
 
 static void
-exb_engine_init (ExbEngine *self)
+exb_engine_init (ExbEngine *self G_GNUC_UNUSED)
 {
   g_message ("ExbEngine: Initializing instance");
 }
@@ -336,4 +340,31 @@ exb_engine_new_standalone (void)
   _exb_engine_initialize (engine, true);
 
   return engine;
+}
+
+/**
+ * exb_engine_zoom:
+ * @self: a #ExbEngine
+ * @factor: zoom factor
+ *
+ */
+void
+exb_engine_zoom (ExbEngine *self,
+                 double     factor)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  if (!priv->camera)
+    return;
+
+  if (priv->orthographic)
+    {
+      f3d_camera_zoom (priv->camera, factor);
+    }
+  else
+    {
+      f3d_camera_dolly (priv->camera, factor);
+    }
 }
