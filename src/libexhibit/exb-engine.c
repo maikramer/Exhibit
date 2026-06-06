@@ -60,6 +60,7 @@ enum
 {
   PROP_0,
   PROP_FILE,
+  PROP_ORTHOGRAPHIC,
   N_PROPS
 };
 
@@ -216,6 +217,28 @@ exb_engine_set_size (ExbEngine *self,
   f3d_window_set_size (priv->window, width, height);
 }
 
+bool
+exb_engine_get_orthographic (ExbEngine *self)
+{
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  return priv->orthographic;
+}
+
+void
+exb_engine_set_orthographic (ExbEngine *self,
+                             bool       orthographic)
+{
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  priv->orthographic = orthographic;
+  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_ORTHOGRAPHIC]);
+}
+
 static void
 exb_engine_get_property (GObject    *object,
                          guint       prop_id,
@@ -229,6 +252,8 @@ exb_engine_get_property (GObject    *object,
     case PROP_FILE:
       g_value_set_object (value, exb_engine_get_file (self));
       break;
+    case PROP_ORTHOGRAPHIC:
+      g_value_set_boolean (value, exb_engine_get_orthographic (self));
     default:
       break;
     }
@@ -247,6 +272,8 @@ exb_engine_set_property (GObject      *object,
     case PROP_FILE:
       exb_engine_set_file (self, g_value_get_object (value));
       break;
+    case PROP_ORTHOGRAPHIC:
+      exb_engine_set_orthographic (self, g_value_get_boolean (value));
     default:
       break;
     }
@@ -323,6 +350,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                            NULL, NULL,
                            G_TYPE_FILE,
                            G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ORTHOGRAPHIC] =
+      g_param_spec_boolean ("orthographic",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, N_PROPS, properties);
 }

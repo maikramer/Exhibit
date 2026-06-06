@@ -53,4 +53,8 @@ ExbEngine  *exb_engine_new_standalone (void);
 void        exb_engine_zoom (ExbEngine *self,
                              double     factor);
 
+bool exb_engine_get_orthographic (ExbEngine *self);
+void exb_engine_set_orthographic (ExbEngine *self,
+                                  bool       orthographic);
+
 G_END_DECLS
