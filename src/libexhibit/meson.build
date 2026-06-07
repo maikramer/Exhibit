@@ -2,6 +2,8 @@
 libf3d_c_api_dep = dependency('libf3d_c_api', required: false)
 libf3d_dep = dependency('libf3d', required: false)
 
+add_project_arguments('-Wdeclaration-after-statement', language: 'c')
+
 libexhibit_deps = [
   dependency('glib-2.0'),
   dependency('gobject-2.0'),

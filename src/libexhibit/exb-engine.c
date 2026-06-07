@@ -248,8 +248,9 @@ _exb_engine_load_file (ExbEngine  *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
-  g_message ("ExbEngine: Loading file: %s", g_file_get_path (file));
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+
+  g_message ("ExbEngine: Loading file: %s", g_file_get_path (file));
 
   if (!priv->scene)
     {
@@ -301,9 +302,9 @@ exb_engine_set_file(ExbEngine *self,
 GFile *
 exb_engine_get_file(ExbEngine *self)
 {
-  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
-
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
 
   return priv->file;
 }
@@ -311,9 +312,9 @@ exb_engine_get_file(ExbEngine *self)
 gboolean
 exb_engine_render (ExbEngine *self)
 {
-  g_return_val_if_fail (EXB_IS_ENGINE (self), false);
-
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
 
   g_return_val_if_fail (priv->window != NULL, false);
 
@@ -327,10 +328,9 @@ exb_engine_set_size (ExbEngine *self,
                      uint       width,
                      uint       height)
 {
-  g_return_if_fail (EXB_IS_ENGINE (self));
-
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  g_return_if_fail (EXB_IS_ENGINE (self));
   g_return_if_fail (priv->window != NULL);
 
   f3d_window_set_size (priv->window, width, height);
@@ -344,13 +344,15 @@ exb_engine_get_f3d_option (ExbEngine    *self,
                            GValue       *value,
                            GParamSpec   *pspec)
 {
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
   g_autofree char *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
   unsigned int distance;
   GType type;
 
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  g_return_val_if_fail (priv->engine != NULL, FALSE);
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -439,13 +441,15 @@ exb_engine_set_f3d_option (ExbEngine    *self,
                            const GValue *value,
                            GParamSpec   *pspec)
 {
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
   g_autofree char *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
   unsigned int distance;
   GType type;
 
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  g_return_val_if_fail (priv->engine != NULL, FALSE);
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -517,6 +521,8 @@ exb_engine_get_property (GObject    *object,
 {
   ExbEngine *self = EXB_ENGINE (object);
 
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
   switch (prop_id)
     {
     case PROP_FILE:
@@ -537,6 +543,8 @@ exb_engine_set_property (GObject      *object,
 {
   ExbEngine *self = EXB_ENGINE (object);
 
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
   switch (prop_id)
     {
     case PROP_FILE:
@@ -552,9 +560,12 @@ exb_engine_set_property (GObject      *object,
 static void
 exb_engine_finalize (GObject *object)
 {
-  g_message ("ExbEngine: Finalizing");
   ExbEngine *self = EXB_ENGINE (object);
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  g_message ("ExbEngine: Finalizing");
 
   g_clear_object (&priv->file);
   g_clear_pointer (&priv->engine, f3d_engine_delete);
@@ -834,13 +845,11 @@ exb_engine_class_init (ExbEngineClass *klass)
 static void
 update_distance (ExbEngine *self)
 {
-  double f3d_camera_position[3];
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   graphene_vec3_t camera_position;
+  double f3d_camera_position[3];
 
   g_return_if_fail (EXB_IS_ENGINE (self));
-
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
   g_return_if_fail (priv->camera);
 
   f3d_camera_get_position (priv->camera, f3d_camera_position);
@@ -874,8 +883,6 @@ void
 exb_engine_zoom (ExbEngine *self,
                  double     factor)
 {
-  g_return_if_fail (EXB_IS_ENGINE (self));
-
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   g_return_if_fail (EXB_IS_ENGINE (self));
@@ -907,11 +914,10 @@ exb_engine_pan (ExbEngine *self,
                 double     dx,
                 double     dy)
 {
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   double factor;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
-
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   if (!priv->camera)
     return;
@@ -934,17 +940,17 @@ exb_engine_rotate (ExbEngine *self,
                    double     dx,
                    double     dy)
 {
-  double azimuth, elevation;
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  double elevation;
+  double azimuth;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
-
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   if (!priv->camera)
     return;
 
-  azimuth = -dx * 0.5;
   elevation = dy * 0.5;
+  azimuth = -dx * 0.5;
 
   f3d_camera_azimuth (priv->camera, azimuth);
   f3d_camera_elevation (priv->camera, elevation);
@@ -960,9 +966,9 @@ exb_engine_rotate (ExbEngine *self,
 void
 exb_engine_reset_camera (ExbEngine *self)
 {
-  g_return_if_fail (EXB_IS_ENGINE (self));
-
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
 
   f3d_camera_reset_to_bounds (priv->camera, 1.0);
   update_distance (self);

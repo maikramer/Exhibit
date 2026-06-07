@@ -79,6 +79,8 @@ exb_view_get_property (GObject    *object,
   ExbView *self = EXB_VIEW (object);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
+  g_return_if_fail (EXB_IS_VIEW (self));
+
   switch (prop_id)
     {
     case PROP_ENGINE:
@@ -104,6 +106,8 @@ exb_view_set_property (GObject      *object,
   ExbView *self = EXB_VIEW (object);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
+  g_return_if_fail (EXB_IS_VIEW (self));
+
   switch (prop_id)
     {
     case PROP_ALWAYS_POINT_UP:
@@ -120,9 +124,12 @@ exb_view_set_property (GObject      *object,
 static void
 exb_view_finalize (GObject *object)
 {
-  g_message ("ExbView: Finalizing");
   ExbView *self = EXB_VIEW (object);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  g_return_if_fail (EXB_IS_VIEW (self));
+
+  g_message ("ExbView: Finalizing");
 
   g_clear_object (&priv->engine);
 
@@ -146,6 +153,8 @@ exb_view_render(GtkGLArea    *gl_area,
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
   uint width, height;
 
+  g_return_val_if_fail (EXB_IS_VIEW (self), TRUE);
+
   g_message ("rendering");
 
   gtk_gl_area_make_current (gl_area);
@@ -167,8 +176,8 @@ on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
-  if (!priv->interactive)
-    return TRUE;
+  g_return_val_if_fail (EXB_IS_VIEW (self), TRUE);
+  g_return_val_if_fail (priv->interactive == TRUE, TRUE);
 
   exb_engine_zoom (priv->engine, 1.0 - 0.1 * dy);
 
@@ -181,6 +190,8 @@ on_zoom_begin (ExbView *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
+  g_return_if_fail (EXB_IS_VIEW (self));
+
   priv->prev_scale = 1.0;
 }
 
@@ -190,8 +201,8 @@ on_zoom_changed (ExbView *self,
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
-  if (!priv->interactive)
-    return;
+  g_return_if_fail (EXB_IS_VIEW (self));
+  g_return_if_fail (priv->interactive == TRUE);
 
   exb_engine_zoom (priv->engine, (scale - priv->prev_scale) * 0.1);
 
@@ -217,20 +228,19 @@ on_drag_update (ExbView        *self,
                 gdouble         offset_y,
                 GtkGestureDrag *gesture)
 {
-  double dx, dy;
-
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  double dx, dy;
+  guint button;
 
-  if (!priv->interactive)
-    return;
+  g_return_if_fail (EXB_IS_VIEW (self));
+  g_return_if_fail (priv->interactive == TRUE);
 
   dx = offset_x - priv->drag_prev_x;
   dy = offset_y - priv->drag_prev_y;
 
   g_message ("ExbView: drag: %f %f", dx, dy);
 
-  guint button =
-      gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
+  button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
 
   if (button == 1)
     {
@@ -258,6 +268,7 @@ exb_view_init (ExbView *self)
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
   g_message ("ExbView: Initializing instance");
+  g_return_if_fail (EXB_IS_VIEW (self));
 
   gtk_gl_area_set_allowed_apis (GTK_GL_AREA (self), GDK_GL_API_GL);
   gtk_gl_area_set_has_depth_buffer (GTK_GL_AREA (self), TRUE);
