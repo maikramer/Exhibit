@@ -36,6 +36,7 @@ typedef struct
   GtkEventController *scroll_controller;
 
   bool always_point_up;
+  bool interactive;
 
   double prev_scale;
   double drag_prev_x;
@@ -50,6 +51,7 @@ enum
   PROP_0,
   PROP_ENGINE,
   PROP_ALWAYS_POINT_UP,
+  PROP_INTERACTIVE,
   N_PROPS
 };
 
@@ -84,6 +86,10 @@ exb_view_get_property (GObject    *object,
       break;
     case PROP_ALWAYS_POINT_UP:
       g_value_set_boolean (value, priv->always_point_up);
+      break;
+    case PROP_INTERACTIVE:
+      g_value_set_boolean (value, priv->interactive);
+      break;
     default:
       break;
     }
@@ -102,6 +108,10 @@ exb_view_set_property (GObject      *object,
     {
     case PROP_ALWAYS_POINT_UP:
       priv->always_point_up = g_value_get_boolean (value);
+      break;
+    case PROP_INTERACTIVE:
+      priv->interactive = g_value_get_boolean (value);
+      break;
     default:
       break;
     }
@@ -157,6 +167,9 @@ on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
+  if (!priv->interactive)
+    return TRUE;
+
   exb_engine_zoom (priv->engine, 1.0 - 0.1 * dy);
 
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
@@ -177,7 +190,8 @@ on_zoom_changed (ExbView *self,
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
-  g_message ("ExbView: scale is: %f", scale);
+  if (!priv->interactive)
+    return;
 
   exb_engine_zoom (priv->engine, (scale - priv->prev_scale) * 0.1);
 
@@ -207,7 +221,8 @@ on_drag_update (ExbView        *self,
 
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
-  g_message ("ExbView: drag update");
+  if (!priv->interactive)
+    return;
 
   dx = offset_x - priv->drag_prev_x;
   dy = offset_y - priv->drag_prev_y;
@@ -303,6 +318,12 @@ exb_view_class_init (ExbViewClass *klass)
       g_param_spec_boolean ("always-point-up",
                             NULL, NULL,
                             FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_INTERACTIVE] =
+      g_param_spec_boolean ("interactive",
+                            NULL, NULL,
+                            TRUE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, N_PROPS, properties);
