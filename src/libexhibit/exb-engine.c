@@ -67,6 +67,7 @@ enum
   PROP_SHOW_GRID,
   PROP_GRID_ABSOLUTE,
   PROP_GRID_UNIT,
+  PROP_GRID_COLOR,
   PROP_TRANSLUCENCY,
   PROP_TONE_MAPPING,
   PROP_AMBIENT_OCCLUSION,
@@ -76,10 +77,12 @@ enum
   PROP_BLUR_BACKGROUND,
   PROP_BLUR_COC,
   PROP_LIGHT_INTENSITY,
+  PROP_BACKGROUND_COLOR,
   PROP_SHOW_EDGES,
   PROP_EDGES_WIDTH,
   PROP_POINT_SIZE,
   PROP_SHOW_ARMATURE,
+  PROP_MODEL_COLOR,
   PROP_MODEL_METALLIC,
   PROP_MODEL_ROUGHNESS,
   PROP_MODEL_OPACITY,
@@ -123,7 +126,7 @@ static const OptionMap option_maps[] = {
   { "blur-background",        "render.background.blur.enable"     },
   { "blur-coc",               "render.background.blur.coc"        },
   { "light-intensity",        "render.light.intensity"            },
-  { "bg-color",               "render.background.color"           },
+  { "background-color",       "render.background.color"           },
   { "show-edges",             "render.show_edges"                 },
   { "edges-width",            "render.line_width"                 },
   { "point-size",             "render.point_size"                 },
@@ -382,14 +385,29 @@ exb_engine_get_f3d_option (ExbEngine    *self,
     }
   else if (type == GDK_TYPE_RGBA)
     {
-      const GdkRGBA *rgba = g_value_get_boxed (value);
+      g_autofree const char *rgba_string = NULL;
+      GdkRGBA rgba;
 
-      if (rgba)
+      rgba_string = f3d_options_get_as_string_representation (options, f3d_key);
+
+      g_message ("ExbEngine: RGBA string is '%s'", rgba_string);
+
+      if (!gdk_rgba_parse (&rgba, rgba_string))
         {
-          g_autofree char *rgba_string = NULL;
-          rgba_string = g_strdup_printf ("%lf,%lf,%lf", rgba->red, rgba->green, rgba->blue);
-          f3d_options_set_as_string_representation (options, f3d_key, rgba_string);
+          g_auto(GStrv) parts = NULL;
+
+          parts = g_strsplit (rgba_string, ",", -1);
+
+          if (g_strv_length (parts) != 3)
+            return FALSE;
+
+          rgba.red   = g_ascii_strtod (parts[0], NULL);
+          rgba.green = g_ascii_strtod (parts[1], NULL);
+          rgba.blue  = g_ascii_strtod (parts[2], NULL);
+          rgba.alpha = 1.0;
         }
+
+      g_value_set_boxed (value, &rgba);
     }
 
   return TRUE;
@@ -440,7 +458,14 @@ exb_engine_set_f3d_option (ExbEngine    *self,
     }
   else if (type == GDK_TYPE_RGBA)
     {
+      const GdkRGBA *rgba = g_value_get_boxed (value);
 
+      if (rgba)
+        {
+          g_autofree char *rgba_string = NULL;
+          rgba_string = g_strdup_printf ("%lf,%lf,%lf", rgba->red, rgba->green, rgba->blue);
+          f3d_options_set_as_string_representation (options, f3d_key, rgba_string);
+        }
     }
 
   g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
@@ -594,6 +619,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  properties[PROP_GRID_COLOR] =
+      g_param_spec_boxed ("grid-color",
+                          NULL, NULL,
+                          GDK_TYPE_RGBA,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   properties[PROP_TRANSLUCENCY] =
       g_param_spec_boolean ("translucency",
                             NULL, NULL,
@@ -648,6 +679,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  properties[PROP_BACKGROUND_COLOR] =
+      g_param_spec_boxed ("background-color",
+                          NULL, NULL,
+                          GDK_TYPE_RGBA,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   properties[PROP_SHOW_EDGES] =
       g_param_spec_boolean ("show-edges",
                             NULL, NULL,
@@ -671,6 +708,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_MODEL_COLOR] =
+      g_param_spec_boxed ("model-color",
+                          NULL, NULL,
+                          GDK_TYPE_RGBA,
+                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_MODEL_METALLIC] =
       g_param_spec_double ("model-metallic",
