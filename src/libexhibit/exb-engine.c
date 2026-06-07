@@ -74,6 +74,7 @@ enum
   PROP_ANTI_ALIASING,
   PROP_HDRI_AMBIENT,
   PROP_HDRI_SKYBOX,
+  PROP_HDRI_FILE,
   PROP_BLUR_BACKGROUND,
   PROP_BLUR_COC,
   PROP_LIGHT_INTENSITY,
@@ -86,6 +87,10 @@ enum
   PROP_MODEL_METALLIC,
   PROP_MODEL_ROUGHNESS,
   PROP_MODEL_OPACITY,
+  PROP_TEXTURE_MATCAP,
+  PROP_TEXTURE_BASE_COLOR,
+  PROP_TEXTURE_EMISSIVE,
+  PROP_TEXTURE_MATERIAL,
   PROP_NORMAL_SCALE,
   PROP_VOLUME_RENDERING,
   PROP_VOLUME_INVERSE_OPACITY,
@@ -131,7 +136,7 @@ static const OptionMap option_maps[] = {
   { "edges-width",            "render.line_width"                 },
   { "point-size",             "render.point_size"                 },
   { "show-armature",          "render.armature.enable"            },
-  { "final-shader",           "render.effect.final_shader"        },
+  /* { "final-shader",           "render.effect.final_shader"        }, */
   { "model-color",            "model.color.rgb"                   },
   { "model-metallic",         "model.material.metallic"           },
   { "model-roughness",        "model.material.roughness"          },
@@ -147,14 +152,14 @@ static const OptionMap option_maps[] = {
   { "volume-inverse-opacity", "model.volume.inverse"              },
   { "show-sprites",           "model.point_sprites.enable"        },
   { "sprites-size",           "model.point_sprites.size"          },
-  { "sprites-type",           "model.point_sprites.type"          },
-  { "scivis",                 "model.scivis.enable"               },
-  { "scivis-component",       "model.scivis.component"            },
-  { "cells",                  "model.scivis.cells"                },
-  { "scalar",                 "model.scivis.array_name"           },
-  { "up",                     "scene.up_direction"                },
+  /* { "sprites-type",           "model.point_sprites.type"          }, */
+  /* { "scivis",                 "model.scivis.enable"               }, */
+  /* { "scivis-component",       "model.scivis.component"            }, */
+  /* { "cells",                  "model.scivis.cells"                }, */
+  /* { "scalar",                 "model.scivis.array_name"           }, */
+  /* { "up",                     "scene.up_direction"                }, */
   { "orthographic",           "scene.camera.orthographic"         },
-  { "animation-index",        "scene.animation.index"             }
+  /* { "animation-index",        "scene.animation.index"             } */
 };
 
 static const gsize option_maps_len = G_N_ELEMENTS(option_maps);
@@ -409,6 +414,22 @@ exb_engine_get_f3d_option (ExbEngine    *self,
 
       g_value_set_boxed (value, &rgba);
     }
+  else if (type == G_TYPE_FILE)
+    {
+      g_autofree const char *filepath = NULL;
+
+      filepath = f3d_options_get_as_string_representation (options, f3d_key);
+
+      if (filepath)
+        {
+          g_autoptr (GFile) file = g_file_new_for_path (filepath);
+          g_value_set_object (value, file);
+        }
+      else
+        {
+          g_value_set_object (value, NULL);
+        }
+    }
 
   return TRUE;
 }
@@ -465,6 +486,22 @@ exb_engine_set_f3d_option (ExbEngine    *self,
           g_autofree char *rgba_string = NULL;
           rgba_string = g_strdup_printf ("%lf,%lf,%lf", rgba->red, rgba->green, rgba->blue);
           f3d_options_set_as_string_representation (options, f3d_key, rgba_string);
+        }
+    }
+  else if (type == G_TYPE_FILE)
+    {
+      g_autoptr (GFile) file = NULL;
+
+      file = g_value_get_object (value);
+
+      if (file)
+        {
+          g_autofree char *filepath = g_file_get_path (file);
+          f3d_options_set_as_string_representation (options, f3d_key, filepath);
+        }
+      else
+        {
+          f3d_options_set_as_string_representation (options, f3d_key, "");
         }
     }
 
@@ -661,6 +698,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  properties[PROP_HDRI_FILE] =
+      g_param_spec_object ("hdri-file",
+                           NULL, NULL,
+                           G_TYPE_FILE,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   properties[PROP_BLUR_BACKGROUND] =
       g_param_spec_boolean ("blur-background",
                             NULL, NULL,
@@ -731,6 +774,30 @@ exb_engine_class_init (ExbEngineClass *klass)
       g_param_spec_double ("model-opacity",
                            NULL, NULL,
                            0.0, 1.0, 1.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_TEXTURE_MATCAP] =
+      g_param_spec_object ("texture-matcap",
+                           NULL, NULL,
+                           G_TYPE_FILE,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_TEXTURE_BASE_COLOR] =
+      g_param_spec_object ("texture-base-color",
+                           NULL, NULL,
+                           G_TYPE_FILE,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_TEXTURE_EMISSIVE] =
+      g_param_spec_object ("texture-emissive",
+                           NULL, NULL,
+                           G_TYPE_FILE,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_TEXTURE_MATERIAL] =
+      g_param_spec_object ("texture-material",
+                           NULL, NULL,
+                           G_TYPE_FILE,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_NORMAL_SCALE] =
