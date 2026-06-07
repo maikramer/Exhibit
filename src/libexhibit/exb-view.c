@@ -35,6 +35,8 @@ typedef struct
   GtkGesture *zoom_gesture;
   GtkEventController *scroll_controller;
 
+  bool always_point_up;
+
   double prev_scale;
   double drag_prev_x;
   double drag_prev_y;
@@ -47,6 +49,7 @@ enum
 {
   PROP_0,
   PROP_ENGINE,
+  PROP_ALWAYS_POINT_UP,
   N_PROPS
 };
 
@@ -72,12 +75,15 @@ exb_view_get_property (GObject    *object,
                        GParamSpec *pspec G_GNUC_UNUSED)
 {
   ExbView *self = EXB_VIEW (object);
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
   switch (prop_id)
     {
     case PROP_ENGINE:
       g_value_set_object (value, exb_view_get_engine (self));
       break;
+    case PROP_ALWAYS_POINT_UP:
+      g_value_set_boolean (value, priv->always_point_up);
     default:
       break;
     }
@@ -90,9 +96,12 @@ exb_view_set_property (GObject      *object,
                        GParamSpec   *pspec G_GNUC_UNUSED)
 {
   ExbView *self = EXB_VIEW (object);
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
   switch (prop_id)
     {
+    case PROP_ALWAYS_POINT_UP:
+      priv->always_point_up = g_value_get_boolean (value);
     default:
       break;
     }
@@ -217,6 +226,11 @@ on_drag_update (ExbView        *self,
       exb_engine_pan (priv->engine, dx, dy);
     }
 
+  if (priv->always_point_up)
+    {
+      // TODO point up
+    }
+
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
 
   priv->drag_prev_x = offset_x;
@@ -284,6 +298,12 @@ exb_view_class_init (ExbViewClass *klass)
                            NULL, NULL,
                            EXB_TYPE_ENGINE,
                            G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ALWAYS_POINT_UP] =
+      g_param_spec_boolean ("always-point-up",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, N_PROPS, properties);
 }
