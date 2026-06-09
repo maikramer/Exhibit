@@ -26,6 +26,36 @@
 
 G_BEGIN_DECLS
 
+typedef enum
+{
+  EXB_DIRECTION_POSITIVE_X,
+  EXB_DIRECTION_NEGATIVE_X,
+  EXB_DIRECTION_POSITIVE_Y,
+  EXB_DIRECTION_NEGATIVE_Y,
+  EXB_DIRECTION_POSITIVE_Z,
+  EXB_DIRECTION_NEGATIVE_Z,
+} ExbDirection;
+
+typedef enum
+{
+  EXB_SPRITE_TYPE_SPHERE,
+  EXB_SPRITE_TYPE_GAUSSIAN,
+} ExbSpriteType;
+
+typedef enum
+{
+  EXB_BLENDING_MODE_DDP,
+  EXB_BLENDING_MODE_SORT,
+  EXB_BLENDING_MODE_STOCHASTIC,
+} ExbBlendingMode;
+
+typedef enum
+{
+  EXB_ANTI_ALIASING_MODE_FXAA,
+  EXB_ANTI_ALIASING_MODE_SSAA,
+  EXB_ANTI_ALIASING_MODE_TAA,
+} ExbAntiAliasingMode;
+
 #define EXB_TYPE_ENGINE (exb_engine_get_type())
 
 G_DECLARE_DERIVABLE_TYPE (ExbEngine, exb_engine, EXB, ENGINE, GObject)
@@ -59,6 +89,9 @@ void        exb_engine_pan (ExbEngine *self,
 void        exb_engine_rotate (ExbEngine *self,
                                double     dx,
                                double     dy);
+void        exb_engine_rotate_with_limit (ExbEngine *self,
+                                          double     dx,
+                                          double     dy);
 void        exb_engine_reset_camera (ExbEngine *self);
 
 G_END_DECLS

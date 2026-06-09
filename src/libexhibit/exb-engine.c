@@ -20,26 +20,15 @@
  */
 
 #include "exb-engine.h"
+#include "exb-utils.h"
+#include "exb-enums.h"
 
 #include <f3d/camera_c_api.h>
 #include <f3d/engine_c_api.h>
 #include <f3d/image_c_api.h>
-#include <f3d/interactor_c_api.h>
-#include <f3d/log_c_api.h>
 #include <f3d/options_c_api.h>
 #include <f3d/scene_c_api.h>
 #include <f3d/window_c_api.h>
-
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_engine_t, f3d_engine_delete)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_context_t, f3d_context_delete)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_image_t, f3d_image_delete)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_options_t, f3d_options_delete)
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_light_state_t, f3d_light_state_free)
-
-G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (f3d_color_t, (void (*) (f3d_color_t *)) NULL)
-G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (f3d_light_state_t, f3d_light_state_free)
-G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (f3d_colormap_t, f3d_colormap_free)
-G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (f3d_reader_info_t, f3d_engine_free_readers_info)
 
 typedef struct
 {
@@ -63,15 +52,18 @@ enum
 {
   PROP_0,
   PROP_FILE,
+  PROP_UP,
   PROP_ORTHOGRAPHIC,
   PROP_SHOW_GRID,
   PROP_GRID_ABSOLUTE,
   PROP_GRID_UNIT,
   PROP_GRID_COLOR,
-  PROP_TRANSLUCENCY,
+  PROP_BLENDING,
+  PROP_BLENDING_MODE,
   PROP_TONE_MAPPING,
   PROP_AMBIENT_OCCLUSION,
   PROP_ANTI_ALIASING,
+  PROP_ANTI_ALIASING_MODE,
   PROP_HDRI_AMBIENT,
   PROP_HDRI_SKYBOX,
   PROP_HDRI_FILE,
@@ -96,6 +88,8 @@ enum
   PROP_VOLUME_INVERSE_OPACITY,
   PROP_SHOW_SPRITES,
   PROP_SPRITES_SIZE,
+  PROP_SPRITES_TYPE,
+  PROP_ANIMATION_INDEX,
   N_PROPS
 };
 
@@ -121,10 +115,12 @@ static const OptionMap option_maps[] = {
   { "grid-unit",              "render.grid.unit"                  },
   { "grid-subdivisions",      "render.grid.subdivisions"          },
   { "grid-color",             "render.grid.color"                 },
-  { "translucency",           "render.effect.blending.enable"     },
+  { "blending",               "render.effect.blending.enable"     },
+  { "blending-mode",          "render.effect.blending.mode"       },
   { "tone-mapping",           "render.effect.tone_mapping"        },
   { "ambient-occlusion",      "render.effect.ambient_occlusion"   },
   { "anti-aliasing",          "render.effect.antialiasing.enable" },
+  { "anti-aliasing-mode",     "render.effect.antialiasing.mode"   },
   { "hdri-ambient",           "render.hdri.ambient"               },
   { "hdri-skybox",            "render.background.skybox"          },
   { "hdri-file",              "render.hdri.file"                  },
@@ -152,14 +148,14 @@ static const OptionMap option_maps[] = {
   { "volume-inverse-opacity", "model.volume.inverse"              },
   { "show-sprites",           "model.point_sprites.enable"        },
   { "sprites-size",           "model.point_sprites.size"          },
-  /* { "sprites-type",           "model.point_sprites.type"          }, */
+  { "sprites-type",           "model.point_sprites.type"          },
   /* { "scivis",                 "model.scivis.enable"               }, */
   /* { "scivis-component",       "model.scivis.component"            }, */
   /* { "cells",                  "model.scivis.cells"                }, */
   /* { "scalar",                 "model.scivis.array_name"           }, */
-  /* { "up",                     "scene.up_direction"                }, */
+  { "up",                     "scene.up_direction"                },
   { "orthographic",           "scene.camera.orthographic"         },
-  /* { "animation-index",        "scene.animation.index"             } */
+  { "animation-index",        "scene.animation.index"             }
 };
 
 static const gsize option_maps_len = G_N_ELEMENTS(option_maps);
@@ -171,39 +167,6 @@ options_map_lookup (const char *prop_name)
     if (g_str_equal(option_maps[i].prop_name, prop_name))
       return g_strdup (option_maps[i].f3d_key);
   return NULL;
-}
-
-/**
- * exb_engine_get_allowed_extensions:
- *
- * Returns: (transfer full): A list of strings
- */
-char **
-exb_engine_get_allowed_extensions (void)
-{
-  g_autofree f3d_reader_info_t *readers = NULL;
-  GPtrArray *array;
-  int count = 0;
-
-  readers = f3d_engine_get_readers_info (&count);
-  if (!readers)
-    return NULL;
-
-  array = g_ptr_array_new_with_free_func (g_free);
-
-  for (int i = 0; i < count; i++)
-    {
-      if (readers[i].extensions)
-        {
-          for (char **ext = readers[i].extensions; *ext; ext++)
-            {
-              g_ptr_array_add (array, g_strdup (*ext));
-            }
-        }
-    }
-
-  g_ptr_array_add (array, NULL);
-  return (char **) g_ptr_array_free (array, FALSE);
 }
 
 /**
@@ -247,10 +210,17 @@ _exb_engine_load_file (ExbEngine  *self,
                        GFile      *file)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autofree const char *file_path = NULL;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
 
-  g_message ("ExbEngine: Loading file: %s", g_file_get_path (file));
+  file_path = g_file_get_path (file);
+
+  if (!file_path)
+    {
+      g_message ("ExbEngine: No file path");
+      return FALSE;
+    }
 
   if (!priv->scene)
     {
@@ -258,14 +228,16 @@ _exb_engine_load_file (ExbEngine  *self,
       return FALSE;
     }
 
-  if (!f3d_scene_supports (priv->scene, g_file_get_path (file)))
+  g_message ("ExbEngine: Loading file: %s", file_path);
+
+  if (!f3d_scene_supports (priv->scene, file_path))
     {
       g_message ("ExbEngine: File not supported");
       return FALSE;
     }
 
   f3d_scene_clear (priv->scene);
-  f3d_scene_add (priv->scene, g_file_get_path (file));
+  f3d_scene_add (priv->scene, file_path);
 
   f3d_camera_reset_to_bounds (priv->camera, 0.9);
 
@@ -297,7 +269,7 @@ exb_engine_set_file(ExbEngine *self,
  * exb_engine_get_file:
  * @self: a #ExbEngine
  *
- * Returns: (transfer full): A GFile
+ * Returns: (transfer none): A GFile
  */
 GFile *
 exb_engine_get_file(ExbEngine *self)
@@ -346,7 +318,7 @@ exb_engine_get_f3d_option (ExbEngine    *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
-  g_autofree char *f3d_closest_key = NULL;
+  g_autofree f3d_string_t *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
   unsigned int distance;
   GType type;
@@ -392,33 +364,38 @@ exb_engine_get_f3d_option (ExbEngine    *self,
     }
   else if (type == GDK_TYPE_RGBA)
     {
-      g_autofree const char *rgba_string = NULL;
+      g_autofree const f3d_string_t *rgba_string = NULL;
       GdkRGBA rgba;
 
       rgba_string = f3d_options_get_as_string_representation (options, f3d_key);
 
       g_message ("ExbEngine: RGBA string is '%s'", rgba_string);
 
-      if (!gdk_rgba_parse (&rgba, rgba_string))
+      if (rgba_string)
         {
-          g_auto(GStrv) parts = NULL;
+          if (!gdk_rgba_parse (&rgba, rgba_string))
+            {
+              g_auto(GStrv) parts = NULL;
 
-          parts = g_strsplit (rgba_string, ",", -1);
+              parts = g_strsplit (rgba_string, ",", -1);
 
-          if (g_strv_length (parts) != 3)
-            return FALSE;
+              if (g_strv_length (parts) != 3)
+                {
+                  return FALSE;
+                }
 
-          rgba.red   = g_ascii_strtod (parts[0], NULL);
-          rgba.green = g_ascii_strtod (parts[1], NULL);
-          rgba.blue  = g_ascii_strtod (parts[2], NULL);
-          rgba.alpha = 1.0;
+              rgba.red   = g_ascii_strtod (parts[0], NULL);
+              rgba.green = g_ascii_strtod (parts[1], NULL);
+              rgba.blue  = g_ascii_strtod (parts[2], NULL);
+              rgba.alpha = 1.0;
+            }
+
+          g_value_set_boxed (value, &rgba);
         }
-
-      g_value_set_boxed (value, &rgba);
     }
   else if (type == G_TYPE_FILE)
     {
-      g_autofree const char *filepath = NULL;
+      g_autofree const f3d_string_t *filepath = NULL;
 
       filepath = f3d_options_get_as_string_representation (options, f3d_key);
 
@@ -443,7 +420,7 @@ exb_engine_set_f3d_option (ExbEngine    *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
-  g_autofree char *f3d_closest_key = NULL;
+  g_autofree f3d_string_t *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
   unsigned int distance;
   GType type;
@@ -494,9 +471,7 @@ exb_engine_set_f3d_option (ExbEngine    *self,
     }
   else if (type == G_TYPE_FILE)
     {
-      g_autoptr (GFile) file = NULL;
-
-      file = g_value_get_object (value);
+      GFile *file = g_value_get_object (value);
 
       if (file)
         {
@@ -528,6 +503,14 @@ exb_engine_get_property (GObject    *object,
     case PROP_FILE:
       g_value_set_object (value, exb_engine_get_file (self));
       break;
+    case PROP_SPRITES_TYPE:
+      break;
+    case PROP_ANTI_ALIASING_MODE:
+      break;
+    case PROP_BLENDING_MODE:
+      break;
+    case PROP_UP:
+      break;
     default:
       if (!exb_engine_get_f3d_option (self, value, pspec))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -549,6 +532,14 @@ exb_engine_set_property (GObject      *object,
     {
     case PROP_FILE:
       exb_engine_set_file (self, g_value_get_object (value));
+      break;
+    case PROP_SPRITES_TYPE:
+      break;
+    case PROP_ANTI_ALIASING_MODE:
+      break;
+    case PROP_BLENDING_MODE:
+      break;
+    case PROP_UP:
       break;
     default:
       if (!exb_engine_set_f3d_option (self, value, pspec))
@@ -673,8 +664,8 @@ exb_engine_class_init (ExbEngineClass *klass)
                           GDK_TYPE_RGBA,
                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_TRANSLUCENCY] =
-      g_param_spec_boolean ("translucency",
+  properties[PROP_BLENDING] =
+      g_param_spec_boolean ("blending",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
@@ -839,6 +830,36 @@ exb_engine_class_init (ExbEngineClass *klass)
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  properties[PROP_SPRITES_TYPE] =
+      g_param_spec_enum ("sprites-type",
+                         NULL, NULL,
+                         exb_sprite_type_get_type (),
+                         EXB_SPRITE_TYPE_SPHERE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_UP] =
+      g_param_spec_enum ("up",
+                         NULL, NULL,
+                         exb_direction_get_type (),
+                         EXB_DIRECTION_POSITIVE_Y, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ANIMATION_INDEX] =
+      g_param_spec_int ("animation-index",
+                        NULL, NULL,
+                        0, 1000, 0,
+                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ANTI_ALIASING_MODE] =
+      g_param_spec_enum ("anti-aliasing-mode",
+                         NULL, NULL,
+                         exb_anti_aliasing_mode_get_type (),
+                         EXB_ANTI_ALIASING_MODE_FXAA, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_BLENDING_MODE] =
+      g_param_spec_enum ("blending-mode",
+                         NULL, NULL,
+                         exb_blending_mode_get_type (),
+                         EXB_BLENDING_MODE_DDP, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, N_PROPS, properties);
 }
 
@@ -857,6 +878,13 @@ update_distance (ExbEngine *self)
   priv->distance = graphene_vec3_length (&camera_position);
 }
 
+static double
+get_gimble_limit (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  return priv->distance / 10.0;
+}
 
 /**
  * exb_engine_new_standalone:
@@ -974,4 +1002,41 @@ exb_engine_reset_camera (ExbEngine *self)
   update_distance (self);
 
   g_signal_emit (self, signals [SIGNAL_CHANGED], 0);
+}
+
+/**
+ * exb_engine_rotate_with_limit:
+ * @self: a #ExbEngine
+ * @dx: dx factor
+ * @dy: dy factor
+ *
+ * Rotate the view while keeping the scene pointing up
+ *
+ */
+void
+exb_engine_rotate_with_limit (ExbEngine *self,
+                              double     dx,
+                              double     dy)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  double elevation;
+  double azimuth;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  if (!priv->camera)
+    return;
+
+  elevation = dy * 0.5;
+  azimuth = -dx * 0.5;
+
+  if (priv->distance > get_gimble_limit (self) ||
+     (priv->distance < get_gimble_limit (self)))
+  {
+    f3d_camera_elevation (priv->camera, elevation);
+  }
+
+  f3d_camera_azimuth (priv->camera, azimuth);
+
+  update_distance (self);
 }

@@ -21,12 +21,19 @@ libexhibit_include = include_directories('.')
 libexhibit_sources = [
   'exb-view.c',
   'exb-engine.c',
+  'exb-utils.c',
 ]
 
 libexhibit_headers = [
   'exb-view.h',
   'exb-engine.h',
+  'exb-utils.h',
 ]
+
+libexhibit_enums = gnome.mkenums_simple(
+  'exb-enums',
+  sources : libexhibit_headers
+)
 
 pkglibdir_abs = join_paths(get_option('prefix'), get_option('libdir'), 'exhibit')
 pkggirdir = join_paths(get_option('datadir'), 'gir-1.0')
@@ -35,6 +42,7 @@ pkgtypelibdir = join_paths(get_option('libdir'), 'girepository-1.0')
 libexhibit = library(
   'exhibit',
   libexhibit_sources,
+  libexhibit_enums,
   include_directories: [libexhibit_include],
   dependencies: libexhibit_deps,
   install: true,
@@ -55,7 +63,7 @@ libexhibit_dep = declare_dependency(
 
 gnome.generate_gir(
   libexhibit,
-  sources: libexhibit_sources + libexhibit_headers,
+  sources: libexhibit_sources + libexhibit_headers + libexhibit_enums,
   namespace: 'Exb',
   nsversion: '0',
   symbol_prefix: 'exb',

@@ -4,7 +4,6 @@ project('exhibit', 'c',
   default_options: [ 'c_std=gnu11',
                      'cpp_std=gnu++2a',
                      'warning_level=2',
-                     'channel=other',
                      'werror=false',
                    ],
 )

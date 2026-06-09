@@ -122,7 +122,7 @@ exb_view_set_property (GObject      *object,
 }
 
 static void
-exb_view_finalize (GObject *object)
+exb_view_dispose (GObject *object)
 {
   ExbView *self = EXB_VIEW (object);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
@@ -133,7 +133,7 @@ exb_view_finalize (GObject *object)
 
   g_clear_object (&priv->engine);
 
-  G_OBJECT_CLASS (exb_view_parent_class)->finalize (object);
+  G_OBJECT_CLASS (exb_view_parent_class)->dispose (object);
 }
 
 static void
@@ -145,9 +145,24 @@ exb_view_realize (GtkWidget *widget)
   _exb_engine_initialize (priv->engine, false);
 }
 
+static void
+exb_view_unrealize (GtkWidget *widget)
+{
+  ExbView *self = EXB_VIEW (widget);
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  gtk_gl_area_make_current (GTK_GL_AREA (self));
+
+  g_clear_object (&priv->engine);
+  priv->engine = g_object_new (EXB_TYPE_ENGINE, NULL);
+
+  g_signal_connect_object (priv->engine, "changed",
+                           G_CALLBACK (gtk_gl_area_queue_render), GTK_GL_AREA (self), G_CONNECT_SWAPPED);
+}
+
 static gboolean
-exb_view_render(GtkGLArea    *gl_area,
-                GdkGLContext *gl_context G_GNUC_UNUSED)
+exb_view_render (GtkGLArea    *gl_area,
+                 GdkGLContext *gl_context G_GNUC_UNUSED)
 {
   ExbView *self = EXB_VIEW (gl_area);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
@@ -177,7 +192,9 @@ on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
   g_return_val_if_fail (EXB_IS_VIEW (self), TRUE);
-  g_return_val_if_fail (priv->interactive == TRUE, TRUE);
+
+  if (!priv->interactive)
+    return TRUE;
 
   exb_engine_zoom (priv->engine, 1.0 - 0.1 * dy);
 
@@ -202,7 +219,9 @@ on_zoom_changed (ExbView *self,
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
   g_return_if_fail (EXB_IS_VIEW (self));
-  g_return_if_fail (priv->interactive == TRUE);
+
+  if (!priv->interactive)
+    return;
 
   exb_engine_zoom (priv->engine, (scale - priv->prev_scale) * 0.1);
 
@@ -233,7 +252,9 @@ on_drag_update (ExbView        *self,
   guint button;
 
   g_return_if_fail (EXB_IS_VIEW (self));
-  g_return_if_fail (priv->interactive == TRUE);
+
+  if (!priv->interactive)
+    return;
 
   dx = offset_x - priv->drag_prev_x;
   dy = offset_y - priv->drag_prev_y;
@@ -244,8 +265,11 @@ on_drag_update (ExbView        *self,
 
   if (button == 1)
     {
-      exb_engine_rotate (priv->engine, dx, dy);
-    }
+      if (!priv->always_point_up)
+        exb_engine_rotate (priv->engine, dx, dy);
+      else
+        exb_engine_rotate_with_limit (priv->engine, dx, dy);
+  }
   else if (button == 2)
     {
       exb_engine_pan (priv->engine, dx, dy);
@@ -270,17 +294,22 @@ exb_view_init (ExbView *self)
   g_message ("ExbView: Initializing instance");
   g_return_if_fail (EXB_IS_VIEW (self));
 
+  priv->engine = g_object_new (EXB_TYPE_ENGINE, NULL);
+  priv->always_point_up = TRUE;
+  priv->interactive = TRUE;
+
   gtk_gl_area_set_allowed_apis (GTK_GL_AREA (self), GDK_GL_API_GL);
   gtk_gl_area_set_has_depth_buffer (GTK_GL_AREA (self), TRUE);
   gtk_gl_area_set_auto_render (GTK_GL_AREA (self), TRUE);
 
-  priv->engine = g_object_new (EXB_TYPE_ENGINE, NULL);
 
   g_signal_connect_object (priv->engine, "changed",
                            G_CALLBACK (gtk_gl_area_queue_render), GTK_GL_AREA (self), G_CONNECT_SWAPPED);
 
   g_signal_connect_object (self, "realize",
-                           G_CALLBACK (exb_view_realize), NULL, G_CONNECT_DEFAULT);
+                           G_CALLBACK (exb_view_realize), NULL, G_CONNECT_AFTER);
+  g_signal_connect_object (self, "unrealize",
+                           G_CALLBACK (exb_view_unrealize), NULL, G_CONNECT_DEFAULT);
   g_signal_connect_object (self, "render",
                            G_CALLBACK (exb_view_render), NULL, G_CONNECT_DEFAULT);
 
@@ -315,7 +344,7 @@ exb_view_class_init (ExbViewClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
 
-  object_class->finalize = exb_view_finalize;
+  object_class->dispose = exb_view_dispose;
   object_class->get_property = exb_view_get_property;
   object_class->set_property = exb_view_set_property;
 
@@ -328,7 +357,7 @@ exb_view_class_init (ExbViewClass *klass)
   properties[PROP_ALWAYS_POINT_UP] =
       g_param_spec_boolean ("always-point-up",
                             NULL, NULL,
-                            FALSE,
+                            TRUE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_INTERACTIVE] =
