@@ -21,6 +21,7 @@
 
 #include "exb-engine.h"
 #include "exb-utils.h"
+#include "exb-utils-private.h"
 #include "exb-enums.h"
 
 #include <f3d/camera_c_api.h>
@@ -318,9 +319,8 @@ exb_engine_get_f3d_option (ExbEngine    *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
-  g_autofree f3d_string_t *f3d_closest_key = NULL;
+  g_autofree const char *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
-  unsigned int distance;
   GType type;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
@@ -334,7 +334,7 @@ exb_engine_get_f3d_option (ExbEngine    *self,
       return FALSE;
     }
 
-  f3d_options_get_closest_option (options, f3d_key, &f3d_closest_key, &distance);
+  f3d_closest_key = exb_f3d_options_get_closest_option (options, f3d_key, NULL);
 
   if (!g_str_equal (f3d_key, f3d_closest_key))
     {
@@ -364,10 +364,10 @@ exb_engine_get_f3d_option (ExbEngine    *self,
     }
   else if (type == GDK_TYPE_RGBA)
     {
-      g_autofree const f3d_string_t *rgba_string = NULL;
+      g_autofree char *rgba_string = NULL;
       GdkRGBA rgba;
 
-      rgba_string = f3d_options_get_as_string_representation (options, f3d_key);
+      rgba_string = exb_f3d_options_get_as_string (options, f3d_key);
 
       g_message ("ExbEngine: RGBA string is '%s'", rgba_string);
 
@@ -395,9 +395,9 @@ exb_engine_get_f3d_option (ExbEngine    *self,
     }
   else if (type == G_TYPE_FILE)
     {
-      g_autofree const f3d_string_t *filepath = NULL;
+      g_autofree const char *filepath = NULL;
 
-      filepath = f3d_options_get_as_string_representation (options, f3d_key);
+      filepath = exb_f3d_options_get_as_string (options, f3d_key);
 
       if (filepath)
         {
@@ -419,10 +419,9 @@ exb_engine_set_f3d_option (ExbEngine    *self,
                            GParamSpec   *pspec)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autofree const char *f3d_closest_key = NULL;
   g_autofree const char *f3d_key = NULL;
-  g_autofree f3d_string_t *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
-  unsigned int distance;
   GType type;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
@@ -436,7 +435,7 @@ exb_engine_set_f3d_option (ExbEngine    *self,
       return FALSE;
     }
 
-  f3d_options_get_closest_option (options, f3d_key, &f3d_closest_key, &distance);
+  f3d_closest_key = exb_f3d_options_get_closest_option (options, f3d_key, NULL);
 
   if (!g_str_equal (f3d_key, f3d_closest_key))
     {
@@ -488,6 +487,77 @@ exb_engine_set_f3d_option (ExbEngine    *self,
   return TRUE;
 }
 
+static const char *
+exb_engine_get_f3d_enum_option (ExbEngine  *self,
+                                const char *option_key)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autofree const char *f3d_closest_key = NULL;
+  g_autofree const char *f3d_key = NULL;
+  f3d_options_t *options = NULL;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
+  g_return_val_if_fail (priv->engine != NULL, NULL);
+
+  options = f3d_engine_get_options (priv->engine);
+
+  if (!(f3d_key = options_map_lookup (option_key)))
+    {
+      g_message ("ExbEngine: Invalid pspec '%s' while getting option", option_key);
+      return NULL;
+    }
+
+  f3d_closest_key = exb_f3d_options_get_closest_option (options, f3d_key, NULL);
+
+  if (!g_str_equal (f3d_key, f3d_closest_key))
+    {
+      g_message ("ExbEngine: Invalid f3d key '%s' while getting option, closest is '%s'", f3d_key, f3d_closest_key);
+      return NULL;
+    }
+
+  if (!f3d_options_has_value (options, f3d_key))
+  {
+    g_message ("ExbEngine: Key '%s' has no value, default value is returned", option_key);
+    return NULL;
+  }
+
+  return exb_f3d_options_get_as_string (options, f3d_key);
+}
+
+static bool
+exb_engine_set_f3d_enum_option (ExbEngine  *self,
+                                const char *option_key,
+                                const char *value)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autofree const char *f3d_key = NULL;
+  g_autofree const char *f3d_closest_key = NULL;
+  f3d_options_t *options = NULL;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  g_return_val_if_fail (priv->engine != NULL, FALSE);
+
+  options = f3d_engine_get_options (priv->engine);
+
+  if (!(f3d_key = options_map_lookup (option_key)))
+    {
+      g_message ("ExbEngine: Invalid pspec '%s' while setting option", option_key);
+      return FALSE;
+    }
+
+  f3d_closest_key = exb_f3d_options_get_closest_option (options, f3d_key, NULL);
+
+  if (!g_str_equal (f3d_key, f3d_closest_key))
+    {
+      g_message ("ExbEngine: Invalid f3d key '%s' while getting option, closest is '%s'", f3d_key, f3d_closest_key);
+      return FALSE;
+    }
+
+  f3d_options_set_as_string_representation (options, f3d_key, value);
+
+  return TRUE;
+}
+
 static void
 exb_engine_get_property (GObject    *object,
                          guint       prop_id,
@@ -504,11 +574,35 @@ exb_engine_get_property (GObject    *object,
       g_value_set_object (value, exb_engine_get_file (self));
       break;
     case PROP_SPRITES_TYPE:
-      break;
+      {
+        ExbSpriteType enum_value;
+        g_autofree const char *option_value = NULL;
+
+        option_value = exb_engine_get_f3d_enum_option (self, pspec->name);
+        if (option_value && exb_sprite_type_from_string (option_value, &enum_value))
+          g_value_set_enum (value, enum_value);
+        break;
+      }
     case PROP_ANTI_ALIASING_MODE:
-      break;
+      {
+        ExbAntiAliasingMode enum_value;
+        g_autofree const char *option_value = NULL;
+
+        option_value = exb_engine_get_f3d_enum_option (self, pspec->name);
+        if (option_value && exb_anti_aliasing_mode_from_string (option_value, &enum_value))
+          g_value_set_enum (value, enum_value);
+        break;
+      }
     case PROP_BLENDING_MODE:
-      break;
+      {
+        ExbBlendingMode enum_value;
+        g_autofree const char *option_value = NULL;
+
+        option_value = exb_engine_get_f3d_enum_option (self, pspec->name);
+        if (option_value && exb_blending_mode_from_string (option_value, &enum_value))
+          g_value_set_enum (value, enum_value);
+        break;
+      }
     case PROP_UP:
       break;
     default:
@@ -534,10 +628,19 @@ exb_engine_set_property (GObject      *object,
       exb_engine_set_file (self, g_value_get_object (value));
       break;
     case PROP_SPRITES_TYPE:
+      exb_engine_set_f3d_enum_option (self,
+                                      pspec->name,
+                                      exb_sprite_type_to_string (g_value_get_enum (value)));
       break;
     case PROP_ANTI_ALIASING_MODE:
+      exb_engine_set_f3d_enum_option (self,
+                                      pspec->name,
+                                      exb_anti_aliasing_mode_to_string (g_value_get_enum (value)));
       break;
     case PROP_BLENDING_MODE:
+      exb_engine_set_f3d_enum_option (self,
+                                      pspec->name,
+                                      exb_blending_mode_to_string (g_value_get_enum (value)));
       break;
     case PROP_UP:
       break;

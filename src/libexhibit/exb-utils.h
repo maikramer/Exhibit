@@ -32,8 +32,6 @@ G_BEGIN_DECLS
 #include <f3d/scene_c_api.h>
 #include <f3d/window_c_api.h>
 
-typedef char f3d_string_t;
-G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_string_t, f3d_options_free_string)
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_engine_t, f3d_engine_delete)
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_context_t, f3d_context_delete)
 G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_image_t, f3d_image_delete)
@@ -44,6 +42,36 @@ G_DEFINE_AUTOPTR_CLEANUP_FUNC (f3d_reader_info_t, f3d_engine_free_readers_info)
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (f3d_color_t, (void (*) (f3d_color_t *)) NULL)
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (f3d_light_state_t, f3d_light_state_free)
 G_DEFINE_AUTO_CLEANUP_CLEAR_FUNC (f3d_colormap_t, f3d_colormap_free)
+
+typedef enum
+{
+  EXB_DIRECTION_POSITIVE_X,
+  EXB_DIRECTION_NEGATIVE_X,
+  EXB_DIRECTION_POSITIVE_Y,
+  EXB_DIRECTION_NEGATIVE_Y,
+  EXB_DIRECTION_POSITIVE_Z,
+  EXB_DIRECTION_NEGATIVE_Z,
+} ExbDirection;
+
+typedef enum
+{
+  EXB_SPRITE_TYPE_SPHERE,
+  EXB_SPRITE_TYPE_GAUSSIAN,
+} ExbSpriteType;
+
+typedef enum
+{
+  EXB_BLENDING_MODE_DDP,
+  EXB_BLENDING_MODE_SORT,
+  EXB_BLENDING_MODE_STOCHASTIC,
+} ExbBlendingMode;
+
+typedef enum
+{
+  EXB_ANTI_ALIASING_MODE_FXAA,
+  EXB_ANTI_ALIASING_MODE_SSAA,
+  EXB_ANTI_ALIASING_MODE_TAA,
+} ExbAntiAliasingMode;
 
 char **exb_get_allowed_extensions (void);
 
