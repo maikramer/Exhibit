@@ -35,33 +35,31 @@ struct _ExbEngineClass
   GObjectClass parent_class;
 };
 
-void        exb_engine_set_file(ExbEngine *self,
-                                GFile     *file);
-GFile      *exb_engine_get_file(ExbEngine *self);
+ExbEngine * exb_engine_new               (void);
 
-GdkTexture *exb_engine_render_texture (ExbEngine *self);
+void        exb_engine_set_file          (ExbEngine *self,
+                                          GFile     *file);
+GFile *     exb_engine_get_file          (ExbEngine *self);
 
-char      **exb_engine_get_allowed_extensions(void);
+GdkTexture *exb_engine_render_texture    (ExbEngine *self);
 
-gboolean    exb_engine_render (ExbEngine *self);
+gboolean    exb_engine_render            (ExbEngine *self);
 
-void        exb_engine_set_size (ExbEngine *self,
-                                 uint       width,
-                                 uint       height);
+void        exb_engine_set_size          (ExbEngine *self,
+                                          uint       width,
+                                          uint       height);
 
-ExbEngine  *exb_engine_new_standalone (void);
-
-void        exb_engine_zoom (ExbEngine *self,
-                             double     factor);
-void        exb_engine_pan (ExbEngine *self,
-                            double     dx,
-                            double     dy);
-void        exb_engine_rotate (ExbEngine *self,
-                               double     dx,
-                               double     dy);
+void        exb_engine_zoom              (ExbEngine *self,
+                                          double     factor);
+void        exb_engine_pan               (ExbEngine *self,
+                                          double     dx,
+                                          double     dy);
+void        exb_engine_rotate            (ExbEngine *self,
+                                          double     dx,
+                                          double     dy);
 void        exb_engine_rotate_with_limit (ExbEngine *self,
                                           double     dx,
                                           double     dy);
-void        exb_engine_reset_camera (ExbEngine *self);
+void        exb_engine_reset_camera      (ExbEngine *self);
 
 G_END_DECLS

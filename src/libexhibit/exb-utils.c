@@ -21,6 +21,7 @@
 
 #include "exb-enums.h"
 #include "exb-utils.h"
+#include "graphene.h"
 
 #include <f3d/engine_c_api.h>
 #include <f3d/options_c_api.h>
@@ -121,6 +122,48 @@ exb_direction_from_string (const char *str,
     }
 
   return FALSE;
+}
+
+graphene_vec3_t
+exb_direction_to_graphene_vec3 (ExbDirection direction)
+{
+  switch (direction)
+    {
+    case EXB_DIRECTION_POSITIVE_X:
+      {
+        return *graphene_vec3_x_axis ();
+      }
+    case EXB_DIRECTION_NEGATIVE_X:
+      {
+        graphene_vec3_t v;
+        graphene_vec3_init (&v, -1, 0, 0);
+        return v;
+      }
+    case EXB_DIRECTION_POSITIVE_Y:
+      {
+        return *graphene_vec3_y_axis ();
+      }
+    case EXB_DIRECTION_NEGATIVE_Y:
+      {
+        graphene_vec3_t v;
+        graphene_vec3_init (&v, 0, -1, 0);
+        return v;
+      }
+    case EXB_DIRECTION_POSITIVE_Z:
+      {
+        return *graphene_vec3_z_axis ();
+      }
+    case EXB_DIRECTION_NEGATIVE_Z:
+      {
+        graphene_vec3_t v;
+        graphene_vec3_init (&v, 0, 0, -1);
+        return v;
+      }
+    default:
+      {
+        return *graphene_vec3_zero ();
+      }
+    }
 }
 
 const char *
@@ -244,12 +287,12 @@ exb_anti_aliasing_mode_from_string (const char *str,
   return FALSE;
 }
 
-char *
+const char *
 exb_f3d_options_get_as_string (f3d_options_t *options,
-                               const char    *name)
+                               const char *name)
 {
   const char *f3d_str = NULL;
-  char *result = NULL;
+  const char *result = NULL;
 
   g_message ("get as string: %s", name);
 
@@ -264,13 +307,13 @@ exb_f3d_options_get_as_string (f3d_options_t *options,
   return result;
 }
 
-char *
+const char *
 exb_f3d_options_get_closest_option (f3d_options_t *options,
-                                    const char    *f3d_key,
-                                    unsigned int  *distance)
+                                    const char *f3d_key,
+                                    unsigned int *distance)
 {
   char *f3d_closest_key = NULL;
-  char *result = NULL;
+  const char *result = NULL;
   unsigned int local_distance = 0;
 
   g_message ("get closest option");
@@ -288,3 +331,4 @@ exb_f3d_options_get_closest_option (f3d_options_t *options,
 
   return result;
 }
+

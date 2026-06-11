@@ -64,10 +64,33 @@ static GParamSpec *properties[N_PROPS];
  * Returns: (transfer none): The #ExbEngine
  */
 ExbEngine *
-exb_view_get_engine(ExbView *self)
+exb_view_get_engine (ExbView *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
   return priv->engine;
+}
+
+/**
+ * exb_view_set_engine:
+ * @self: a #ExbView
+ * @engine: a #ExbEngine
+ *
+ */
+void
+exb_view_set_engine (ExbView   *self,
+                     ExbEngine *engine)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  g_return_if_fail (EXB_IS_VIEW (self));
+  g_return_if_fail (EXB_IS_ENGINE (engine));
+
+  g_set_object (&priv->engine, engine);
+
+  g_signal_connect_object (priv->engine, "changed",
+                           G_CALLBACK (gtk_gl_area_queue_render),
+                           GTK_GL_AREA (self),
+                           G_CONNECT_SWAPPED);
 }
 
 static void
@@ -116,6 +139,9 @@ exb_view_set_property (GObject      *object,
     case PROP_INTERACTIVE:
       priv->interactive = g_value_get_boolean (value);
       break;
+    case PROP_ENGINE:
+      exb_view_set_engine (self, g_value_get_object (value));
+      break;
     default:
       break;
     }
@@ -151,10 +177,7 @@ exb_view_unrealize (GtkWidget *widget)
   ExbView *self = EXB_VIEW (widget);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
-  gtk_gl_area_make_current (GTK_GL_AREA (self));
-
-  g_clear_object (&priv->engine);
-  priv->engine = g_object_new (EXB_TYPE_ENGINE, NULL);
+  _exb_engine_finalize (priv->engine);
 
   g_signal_connect_object (priv->engine, "changed",
                            G_CALLBACK (gtk_gl_area_queue_render), GTK_GL_AREA (self), G_CONNECT_SWAPPED);
@@ -231,7 +254,7 @@ on_zoom_changed (ExbView *self,
 }
 
 static void
-on_drag_begin (ExbView        *self)
+on_drag_begin (ExbView *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
@@ -275,11 +298,6 @@ on_drag_update (ExbView        *self,
       exb_engine_pan (priv->engine, dx, dy);
     }
 
-  if (priv->always_point_up)
-    {
-      // TODO point up
-    }
-
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
 
   priv->drag_prev_x = offset_x;
@@ -294,17 +312,12 @@ exb_view_init (ExbView *self)
   g_message ("ExbView: Initializing instance");
   g_return_if_fail (EXB_IS_VIEW (self));
 
-  priv->engine = g_object_new (EXB_TYPE_ENGINE, NULL);
   priv->always_point_up = TRUE;
   priv->interactive = TRUE;
 
   gtk_gl_area_set_allowed_apis (GTK_GL_AREA (self), GDK_GL_API_GL);
   gtk_gl_area_set_has_depth_buffer (GTK_GL_AREA (self), TRUE);
   gtk_gl_area_set_auto_render (GTK_GL_AREA (self), TRUE);
-
-
-  g_signal_connect_object (priv->engine, "changed",
-                           G_CALLBACK (gtk_gl_area_queue_render), GTK_GL_AREA (self), G_CONNECT_SWAPPED);
 
   g_signal_connect_object (self, "realize",
                            G_CALLBACK (exb_view_realize), NULL, G_CONNECT_AFTER);
@@ -352,7 +365,7 @@ exb_view_class_init (ExbViewClass *klass)
       g_param_spec_object ("engine",
                            NULL, NULL,
                            EXB_TYPE_ENGINE,
-                           G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_ALWAYS_POINT_UP] =
       g_param_spec_boolean ("always-point-up",
@@ -367,4 +380,15 @@ exb_view_class_init (ExbViewClass *klass)
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, N_PROPS, properties);
+}
+
+/**
+ * exb_view_new:
+ *
+ * Returns: (transfer full): A new #ExbView
+ */
+ExbView *
+exb_view_new (void)
+{
+  return g_object_new (EXB_TYPE_VIEW, NULL);
 }

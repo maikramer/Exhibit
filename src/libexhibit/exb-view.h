@@ -31,6 +31,6 @@ G_BEGIN_DECLS
 
 G_DECLARE_FINAL_TYPE (ExbView, exb_view, EXB, VIEW, GtkGLArea)
 
-ExbEngine *exb_view_get_engine(ExbView *self);
+ExbEngine * exb_view_get_engine (ExbView *self);
 
 G_END_DECLS

@@ -44,6 +44,8 @@ typedef struct
   int height;
   double distance;
 
+  GHashTable *pending_options;
+
   GFile *file;
 } ExbEnginePrivate;
 
@@ -288,7 +290,6 @@ exb_engine_render (ExbEngine *self)
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-
   g_return_val_if_fail (priv->window != NULL, false);
 
   f3d_window_render (priv->window);
@@ -304,18 +305,63 @@ exb_engine_set_size (ExbEngine *self,
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   g_return_if_fail (EXB_IS_ENGINE (self));
-  g_return_if_fail (priv->window != NULL);
 
-  f3d_window_set_size (priv->window, width, height);
+  if (priv->window)
+    f3d_window_set_size (priv->window, width, height);
 
   priv->width = width;
   priv->height = height;
 }
 
+static void
+add_pending_option (ExbEngine    *self,
+                    const char   *key,
+                    const GValue *value)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  GValue *new_value = g_new0 (GValue, 1);
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (G_IS_VALUE (value));
+
+  g_value_init (new_value, G_VALUE_TYPE (value));
+  g_value_copy (value, new_value);
+  g_hash_table_insert (priv->pending_options,
+                       (gpointer) key,
+                       new_value);
+}
+
+static void
+pending_value_destroy (gpointer data)
+{
+  GValue *value = data;
+  g_value_unset (value);
+  g_free (value);
+}
+
+static gboolean
+flush_pending_option (gpointer key,
+                      gpointer value,
+                      gpointer user_data)
+{
+  ExbEngine *self = EXB_ENGINE (user_data);
+  const gchar *prop_name = key;
+  GValue *prop_value = value;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  g_return_val_if_fail (G_IS_VALUE (prop_value), FALSE);
+
+  g_message ("Flushing %s type: %s", prop_name, g_type_name (G_VALUE_TYPE (prop_value)));
+
+  g_object_set_property (G_OBJECT (self), prop_name, prop_value);
+
+  return TRUE;
+}
+
 static bool
-exb_engine_get_f3d_option (ExbEngine    *self,
-                           GValue       *value,
-                           GParamSpec   *pspec)
+exb_engine_get_f3d_option (ExbEngine  *self,
+                           GValue     *value,
+                           GParamSpec *pspec)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
@@ -324,7 +370,27 @@ exb_engine_get_f3d_option (ExbEngine    *self,
   GType type;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-  g_return_val_if_fail (priv->engine != NULL, FALSE);
+  g_return_val_if_fail (G_IS_VALUE (value), FALSE);
+
+  type = G_PARAM_SPEC_VALUE_TYPE (pspec);
+
+  if (!priv->engine)
+    {
+      GValue *pending_value = NULL;
+      const char *key = NULL;
+      bool has_option;
+
+      has_option = g_hash_table_lookup_extended (priv->pending_options,
+                                                 pspec->name,
+                                                 (gpointer *)key,
+                                                 (gpointer *)pending_value);
+
+      if (has_option && (type == G_VALUE_TYPE (pending_value)))
+        {
+          g_value_copy (pending_value, value);
+        }
+      return TRUE;
+    }
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -348,8 +414,6 @@ exb_engine_get_f3d_option (ExbEngine    *self,
     return TRUE;
   }
 
-  type = G_PARAM_SPEC_VALUE_TYPE (pspec);
-
   if (type == G_TYPE_BOOLEAN)
     {
       g_value_set_boolean (value, f3d_options_get_as_bool (options, f3d_key));
@@ -364,7 +428,7 @@ exb_engine_get_f3d_option (ExbEngine    *self,
     }
   else if (type == GDK_TYPE_RGBA)
     {
-      g_autofree char *rgba_string = NULL;
+      g_autofree const char *rgba_string = NULL;
       GdkRGBA rgba;
 
       rgba_string = exb_f3d_options_get_as_string (options, f3d_key);
@@ -425,7 +489,13 @@ exb_engine_set_f3d_option (ExbEngine    *self,
   GType type;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-  g_return_val_if_fail (priv->engine != NULL, FALSE);
+
+  if (!priv->engine)
+    {
+      /* g_message ("ExbEngine: No f3d engine"); */
+      add_pending_option (self, pspec->name, value);
+      return TRUE;
+    }
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -497,7 +567,13 @@ exb_engine_get_f3d_enum_option (ExbEngine  *self,
   f3d_options_t *options = NULL;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
-  g_return_val_if_fail (priv->engine != NULL, NULL);
+
+  if (!priv->engine)
+    {
+      /* g_message ("ExbEngine: No f3d engine"); */
+      /* add_pending_option (self, pspec->name, value); */
+      return NULL;
+    }
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -535,7 +611,13 @@ exb_engine_set_f3d_enum_option (ExbEngine  *self,
   f3d_options_t *options = NULL;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-  g_return_val_if_fail (priv->engine != NULL, FALSE);
+
+  if (!priv->engine)
+    {
+      /* g_message ("ExbEngine: No f3d engine"); */
+      /* add_pending_option (self, pspec->name, value); */
+      return TRUE;
+    }
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -567,6 +649,8 @@ exb_engine_get_property (GObject    *object,
   ExbEngine *self = EXB_ENGINE (object);
 
   g_return_if_fail (EXB_IS_ENGINE (self));
+
+  g_message ("Getting `%s`", pspec->name);
 
   switch (prop_id)
     {
@@ -604,6 +688,15 @@ exb_engine_get_property (GObject    *object,
         break;
       }
     case PROP_UP:
+      {
+        ExbDirection enum_value;
+        g_autofree const char *option_value = NULL;
+
+        option_value = exb_engine_get_f3d_enum_option (self, pspec->name);
+        if (option_value && exb_direction_from_string (option_value, &enum_value))
+          g_value_set_enum (value, enum_value);
+        break;
+      }
       break;
     default:
       if (!exb_engine_get_f3d_option (self, value, pspec))
@@ -621,6 +714,8 @@ exb_engine_set_property (GObject      *object,
   ExbEngine *self = EXB_ENGINE (object);
 
   g_return_if_fail (EXB_IS_ENGINE (self));
+
+  g_message ("Setting `%s`", pspec->name);
 
   switch (prop_id)
     {
@@ -643,6 +738,9 @@ exb_engine_set_property (GObject      *object,
                                       exb_blending_mode_to_string (g_value_get_enum (value)));
       break;
     case PROP_UP:
+      exb_engine_set_f3d_enum_option (self,
+                                      pspec->name,
+                                      exb_direction_to_string (g_value_get_enum (value)));
       break;
     default:
       if (!exb_engine_set_f3d_option (self, value, pspec))
@@ -663,6 +761,7 @@ exb_engine_finalize (GObject *object)
 
   g_clear_object (&priv->file);
   g_clear_pointer (&priv->engine, f3d_engine_delete);
+  g_clear_pointer (&priv->pending_options, g_hash_table_unref);
 
   G_OBJECT_CLASS (exb_engine_parent_class)->finalize (object);
 }
@@ -701,21 +800,52 @@ _exb_engine_initialize (ExbEngine *self,
   priv->scene = f3d_engine_get_scene (priv->engine);
   priv->camera = f3d_window_get_camera (priv->window);
 
-  g_message ("ExbViewer: Window=%p, Scene=%p", priv->window, priv->scene);
+  f3d_window_set_size (priv->window, priv->width, priv->height);
 
   priv->orthographic = FALSE;
   priv->distance = 1;
 
   f3d_engine_autoload_plugins ();
 
+  if (g_hash_table_size (priv->pending_options) != 0)
+    {
+      g_hash_table_foreach_remove (priv->pending_options,
+                                   flush_pending_option,
+                                   self);
+    }
+
   if (priv->file)
     _exb_engine_load_file (self, priv->file);
 }
 
-static void
-exb_engine_init (ExbEngine *self G_GNUC_UNUSED)
+void
+_exb_engine_finalize (ExbEngine *self)
 {
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  priv->window = NULL;
+  priv->scene = NULL;
+  priv->camera = NULL;
+
+  priv->orthographic = FALSE;
+  priv->distance = 1;
+
+  g_clear_pointer (&priv->engine, f3d_engine_delete);
+}
+
+static void
+exb_engine_init (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
   g_message ("ExbEngine: Initializing instance");
+
+  priv->pending_options = g_hash_table_new_full (g_str_hash,
+                                                 g_str_equal,
+                                                 NULL,
+                                                 pending_value_destroy);
 }
 
 static void
@@ -981,25 +1111,15 @@ update_distance (ExbEngine *self)
   priv->distance = graphene_vec3_length (&camera_position);
 }
 
-static double
-get_gimble_limit (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  return priv->distance / 10.0;
-}
-
 /**
- * exb_engine_new_standalone:
+ * exb_engine_new:
  *
- * Returns: (transfer full): A new #ExbEngine to be used alone without a #ExbView
+ * Returns: (transfer full): A new #ExbEngine
  */
 ExbEngine *
-exb_engine_new_standalone (void)
+exb_engine_new (void)
 {
   ExbEngine *engine = g_object_new (EXB_TYPE_ENGINE, NULL);
-
-  _exb_engine_initialize (engine, true);
 
   return engine;
 }
@@ -1122,24 +1242,54 @@ exb_engine_rotate_with_limit (ExbEngine *self,
                               double     dy)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  ExbDirection up_direction;
+  graphene_vec3_t camera_position;
+  graphene_vec3_t focal_point;
+  graphene_vec3_t difference;
+  graphene_vec3_t diff_normalized;
+  graphene_vec3_t world_up;
+  double f3d_camera_position[3];
+  double f3d_focal_point[3];
+  double f3d_up_dir[3];
   double elevation;
   double azimuth;
+  double dot;
+  double angle;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (priv->camera);
 
-  if (!priv->camera)
-    return;
+  f3d_camera_get_position (priv->camera, f3d_camera_position);
+  f3d_camera_get_focal_point (priv->camera, f3d_focal_point);
+
+  graphene_vec3_init_from_float (&camera_position, (float *)f3d_camera_position);
+  graphene_vec3_init_from_float (&focal_point, (float *)f3d_focal_point);
+
+  g_object_get (self, "up", &up_direction, NULL);
+  world_up = exb_direction_to_graphene_vec3 (up_direction);
+
+  graphene_vec3_subtract (&camera_position, &focal_point, &difference);
+  graphene_vec3_normalize (&difference, &diff_normalized);
+
+  dot = CLAMP (graphene_vec3_dot (&diff_normalized, &world_up), -1.0, 1.0);
+  angle = acos (dot) * (180.0 / M_PI);
 
   elevation = dy * 0.5;
   azimuth = -dx * 0.5;
 
-  if (priv->distance > get_gimble_limit (self) ||
-     (priv->distance < get_gimble_limit (self)))
-  {
-    f3d_camera_elevation (priv->camera, elevation);
-  }
+  if (!(angle < 10.0  && elevation > 0) &&
+      !(angle > 170.0 && elevation < 0))
+    {
+      f3d_camera_elevation (priv->camera, elevation);
+    }
 
   f3d_camera_azimuth (priv->camera, azimuth);
+
+  graphene_vec3_to_float (&world_up, (float[3]){});
+  f3d_up_dir[0] = graphene_vec3_get_x (&world_up);
+  f3d_up_dir[1] = graphene_vec3_get_y (&world_up);
+  f3d_up_dir[2] = graphene_vec3_get_z (&world_up);
+  f3d_camera_set_view_up (priv->camera, f3d_up_dir);
 
   update_distance (self);
 }
