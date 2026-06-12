@@ -73,6 +73,4 @@ typedef enum
   EXB_ANTI_ALIASING_MODE_TAA,
 } ExbAntiAliasingMode;
 
-char ** exb_get_allowed_extensions (void);
-
 G_END_DECLS

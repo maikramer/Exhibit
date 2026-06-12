@@ -23,6 +23,7 @@
 #include "exb-utils.h"
 #include "exb-utils-private.h"
 #include "exb-enums.h"
+#include "exb-debug.h"
 
 #include <f3d/camera_c_api.h>
 #include <f3d/engine_c_api.h>
@@ -30,12 +31,6 @@
 #include <f3d/options_c_api.h>
 #include <f3d/scene_c_api.h>
 #include <f3d/window_c_api.h>
-
-typedef struct
-{
-  GValue value;
-  bool overridden;
-} ExbOverridableOption;
 
 typedef struct
 {
@@ -48,12 +43,11 @@ typedef struct
 
   int width;
   int height;
-  double distance;
 
   GHashTable *pending_options;
-  GHashTable *unoveridden_options;
 
-  bool override_model_color;
+  /* Table of overridable options: prop_name (char*) → ExbOverridableOption* */
+  GHashTable *overridable_options;
 
   GFile *file;
 } ExbEnginePrivate;
@@ -198,6 +192,8 @@ exb_engine_render_texture (ExbEngine *self)
   unsigned int width, height, channels;
   void *data = NULL;
 
+  EXB_ENTRY;
+
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (priv->window != NULL, NULL);
 
@@ -215,7 +211,7 @@ exb_engine_render_texture (ExbEngine *self)
   texture = gdk_memory_texture_new (
       (int) width, (int) height, channels == 4 ? GDK_MEMORY_R8G8B8A8 : GDK_MEMORY_R8G8B8, bytes,
       (size_t) width * channels);
-  return g_steal_pointer(&texture);
+  EXB_RETURN (g_steal_pointer(&texture));
 }
 
 gboolean
@@ -224,6 +220,8 @@ _exb_engine_load_file (gpointer self)
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *file_path = NULL;
 
+  EXB_ENTRY;
+
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
 
   file_path = g_file_get_path (priv->file);
@@ -231,13 +229,13 @@ _exb_engine_load_file (gpointer self)
   if (!file_path)
     {
       g_message ("ExbEngine: No file path");
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
   if (!priv->scene)
     {
       g_message ("ExbEngine: No scene");
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
   g_message ("ExbEngine: Loading file: %s", file_path);
@@ -245,7 +243,7 @@ _exb_engine_load_file (gpointer self)
   if (!f3d_scene_supports (priv->scene, file_path))
     {
       g_message ("ExbEngine: File not supported");
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
   f3d_scene_clear (priv->scene);
@@ -255,7 +253,7 @@ _exb_engine_load_file (gpointer self)
 
   g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 
-  return FALSE;
+  EXB_RETURN (FALSE);
 }
 
 /**
@@ -269,13 +267,16 @@ exb_engine_set_file(ExbEngine *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  EXB_ENTRY;
+
   g_return_if_fail (EXB_IS_ENGINE (self));
   g_return_if_fail (G_IS_FILE (file));
 
   g_set_object (&priv->file, file);
-  /* _exb_engine_load_file(self); */
-  g_timeout_add (1500, _exb_engine_load_file, self);
+  g_timeout_add (10, _exb_engine_load_file, self);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
+
+  EXB_EXIT;
 }
 
 /**
@@ -289,9 +290,11 @@ exb_engine_get_file(ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  EXB_ENTRY;
+
   g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
 
-  return priv->file;
+  EXB_RETURN (priv->file);
 }
 
 gboolean
@@ -299,12 +302,14 @@ exb_engine_render (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  EXB_ENTRY;
+
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (priv->window != NULL, false);
 
   f3d_window_render (priv->window);
 
-  return true;
+  EXB_RETURN (TRUE);
 }
 
 void
@@ -314,6 +319,8 @@ exb_engine_set_size (ExbEngine *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  EXB_ENTRY;
+
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   if (priv->window)
@@ -321,14 +328,18 @@ exb_engine_set_size (ExbEngine *self,
 
   priv->width = width;
   priv->height = height;
+
+  EXB_EXIT;
 }
 
 static void
-exb_add_value_to_hash_table (GHashTable   *hash_table,
-                            const char   *key,
-                            const GValue *value)
+add_value_to_hash_table (GHashTable   *hash_table,
+                         const char   *key,
+                         const GValue *value)
 {
   GValue *new_value = g_new0 (GValue, 1);
+
+  EXB_ENTRY;
 
   g_return_if_fail (hash_table != NULL);
   g_return_if_fail (key != NULL);
@@ -339,6 +350,8 @@ exb_add_value_to_hash_table (GHashTable   *hash_table,
   g_hash_table_insert (hash_table,
                        (gpointer) key,
                        new_value);
+
+  EXB_EXIT;
 }
 
 static void
@@ -361,6 +374,8 @@ flush_pending_option (gpointer key,
   const gchar *prop_name = key;
   GValue *prop_value = value;
 
+  EXB_ENTRY;
+
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (prop_value), FALSE);
 
@@ -368,16 +383,18 @@ flush_pending_option (gpointer key,
 
   g_object_set_property (G_OBJECT (self), prop_name, prop_value);
 
-  return TRUE;
+  EXB_RETURN (TRUE);
 }
 
 static bool
-exb_engine_f3d_has_option (ExbEngine  *self,
+f3d_has_option (ExbEngine  *self,
                            const char *f3d_key)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
+
+  EXB_ENTRY;
 
   g_return_val_if_fail (f3d_key != NULL, FALSE);
 
@@ -387,21 +404,23 @@ exb_engine_f3d_has_option (ExbEngine  *self,
   if (!g_str_equal (f3d_key, f3d_closest_key))
     {
       g_message ("ExbEngine: Invalid f3d key '%s' while getting option, closest is '%s'", f3d_key, f3d_closest_key);
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
-  return TRUE;
+  EXB_RETURN (TRUE);
 }
 
 static bool
-exb_engine_get_f3d_rgb_option (ExbEngine  *self,
-                               const char *f3d_key,
-                               GdkRGBA    *rgba_out)
+f3d_get_rgb_option (ExbEngine  *self,
+                    const char *f3d_key,
+                    GdkRGBA    *rgba_out)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *rgba_string = NULL;
   f3d_options_t *options = NULL;
   g_auto(GStrv) parts = NULL;
+
+  EXB_ENTRY;
 
   g_return_val_if_fail (rgba_out != NULL, FALSE);
   g_return_val_if_fail (f3d_key != NULL, FALSE);
@@ -412,32 +431,34 @@ exb_engine_get_f3d_rgb_option (ExbEngine  *self,
   g_message ("ExbEngine: RGBA string is '%s'", rgba_string);
 
   if (!rgba_string)
-    return FALSE;
+    EXB_RETURN (FALSE);
 
   if (gdk_rgba_parse (rgba_out, rgba_string))
-    return TRUE;
+    EXB_RETURN (TRUE);
 
   parts = g_strsplit (rgba_string, ",", -1);
 
   if (g_strv_length (parts) != 3)
-    return FALSE;
+    EXB_RETURN (FALSE);
 
   rgba_out->red   = g_ascii_strtod (parts[0], NULL);
   rgba_out->green = g_ascii_strtod (parts[1], NULL);
   rgba_out->blue  = g_ascii_strtod (parts[2], NULL);
   rgba_out->alpha = 1.0;
 
-  return TRUE;
+  EXB_RETURN (TRUE);
 }
 
 static bool
-exb_engine_set_f3d_rgb_option (ExbEngine  *self,
-                               const char *f3d_key,
-                               GdkRGBA    *rgba)
+f3d_set_rgb_option (ExbEngine  *self,
+                    const char *f3d_key,
+                    GdkRGBA    *rgba)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *rgba_string = NULL;
   f3d_options_t *options = NULL;
+
+  EXB_ENTRY;
 
   g_return_val_if_fail (rgba != NULL, FALSE);
   g_return_val_if_fail (f3d_key != NULL, FALSE);
@@ -447,40 +468,42 @@ exb_engine_set_f3d_rgb_option (ExbEngine  *self,
   rgba_string = g_strdup_printf ("%lf,%lf,%lf", rgba->red, rgba->green, rgba->blue);
   f3d_options_set_as_string_representation (options, f3d_key, rgba_string);
 
-  return TRUE;
+  EXB_RETURN (TRUE);
 }
 
 static bool
-exb_copy_value_from_has_table (GHashTable *hash_table,
-                               const char *key,
-                               GValue     *dest_value)
+exb_engine_copy_from_hash_table (GHashTable *hash_table,
+                                 const char *prop_name,
+                                 GValue     *value)
 {
-  GValue *hash_value = NULL;
-  bool has_option;
+  GValue *stored_value;
 
-  has_option = g_hash_table_lookup_extended (hash_table,
-                                             key,
-                                             NULL,
-                                             (gpointer *)hash_value);
+  EXB_ENTRY;
 
-  if (!has_option || !(G_VALUE_TYPE (dest_value) == G_VALUE_TYPE (hash_value)))
-    return FALSE;
+  stored_value = g_hash_table_lookup (hash_table, prop_name);
 
-  g_value_copy (hash_value, dest_value);
+  if (!stored_value || !G_IS_VALUE (&stored_value))
+    EXB_RETURN (FALSE);
 
-  return TRUE;
+  if (G_VALUE_TYPE (value) != G_VALUE_TYPE (&stored_value))
+    EXB_RETURN (FALSE);
+
+  g_value_copy (stored_value, value);
+  EXB_RETURN (TRUE);
 }
 
 static bool
-exb_engine_get_f3d_option (ExbEngine  *self,
-                           GValue     *value,
-                           GParamSpec *pspec)
+f3d_get_option (ExbEngine  *self,
+                GValue     *value,
+                GParamSpec *pspec)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
   g_autofree const char *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
   GType type;
+
+  EXB_ENTRY;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (value), FALSE);
@@ -489,11 +512,19 @@ exb_engine_get_f3d_option (ExbEngine  *self,
 
   g_message ("Getting `%s`, type: %s", pspec->name, g_type_name (type));
 
+  /* if (exb_engine_get_override_value (priv->pending_options, pspec->name, value)) */
+  /*   { */
+  /*     g_message ("Value %s has been overridden", pspec->name); */
+  /*     EXB_RETURN (TRUE); */
+  /*   } */
+
   if (!priv->engine)
     {
-      return exb_copy_value_from_has_table (priv->pending_options,
-                                            pspec->name,
-                                            value);
+      if (exb_engine_copy_from_hash_table (priv->pending_options, pspec->name, value))
+        EXB_RETURN (TRUE);
+      else
+        EXB_RETURN (FALSE);
+
     }
 
   options = f3d_engine_get_options (priv->engine);
@@ -501,19 +532,19 @@ exb_engine_get_f3d_option (ExbEngine  *self,
   if (!(f3d_key = options_map_lookup (pspec->name)))
     {
       g_message ("ExbEngine: Invalid pspec '%s' while setting option", pspec->name);
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
-  if (!exb_engine_f3d_has_option (self, f3d_key))
+  if (!f3d_has_option (self, f3d_key))
     {
       g_message ("ExbEngine: Invalid pspec '%s' while getting option", pspec->name);
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
   if (!f3d_options_has_value (options, f3d_key))
   {
     g_message ("ExbEngine: Key '%s' has no value, default value is returned", pspec->name);
-    return TRUE;
+    EXB_RETURN (TRUE);
   }
 
   if (type == G_TYPE_BOOLEAN)
@@ -533,8 +564,8 @@ exb_engine_get_f3d_option (ExbEngine  *self,
       g_autofree const char *rgba_string = NULL;
       GdkRGBA rgba;
 
-      if (!exb_engine_get_f3d_rgb_option (self, f3d_key, &rgba))
-        return FALSE;
+      if (!f3d_get_rgb_option (self, f3d_key, &rgba))
+        EXB_RETURN (FALSE);
 
       g_value_set_boxed (value, &rgba);
     }
@@ -595,7 +626,7 @@ exb_engine_get_f3d_option (ExbEngine  *self,
       if (!enum_value)
         {
           g_message ("ExbEngine: Unknown string '%s' for enum '%s'", option_value, pspec->name);
-          return FALSE;
+          EXB_RETURN (FALSE);
         }
 
       g_value_set_enum (value, enum_value->value);
@@ -605,19 +636,21 @@ exb_engine_get_f3d_option (ExbEngine  *self,
       g_message ("Type not found");
     }
 
-  return TRUE;
+  EXB_RETURN (TRUE);
 }
 
 static bool
-exb_engine_set_f3d_option (ExbEngine    *self,
-                           const GValue *value,
-                           GParamSpec   *pspec)
+f3d_set_option (ExbEngine    *self,
+                const GValue *value,
+                GParamSpec   *pspec)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_closest_key = NULL;
   g_autofree const char *f3d_key = NULL;
   f3d_options_t *options = NULL;
   GType type;
+
+  EXB_ENTRY;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (value), FALSE);
@@ -628,8 +661,8 @@ exb_engine_set_f3d_option (ExbEngine    *self,
 
   if (!priv->engine)
     {
-      exb_add_value_to_hash_table (priv->pending_options, pspec->name, value);
-      return TRUE;
+      add_value_to_hash_table (priv->pending_options, pspec->name, value);
+      EXB_RETURN (TRUE);
     }
 
   options = f3d_engine_get_options (priv->engine);
@@ -637,13 +670,13 @@ exb_engine_set_f3d_option (ExbEngine    *self,
   if (!(f3d_key = options_map_lookup (pspec->name)))
     {
       g_message ("ExbEngine: Invalid pspec '%s' while setting option", pspec->name);
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
-  if (!exb_engine_f3d_has_option (self, f3d_key))
+  if (!f3d_has_option (self, f3d_key))
     {
       g_message ("ExbEngine: Invalid pspec '%s' while getting option", pspec->name);
-      return FALSE;
+      EXB_RETURN (FALSE);
     }
 
   if (type == G_TYPE_BOOLEAN)
@@ -661,7 +694,7 @@ exb_engine_set_f3d_option (ExbEngine    *self,
   else if (type == GDK_TYPE_RGBA)
     {
       GdkRGBA *rgba = g_value_get_boxed (value);
-      exb_engine_set_f3d_rgb_option (self, f3d_key, rgba);
+      f3d_set_rgb_option (self, f3d_key, rgba);
     }
   else if (type == G_TYPE_FILE)
     {
@@ -693,7 +726,7 @@ exb_engine_set_f3d_option (ExbEngine    *self,
       if (!enum_value)
         {
           g_message ("ExbEngine: Unknown enum value %d for '%s'", g_value_get_enum (value), pspec->name);
-          return FALSE;
+          EXB_RETURN (FALSE);
         }
 
       enum_nick = enum_value->value_nick;
@@ -711,7 +744,22 @@ exb_engine_set_f3d_option (ExbEngine    *self,
     }
 
   g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
-  return TRUE;
+  EXB_RETURN (TRUE);
+}
+
+static float
+f3d_get_distance (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  graphene_vec3_t camera_position;
+  double f3d_camera_position[3];
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), 0);
+  g_return_val_if_fail (priv->camera, 0);
+
+  f3d_camera_get_position (priv->camera, f3d_camera_position);
+  graphene_vec3_init_from_float (&camera_position, (float *) f3d_camera_position);
+  return graphene_vec3_length (&camera_position);
 }
 
 static void
@@ -723,6 +771,8 @@ exb_engine_get_property (GObject    *object,
   ExbEngine *self = EXB_ENGINE (object);
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  EXB_ENTRY;
+
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   switch (prop_id)
@@ -731,13 +781,15 @@ exb_engine_get_property (GObject    *object,
       g_value_set_object (value, exb_engine_get_file (self));
       break;
     case PROP_OVERRIDE_MODEL_COLOR:
-      g_value_set_boolean (value, priv->override_model_color);
+      g_value_set_boolean (value, !g_hash_table_contains (priv->overridable_options, "model-color"));
       break;
     default:
-      if (!exb_engine_get_f3d_option (self, value, pspec))
+      if (!f3d_get_option (self, value, pspec))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
     }
+
+  EXB_EXIT;
 }
 
 static void
@@ -747,7 +799,8 @@ exb_engine_set_property (GObject      *object,
                          GParamSpec   *pspec)
 {
   ExbEngine *self = EXB_ENGINE (object);
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
@@ -759,35 +812,14 @@ exb_engine_set_property (GObject      *object,
       exb_engine_set_file (self, g_value_get_object (value));
       break;
     case PROP_OVERRIDE_MODEL_COLOR:
-      {
-        priv->override_model_color = g_value_get_boolean (value);
-        if (priv->override_model_color)
-          {
-            GdkRGBA rgba;
-
-            exb_engine_get_f3d_rgb_option (self, "model.color.rgb", &rgba);
-            exb_add_value_to_hash_table (priv->unoveridden_options,
-                                         "model-color",
-                                         value);
-          }
-        else
-          {
-            GValue new_value;
-            g_value_init (&new_value, G_TYPE_BOXED);
-            exb_copy_value_from_has_table (priv->unoveridden_options,
-                                           "model-color",
-                                           &new_value);
-            exb_engine_set_f3d_rgb_option (self, "model-color",
-                                           g_value_get_boxed (&new_value));
-            g_hash_table_remove (priv->unoveridden_options, "model-color");
-          }
-      }
       break;
     default:
-      if (!exb_engine_set_f3d_option (self, value, pspec))
+      if (!f3d_set_option (self, value, pspec))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
     }
+
+  EXB_EXIT;
 }
 
 static void
@@ -796,6 +828,8 @@ exb_engine_finalize (GObject *object)
   ExbEngine *self = EXB_ENGINE (object);
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
+  EXB_ENTRY;
+
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   g_message ("ExbEngine: Finalizing");
@@ -803,9 +837,11 @@ exb_engine_finalize (GObject *object)
   g_clear_object (&priv->file);
   g_clear_pointer (&priv->engine, f3d_engine_delete);
   g_clear_pointer (&priv->pending_options, g_hash_table_unref);
-  g_clear_pointer (&priv->unoveridden_options, g_hash_table_unref);
+  g_clear_pointer (&priv->overridable_options, g_hash_table_unref);
 
   G_OBJECT_CLASS (exb_engine_parent_class)->finalize (object);
+
+  EXB_EXIT;
 }
 
 void
@@ -813,6 +849,8 @@ _exb_engine_initialize (ExbEngine *self,
                         bool       standalone)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
@@ -835,7 +873,7 @@ _exb_engine_initialize (ExbEngine *self,
   if (!priv->engine)
     {
       g_warning ("ExbViewer: Failed to initialize F3D engine");
-      return;
+      EXB_RETURN ();
     }
 
   priv->window = f3d_engine_get_window (priv->engine);
@@ -845,7 +883,6 @@ _exb_engine_initialize (ExbEngine *self,
   f3d_window_set_size (priv->window, priv->width, priv->height);
 
   priv->orthographic = FALSE;
-  priv->distance = 1;
 
   f3d_engine_autoload_plugins ();
 
@@ -857,13 +894,17 @@ _exb_engine_initialize (ExbEngine *self,
     }
 
   if (priv->file)
-    g_timeout_add (1500, _exb_engine_load_file, self);
+    g_timeout_add (10, _exb_engine_load_file, self);
+
+  EXB_EXIT;
 }
 
 void
 _exb_engine_finalize (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
@@ -872,15 +913,18 @@ _exb_engine_finalize (ExbEngine *self)
   priv->camera = NULL;
 
   priv->orthographic = FALSE;
-  priv->distance = 1;
 
   g_clear_pointer (&priv->engine, f3d_engine_delete);
+
+  EXB_EXIT;
 }
 
 static void
 exb_engine_init (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
 
   g_message ("ExbEngine: Initializing instance");
 
@@ -889,14 +933,12 @@ exb_engine_init (ExbEngine *self)
                                                  NULL,
                                                  exb_g_value_destroy);
 
-  priv->unoveridden_options = g_hash_table_new_full (g_str_hash,
-                                                 g_str_equal,
-                                                 NULL,
-                                                 exb_g_value_destroy);
+  priv->overridable_options = g_hash_table_new_full (g_str_hash,
+                                                     g_str_equal,
+                                                     NULL,
+                                                     exb_g_value_destroy);
 
-  /* exb_add_value_to_hash_table (priv->unoveridden_options, */
-  /*                              "model-color", */
-  /*                              ); */
+  EXB_EXIT;
 }
 
 static void
@@ -1153,21 +1195,6 @@ exb_engine_class_init (ExbEngineClass *klass)
   g_object_class_install_properties (object_class, N_PROPS, properties);
 }
 
-static void
-update_distance (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  graphene_vec3_t camera_position;
-  double f3d_camera_position[3];
-
-  g_return_if_fail (EXB_IS_ENGINE (self));
-  g_return_if_fail (priv->camera);
-
-  f3d_camera_get_position (priv->camera, f3d_camera_position);
-  graphene_vec3_init_from_float (&camera_position, (float *) f3d_camera_position);
-  priv->distance = graphene_vec3_length (&camera_position);
-}
-
 /**
  * exb_engine_new:
  *
@@ -1206,8 +1233,6 @@ exb_engine_zoom (ExbEngine *self,
     {
       f3d_camera_dolly (priv->camera, factor);
     }
-
-  update_distance (self);
 }
 
 /**
@@ -1224,16 +1249,16 @@ exb_engine_pan (ExbEngine *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   double factor;
+  float distance;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   if (!priv->camera)
     return;
 
-  factor = 0.0000001 * priv->width + 0.001 * priv->distance;
+  distance = f3d_get_distance(self);
+  factor = 0.0000001 * priv->width + 0.001 * distance;
   f3d_camera_pan (priv->camera, -dx * factor, dy * factor, 0);
-
-  update_distance (self);
 }
 
 /**
@@ -1262,8 +1287,6 @@ exb_engine_rotate (ExbEngine *self,
 
   f3d_camera_azimuth (priv->camera, azimuth);
   f3d_camera_elevation (priv->camera, elevation);
-
-  update_distance (self);
 }
 
 /**
@@ -1279,7 +1302,6 @@ exb_engine_reset_camera (ExbEngine *self)
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   f3d_camera_reset_to_bounds (priv->camera, 1.0);
-  update_distance (self);
 
   g_signal_emit (self, signals [SIGNAL_CHANGED], 0);
 }
@@ -1347,6 +1369,4 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   f3d_up_dir[1] = graphene_vec3_get_y (&world_up);
   f3d_up_dir[2] = graphene_vec3_get_z (&world_up);
   f3d_camera_set_view_up (priv->camera, f3d_up_dir);
-
-  update_distance (self);
 }

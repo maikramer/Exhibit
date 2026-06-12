@@ -26,41 +26,6 @@
 #include <f3d/engine_c_api.h>
 #include <f3d/options_c_api.h>
 
-/**
- * exb_get_allowed_extensions:
- *
- * Returns: (transfer full): (array zero-terminated=1) (nullable): A list of strings
- */
-char **
-exb_get_allowed_extensions (void)
-{
-  g_autofree f3d_reader_info_t *readers = NULL;
-  GPtrArray *array;
-  int count = 0;
-
-  f3d_engine_autoload_plugins ();
-
-  readers = f3d_engine_get_readers_info (&count);
-  if (!readers)
-    return NULL;
-
-  array = g_ptr_array_new_with_free_func (g_free);
-
-  for (int i = 0; i < count; i++)
-    {
-      if (readers[i].extensions)
-        {
-          for (char **ext = readers[i].extensions; *ext; ext++)
-            {
-              g_ptr_array_add (array, g_strdup (*ext));
-            }
-        }
-    }
-
-  g_ptr_array_add (array, NULL);
-  return (char **) g_ptr_array_free (array, FALSE);
-}
-
 graphene_vec3_t
 exb_direction_to_graphene_vec3 (ExbDirection direction)
 {
