@@ -45,9 +45,8 @@ typedef struct
   int height;
 
   GHashTable *pending_options;
+  GHashTable *original_options;
 
-  /* Table of overridable options: prop_name (char*) → ExbOverridableOption* */
-  GHashTable *overridable_options;
 
   GFile *file;
 } ExbEnginePrivate;
@@ -167,14 +166,9 @@ static const OptionMap option_maps[] = {
 
 static const gsize option_maps_len = G_N_ELEMENTS(option_maps);
 
-static const char *
-options_map_lookup (const char *prop_name)
-{
-  for (gsize i = 0; i < option_maps_len; i++)
-    if (g_str_equal(option_maps[i].prop_name, prop_name))
-      return g_strdup (option_maps[i].f3d_key);
-  return NULL;
-}
+static const char *overridable_options[] = {"model-color"};
+
+static const gsize overridable_options_len = G_N_ELEMENTS(overridable_options);
 
 /**
  * exb_engine_render_texture:
@@ -388,7 +382,7 @@ flush_pending_option (gpointer key,
 
 static bool
 f3d_has_option (ExbEngine  *self,
-                           const char *f3d_key)
+                const char *f3d_key)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_closest_key = NULL;
@@ -408,6 +402,30 @@ f3d_has_option (ExbEngine  *self,
     }
 
   EXB_RETURN (TRUE);
+}
+
+static const char *
+f3d_options_map_lookup (ExbEngine  *self,
+                        const char *option_id)
+{
+  g_autofree const char *f3d_option_id = NULL;
+
+  EXB_ENTRY;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
+  g_return_val_if_fail (option_id != NULL, NULL);
+
+  for (gsize i = 0; i < option_maps_len; i++)
+    if (g_str_equal(option_maps[i].prop_name, option_id))
+      f3d_option_id = g_strdup (option_maps[i].f3d_key);
+
+  if (!f3d_has_option (self, f3d_option_id))
+    {
+      g_message ("ExbEngine: Invalid pspec '%s' while getting option", option_id);
+      EXB_RETURN (NULL);
+    }
+
+  return g_steal_pointer (&f3d_option_id);
 }
 
 static bool
@@ -472,20 +490,17 @@ f3d_set_rgb_option (ExbEngine  *self,
 }
 
 static bool
-exb_engine_copy_from_hash_table (GHashTable *hash_table,
-                                 const char *prop_name,
-                                 GValue     *value)
+copy_from_hash_table (GHashTable *hash_table,
+                      const char *prop_name,
+                      GValue     *value)
 {
   GValue *stored_value;
-
   EXB_ENTRY;
 
-  stored_value = g_hash_table_lookup (hash_table, prop_name);
-
-  if (!stored_value || !G_IS_VALUE (&stored_value))
+  stored_value = (GValue *) g_hash_table_lookup (hash_table, prop_name);
+  if (!stored_value || !G_IS_VALUE (stored_value))
     EXB_RETURN (FALSE);
-
-  if (G_VALUE_TYPE (value) != G_VALUE_TYPE (&stored_value))
+  if (G_VALUE_TYPE (value) != G_VALUE_TYPE (stored_value))
     EXB_RETURN (FALSE);
 
   g_value_copy (stored_value, value);
@@ -495,57 +510,49 @@ exb_engine_copy_from_hash_table (GHashTable *hash_table,
 static bool
 f3d_get_option (ExbEngine  *self,
                 GValue     *value,
-                GParamSpec *pspec)
+                const char *option_id,
+                GType       type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_key = NULL;
   g_autofree const char *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
-  GType type;
 
   EXB_ENTRY;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (value), FALSE);
 
-  type = G_PARAM_SPEC_VALUE_TYPE (pspec);
+  g_message ("Getting `%s`, type: %s", option_id, g_type_name (type));
 
-  g_message ("Getting `%s`, type: %s", pspec->name, g_type_name (type));
-
-  /* if (exb_engine_get_override_value (priv->pending_options, pspec->name, value)) */
-  /*   { */
-  /*     g_message ("Value %s has been overridden", pspec->name); */
-  /*     EXB_RETURN (TRUE); */
-  /*   } */
+  if(g_hash_table_contains (priv->original_options, option_id) &&
+     copy_from_hash_table (priv->original_options, option_id, value))
+    {
+      g_message ("Value %s has been overridden", option_id);
+      EXB_RETURN (TRUE);
+    }
 
   if (!priv->engine)
     {
-      if (exb_engine_copy_from_hash_table (priv->pending_options, pspec->name, value))
+      if (copy_from_hash_table (priv->pending_options, option_id, value))
         EXB_RETURN (TRUE);
       else
         EXB_RETURN (FALSE);
-
     }
 
   options = f3d_engine_get_options (priv->engine);
 
-  if (!(f3d_key = options_map_lookup (pspec->name)))
+  if (!(f3d_key = f3d_options_map_lookup (self, option_id)))
     {
-      g_message ("ExbEngine: Invalid pspec '%s' while setting option", pspec->name);
-      EXB_RETURN (FALSE);
-    }
-
-  if (!f3d_has_option (self, f3d_key))
-    {
-      g_message ("ExbEngine: Invalid pspec '%s' while getting option", pspec->name);
+      g_message ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
       EXB_RETURN (FALSE);
     }
 
   if (!f3d_options_has_value (options, f3d_key))
-  {
-    g_message ("ExbEngine: Key '%s' has no value, default value is returned", pspec->name);
-    EXB_RETURN (TRUE);
-  }
+    {
+      g_message ("ExbEngine: Key '%s' has no value, default value is returned", f3d_key);
+      EXB_RETURN (TRUE);
+    }
 
   if (type == G_TYPE_BOOLEAN)
     {
@@ -625,7 +632,7 @@ f3d_get_option (ExbEngine  *self,
 
       if (!enum_value)
         {
-          g_message ("ExbEngine: Unknown string '%s' for enum '%s'", option_value, pspec->name);
+          g_message ("ExbEngine: Unknown string '%s' for enum '%s'", option_value, option_id);
           EXB_RETURN (FALSE);
         }
 
@@ -642,40 +649,38 @@ f3d_get_option (ExbEngine  *self,
 static bool
 f3d_set_option (ExbEngine    *self,
                 const GValue *value,
-                GParamSpec   *pspec)
+                const char   *option_id,
+                GType         type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_closest_key = NULL;
   g_autofree const char *f3d_key = NULL;
   f3d_options_t *options = NULL;
-  GType type;
 
   EXB_ENTRY;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (value), FALSE);
 
-  type = G_PARAM_SPEC_VALUE_TYPE (pspec);
-
-  g_message ("Setting `%s`, type: %s", pspec->name, g_type_name (type));
+  g_message ("Setting `%s`, type: %s", option_id, g_type_name (type));
 
   if (!priv->engine)
     {
-      add_value_to_hash_table (priv->pending_options, pspec->name, value);
+      add_value_to_hash_table (priv->pending_options, option_id, value);
+      EXB_RETURN (TRUE);
+    }
+
+  if (g_hash_table_contains (priv->original_options, option_id))
+    {
+      add_value_to_hash_table (priv->original_options, option_id, value);
       EXB_RETURN (TRUE);
     }
 
   options = f3d_engine_get_options (priv->engine);
 
-  if (!(f3d_key = options_map_lookup (pspec->name)))
+  if (!(f3d_key = f3d_options_map_lookup (self, option_id)))
     {
-      g_message ("ExbEngine: Invalid pspec '%s' while setting option", pspec->name);
-      EXB_RETURN (FALSE);
-    }
-
-  if (!f3d_has_option (self, f3d_key))
-    {
-      g_message ("ExbEngine: Invalid pspec '%s' while getting option", pspec->name);
+      g_message ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
       EXB_RETURN (FALSE);
     }
 
@@ -725,7 +730,7 @@ f3d_set_option (ExbEngine    *self,
 
       if (!enum_value)
         {
-          g_message ("ExbEngine: Unknown enum value %d for '%s'", g_value_get_enum (value), pspec->name);
+          g_message ("ExbEngine: Unknown enum value %d for '%s'", g_value_get_enum (value), option_id);
           EXB_RETURN (FALSE);
         }
 
@@ -738,6 +743,10 @@ f3d_set_option (ExbEngine    *self,
 
           if (g_str_has_prefix(enum_nick, "negative-"))
             option_value = g_strdup_printf("-%s", enum_nick + strlen("negative-"));
+        }
+      else
+        {
+          option_value = g_strdup (enum_nick);
         }
 
       f3d_options_set_as_string_representation (options, f3d_key, option_value);
@@ -762,6 +771,70 @@ f3d_get_distance (ExbEngine *self)
   return graphene_vec3_length (&camera_position);
 }
 
+
+static bool
+exb_engine_unoverride_option (ExbEngine  *self,
+                              const char *option_id,
+                              GType       type)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autofree const char *f3d_closest_key = NULL;
+  g_autofree const char *f3d_key = NULL;
+  f3d_options_t *options = NULL;
+  GValue *value = g_new0 (GValue, 1);
+
+  EXB_ENTRY;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+
+  g_value_init (value, type);
+  if (!f3d_get_option (self, value, option_id, type))
+    EXB_RETURN (FALSE);
+
+  add_value_to_hash_table (priv->original_options, option_id, value);
+
+  options = f3d_engine_get_options (priv->engine);
+
+  if (!(f3d_key = f3d_options_map_lookup (self, option_id)))
+    {
+      g_message ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
+      EXB_RETURN (FALSE);
+    }
+
+  if (!f3d_options_is_optional (options, f3d_key))
+    EXB_RETURN (FALSE);
+
+  f3d_options_remove_value (options, f3d_key);
+  g_message ("Removing value of %s", f3d_key);
+  /* g_message ("value now is: %s", f3d_options_get_as_string_representation (options, f3d_key)); */
+
+  EXB_RETURN (TRUE);
+}
+
+static bool
+exb_engine_override_option (ExbEngine  *self,
+                            const char *option_id,
+                            GType       type)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autofree const char *f3d_closest_key = NULL;
+  g_autofree const char *f3d_key = NULL;
+  gpointer value;
+
+  EXB_ENTRY;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+
+  if (!g_hash_table_lookup_extended (priv->original_options, option_id, NULL, &value))
+    EXB_RETURN (FALSE);
+
+  f3d_set_option (self, (GValue *)value, option_id, type);
+
+  g_hash_table_remove (priv->original_options, option_id);
+
+  EXB_RETURN (TRUE);
+}
+
 static void
 exb_engine_get_property (GObject    *object,
                          guint       prop_id,
@@ -781,10 +854,10 @@ exb_engine_get_property (GObject    *object,
       g_value_set_object (value, exb_engine_get_file (self));
       break;
     case PROP_OVERRIDE_MODEL_COLOR:
-      g_value_set_boolean (value, !g_hash_table_contains (priv->overridable_options, "model-color"));
+      g_value_set_boolean (value, !g_hash_table_contains (priv->original_options, "model-color"));
       break;
     default:
-      if (!f3d_get_option (self, value, pspec))
+      if (!f3d_get_option (self, value, pspec->name, pspec->value_type))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
     }
@@ -812,9 +885,13 @@ exb_engine_set_property (GObject      *object,
       exb_engine_set_file (self, g_value_get_object (value));
       break;
     case PROP_OVERRIDE_MODEL_COLOR:
+      if (!g_value_get_boolean (value))
+        exb_engine_unoverride_option (self, "model-color", GDK_TYPE_RGBA);
+      else
+        exb_engine_override_option (self, "model-color", GDK_TYPE_RGBA);
       break;
     default:
-      if (!f3d_set_option (self, value, pspec))
+      if (!f3d_set_option (self, value, pspec->name, pspec->value_type))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
       break;
     }
@@ -837,7 +914,7 @@ exb_engine_finalize (GObject *object)
   g_clear_object (&priv->file);
   g_clear_pointer (&priv->engine, f3d_engine_delete);
   g_clear_pointer (&priv->pending_options, g_hash_table_unref);
-  g_clear_pointer (&priv->overridable_options, g_hash_table_unref);
+  g_clear_pointer (&priv->original_options, g_hash_table_unref);
 
   G_OBJECT_CLASS (exb_engine_parent_class)->finalize (object);
 
@@ -873,7 +950,7 @@ _exb_engine_initialize (ExbEngine *self,
   if (!priv->engine)
     {
       g_warning ("ExbViewer: Failed to initialize F3D engine");
-      EXB_RETURN ();
+      EXB_EXIT;
     }
 
   priv->window = f3d_engine_get_window (priv->engine);
@@ -933,10 +1010,16 @@ exb_engine_init (ExbEngine *self)
                                                  NULL,
                                                  exb_g_value_destroy);
 
-  priv->overridable_options = g_hash_table_new_full (g_str_hash,
+  priv->original_options = g_hash_table_new_full (g_str_hash,
                                                      g_str_equal,
                                                      NULL,
                                                      exb_g_value_destroy);
+
+  for (gsize i = 0; i < overridable_options_len; i++)
+    {
+      const char *option_id = g_strdup (overridable_options[i]);
+      g_hash_table_insert (priv->original_options, (gpointer)option_id, NULL);
+    }
 
   EXB_EXIT;
 }
