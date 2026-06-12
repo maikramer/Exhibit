@@ -23,27 +23,21 @@
 # define EXB_LOG_LEVEL_TRACE ((GLogLevelFlags)(1 << G_LOG_LEVEL_USER_SHIFT))
 #endif
 
-/* Log function name and elapsed time in microseconds */
-# define EXB_TRACE_FUNCTION(_func, _begin, _end)                         \
-   g_log(G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE,                              \
-         "EXIT: %s() completed in %" G_GINT64_FORMAT " µs",              \
-         (_func), ((_end) - (_begin)))
-
 # define EXB_ENTRY                                                       \
-   gint64 __trace_begin_time = g_get_monotonic_time ();                  \
    g_log(G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE, "ENTRY: %s():%d",            \
            G_STRFUNC, __LINE__)
 # define EXB_EXIT                                                        \
    G_STMT_START {                                                        \
-      EXB_TRACE_FUNCTION (G_STRFUNC,                                     \
-                          __trace_begin_time,                            \
-                          g_get_monotonic_time ());                      \
+     g_log(G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE,                            \
+         "EXIT: %s()" G_GINT64_FORMAT,                                   \
+         G_STRFUNC);                                                     \
       return;                                                            \
    } G_STMT_END
 # define EXB_RETURN(_r)                                                  \
    G_STMT_START {                                                        \
-      EXB_TRACE_FUNCTION (G_STRFUNC,                                     \
-                          __trace_begin_time,                            \
-                          g_get_monotonic_time ());                      \
-      return _r;                                                         \
+      __typeof__(_r) __trace_retval = (_r);                              \
+      g_log(G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE,                           \
+            "EXIT: %s() = %" G_GINT64_FORMAT,                            \
+            G_STRFUNC, (gint64)__trace_retval);                          \
+      return __trace_retval;                                             \
    } G_STMT_END
