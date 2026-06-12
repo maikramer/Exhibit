@@ -143,4 +143,3 @@ exb_f3d_options_get_closest_option (f3d_options_t *options,
 
   return result;
 }
-
