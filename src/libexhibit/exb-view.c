@@ -193,8 +193,6 @@ exb_view_render (GtkGLArea    *gl_area,
 
   g_return_val_if_fail (EXB_IS_VIEW (self), TRUE);
 
-  g_message ("rendering");
-
   gtk_gl_area_make_current (gl_area);
 
   width = gtk_widget_get_width (GTK_WIDGET (gl_area));
@@ -204,6 +202,24 @@ exb_view_render (GtkGLArea    *gl_area,
   exb_engine_render(priv->engine);
 
   return TRUE;
+}
+
+static void
+exb_view_snapshot (GtkWidget   *widget,
+                   GtkSnapshot *snapshot)
+{
+  GdkRGBA color = { 0.0f, 0.0f, 0.0f, 1.0f }; // opaque black
+
+  gtk_snapshot_append_color (snapshot,
+                              &color,
+                              &GRAPHENE_RECT_INIT (
+                                0, 0,
+                                gtk_widget_get_width (widget),
+                                gtk_widget_get_height (widget)
+                              ));
+
+  // Chain up so GtkGLArea does its normal GL rendering on top
+  GTK_WIDGET_CLASS (exb_view_parent_class)->snapshot (widget, snapshot);
 }
 
 static gboolean
@@ -356,10 +372,12 @@ static void
 exb_view_class_init (ExbViewClass *klass)
 {
   GObjectClass *object_class = G_OBJECT_CLASS (klass);
+  GtkWidgetClass *widget_class = GTK_WIDGET_CLASS (klass);
 
   object_class->dispose = exb_view_dispose;
   object_class->get_property = exb_view_get_property;
   object_class->set_property = exb_view_set_property;
+  widget_class->snapshot = exb_view_snapshot;
 
   properties[PROP_ENGINE] =
       g_param_spec_object ("engine",
