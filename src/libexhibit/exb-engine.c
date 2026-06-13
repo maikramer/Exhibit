@@ -781,17 +781,17 @@ exb_engine_unoverride_option (ExbEngine  *self,
   g_autofree const char *f3d_closest_key = NULL;
   g_autofree const char *f3d_key = NULL;
   f3d_options_t *options = NULL;
-  GValue *value = g_new0 (GValue, 1);
+  g_auto (GValue) value = G_VALUE_INIT;
 
   EXB_ENTRY;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
 
-  g_value_init (value, type);
-  if (!f3d_get_option (self, value, option_id, type))
+  g_value_init (&value, type);
+  if (!f3d_get_option (self, &value, option_id, type))
     EXB_RETURN (FALSE);
 
-  add_value_to_hash_table (priv->original_options, option_id, value);
+  add_value_to_hash_table (priv->original_options, option_id, &value);
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -806,7 +806,7 @@ exb_engine_unoverride_option (ExbEngine  *self,
 
   f3d_options_remove_value (options, f3d_key);
   g_message ("Removing value of %s", f3d_key);
-  /* g_message ("value now is: %s", f3d_options_get_as_string_representation (options, f3d_key)); */
+  g_message ("Now has value: %s", f3d_options_has_value (options, f3d_key) ? "TRUE" : "FALSE");
 
   EXB_RETURN (TRUE);
 }
@@ -819,18 +819,21 @@ exb_engine_override_option (ExbEngine  *self,
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *f3d_closest_key = NULL;
   g_autofree const char *f3d_key = NULL;
-  gpointer value;
+  gpointer stored_value;
+  g_auto (GValue) value = G_VALUE_INIT;
 
   EXB_ENTRY;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
 
-  if (!g_hash_table_lookup_extended (priv->original_options, option_id, NULL, &value))
+  if (!g_hash_table_lookup_extended (priv->original_options, option_id, NULL, &stored_value))
     EXB_RETURN (FALSE);
 
-  f3d_set_option (self, (GValue *)value, option_id, type);
+  g_value_init (&value, G_VALUE_TYPE (stored_value));
+  g_value_copy (stored_value, &value);
 
   g_hash_table_remove (priv->original_options, option_id);
+  f3d_set_option (self, (GValue *)&value, option_id, type);
 
   EXB_RETURN (TRUE);
 }
