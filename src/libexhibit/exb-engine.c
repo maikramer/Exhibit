@@ -50,6 +50,7 @@ typedef struct
   GHashTable *pending_options;
   GHashTable *original_options;
 
+  GtkAdjustment *animation_adj;
 
   GFile *file;
 } ExbEnginePrivate;
@@ -103,6 +104,8 @@ enum
   PROP_SPRITES_SIZE,
   PROP_SPRITES_TYPE,
   PROP_ANIMATION_INDEX,
+  PROP_ANIMATIONS_N,
+  PROP_ANIMATION_ADJUSTMENT,
   N_PROPS
 };
 
@@ -181,6 +184,8 @@ static const char *overridable_options[] = {"model-color"};
 
 static const gsize overridable_options_len = G_N_ELEMENTS(overridable_options);
 
+void update_animations_data (ExbEngine *self);
+
 /**
  * exb_engine_render_texture:
  * @self: a #ExbEngine
@@ -255,6 +260,8 @@ _exb_engine_load_file (gpointer self)
   f3d_scene_add (priv->scene, file_path);
 
   f3d_camera_reset_to_bounds (priv->camera, 0.9);
+
+  update_animations_data (self);
 
   g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 
@@ -849,6 +856,86 @@ exb_engine_override_option (ExbEngine  *self,
   EXB_RETURN (TRUE);
 }
 
+int
+exb_engine_get_animations_n (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  int animations;
+
+  EXB_ENTRY;
+
+  if (!priv->scene)
+    EXB_RETURN (0);
+
+  animations = f3d_scene_available_animations (priv->scene);
+
+  EXB_RETURN (animations);
+}
+
+void
+update_animations_data (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  double min_time;
+  double max_time;
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  if (!priv->scene)
+    EXB_EXIT;
+
+  f3d_scene_animation_time_range (priv->scene, &min_time, &max_time);
+
+  gtk_adjustment_configure (priv->animation_adj,
+                            0, min_time, max_time,
+                            1, 0, 1);
+
+  EXB_EXIT;
+}
+
+void
+on_animation_adjustment_value_changed (ExbEngine     *self,
+                                       GtkAdjustment *adj)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (GTK_IS_ADJUSTMENT (adj));
+
+  if (!priv->scene)
+    EXB_EXIT;
+
+  f3d_scene_load_animation_time (priv->scene, gtk_adjustment_get_value (adj));
+
+  EXB_EXIT;
+}
+
+static void
+exb_engine_set_animation_adjustment (ExbEngine     *self,
+                                     GtkAdjustment *adj)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (GTK_IS_ADJUSTMENT (adj));
+
+  g_set_object (&priv->animation_adj, adj);
+
+  g_signal_connect_object (adj,
+                           "value-changed",
+                           G_CALLBACK (on_animation_adjustment_value_changed),
+                           self,
+                           G_CONNECT_SWAPPED);
+
+  EXB_EXIT;
+}
+
 static void
 exb_engine_get_property (GObject    *object,
                          guint       prop_id,
@@ -870,6 +957,12 @@ exb_engine_get_property (GObject    *object,
     case PROP_OVERRIDE_MODEL_COLOR:
       g_value_set_boolean (value, !g_hash_table_contains (priv->original_options, "model-color"));
       break;
+    case PROP_ANIMATION_ADJUSTMENT:
+      g_value_set_object (value, priv->animation_adj);
+      break;
+    case PROP_ANIMATIONS_N:
+      g_value_set_int (value, exb_engine_get_animations_n (self));
+      break;
     default:
       if (!f3d_get_option (self, value, pspec->name, pspec->value_type))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -886,6 +979,7 @@ exb_engine_set_property (GObject      *object,
                          GParamSpec   *pspec)
 {
   ExbEngine *self = EXB_ENGINE (object);
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   EXB_ENTRY;
 
@@ -903,6 +997,9 @@ exb_engine_set_property (GObject      *object,
         exb_engine_unoverride_option (self, "model-color", GDK_TYPE_RGBA);
       else
         exb_engine_override_option (self, "model-color", GDK_TYPE_RGBA);
+      break;
+    case PROP_ANIMATION_ADJUSTMENT:
+      exb_engine_set_animation_adjustment (self, g_value_get_object (value));
       break;
     default:
       if (!f3d_set_option (self, value, pspec->name, pspec->value_type))
@@ -1034,6 +1131,8 @@ exb_engine_init (ExbEngine *self)
       const char *option_id = g_strdup (overridable_options[i]);
       g_hash_table_insert (priv->original_options, (gpointer)option_id, NULL);
     }
+
+  priv->animation_adj = gtk_adjustment_new (0, 0, 0, 0, 0, 0);
 
   EXB_EXIT;
 }
@@ -1300,6 +1399,18 @@ exb_engine_class_init (ExbEngineClass *klass)
                         NULL, NULL,
                         0, 1000, 0,
                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ANIMATIONS_N] =
+      g_param_spec_int ("animations-available",
+                        NULL, NULL,
+                        0, 1000, 0,
+                        G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_ANIMATION_ADJUSTMENT] =
+      g_param_spec_object ("animation-adjustment",
+                           NULL, NULL,
+                           GTK_TYPE_ADJUSTMENT,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_ANTI_ALIASING_MODE] =
       g_param_spec_enum ("anti-aliasing-mode",
