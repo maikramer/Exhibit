@@ -21,6 +21,7 @@
 
 #include "exb-enums.h"
 #include "exb-utils.h"
+#include "exb-global.h"
 #include "graphene.h"
 
 #include <f3d/engine_c_api.h>

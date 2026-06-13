@@ -24,6 +24,9 @@
 #include "exb-utils-private.h"
 #include "exb-enums.h"
 #include "exb-debug.h"
+#include "exb-global.h"
+
+#include "math.h"
 
 #include <f3d/camera_c_api.h>
 #include <f3d/engine_c_api.h>
@@ -1448,6 +1451,8 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   double f3d_camera_position[3];
   double f3d_focal_point[3];
   double f3d_up_dir[3];
+  float f_camera_position[3];
+  float f_focal_point[3];
   double elevation;
   double azimuth;
   double dot;
@@ -1459,8 +1464,16 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   f3d_camera_get_position (priv->camera, f3d_camera_position);
   f3d_camera_get_focal_point (priv->camera, f3d_focal_point);
 
-  graphene_vec3_init_from_float (&camera_position, (float *)f3d_camera_position);
-  graphene_vec3_init_from_float (&focal_point, (float *)f3d_focal_point);
+  f_camera_position[0] = (float) f3d_camera_position[0];
+  f_camera_position[1] = (float) f3d_camera_position[1];
+  f_camera_position[2] = (float) f3d_camera_position[2];
+
+  f_focal_point[0] = (float) f3d_focal_point[0];
+  f_focal_point[1] = (float) f3d_focal_point[1];
+  f_focal_point[2] = (float) f3d_focal_point[2];
+
+  graphene_vec3_init_from_float (&camera_position, f_camera_position);
+  graphene_vec3_init_from_float (&focal_point, f_focal_point);
 
   g_object_get (self, "up", &up_direction, NULL);
   world_up = exb_direction_to_graphene_vec3 (up_direction);
