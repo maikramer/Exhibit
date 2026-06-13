@@ -187,44 +187,27 @@ static const char *overridable_options[] = {"model-color"};
 
 static const gsize overridable_options_len = G_N_ELEMENTS(overridable_options);
 
-void update_animations_data (ExbEngine *self);
-
-/**
- * exb_engine_render_texture:
- * @self: a #ExbEngine
- *
- * Returns: (transfer full): A GdkTexture with the rendered image
- */
-GdkTexture *
-exb_engine_render_texture (ExbEngine *self)
+void
+update_animations_data (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autoptr (f3d_image_t) img = NULL;
-  g_autoptr (GdkTexture) texture = NULL;
-  g_autoptr (GBytes) bytes = NULL;
-  unsigned int width, height, channels;
-  void *data = NULL;
+  double min_time;
+  double max_time;
 
   EXB_ENTRY;
 
-  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-  g_return_val_if_fail (priv->window != NULL, NULL);
+  g_return_if_fail (EXB_IS_ENGINE (self));
 
-  img = f3d_window_render_to_image (priv->window, FALSE);
-  if (!img)
-    return NULL;
+  if (!priv->scene)
+    EXB_EXIT;
 
-  width = f3d_image_get_width (img);
-  height = f3d_image_get_height (img);
-  channels = f3d_image_get_channel_count (img);
+  f3d_scene_animation_time_range (priv->scene, &min_time, &max_time);
 
-  data = f3d_image_get_content (img);
-  bytes = g_bytes_new (data, (size_t) width * height * channels);
+  gtk_adjustment_configure (priv->animation_adj,
+                            0, min_time * 1000, max_time * 1000,
+                            1, 0, 0);
 
-  texture = gdk_memory_texture_new (
-      (int) width, (int) height, channels == 4 ? GDK_MEMORY_R8G8B8A8 : GDK_MEMORY_R8G8B8, bytes,
-      (size_t) width * channels);
-  EXB_RETURN (g_steal_pointer(&texture));
+  EXB_EXIT;
 }
 
 gboolean
@@ -271,47 +254,6 @@ _exb_engine_load_file (gpointer self)
   EXB_RETURN (FALSE);
 }
 
-/**
- * exb_engine_set_file:
- * @self: a #ExbEngine
- * @file: a #GFile
- */
-void
-exb_engine_set_file(ExbEngine *self,
-                    GFile     *file)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  g_return_if_fail (EXB_IS_ENGINE (self));
-  g_return_if_fail (G_IS_FILE (file));
-
-  g_set_object (&priv->file, file);
-  g_timeout_add (10, _exb_engine_load_file, self);
-  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
-
-  EXB_EXIT;
-}
-
-/**
- * exb_engine_get_file:
- * @self: a #ExbEngine
- *
- * Returns: (transfer none): A GFile
- */
-GFile *
-exb_engine_get_file(ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
-
-  EXB_RETURN (priv->file);
-}
-
 static gboolean
 advance_animation (gpointer self)
 {
@@ -337,51 +279,6 @@ exb_engine_play_animation (ExbEngine *self)
     EXB_EXIT;
 
   priv->animation_handler_id = g_timeout_add (1, advance_animation, self);
-
-  EXB_EXIT;
-}
-
-/**
- * exb_engine_get_animations_n:
- * @self: a #ExbEngine
- *
- * Returns: (transfer none): The number of animations
- */
-int
-exb_engine_get_animations_n (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  int animations;
-
-  EXB_ENTRY;
-
-  if (!priv->scene)
-    EXB_RETURN (0);
-
-  animations = f3d_scene_available_animations (priv->scene);
-
-  EXB_RETURN (animations);
-}
-
-void
-update_animations_data (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  double min_time;
-  double max_time;
-
-  EXB_ENTRY;
-
-  g_return_if_fail (EXB_IS_ENGINE (self));
-
-  if (!priv->scene)
-    EXB_EXIT;
-
-  f3d_scene_animation_time_range (priv->scene, &min_time, &max_time);
-
-  gtk_adjustment_configure (priv->animation_adj,
-                            0, min_time * 1000, max_time * 1000,
-                            1, 0, 0);
 
   EXB_EXIT;
 }
@@ -428,54 +325,6 @@ exb_engine_set_animation_adjustment (ExbEngine     *self,
                            G_CALLBACK (on_animation_adjustment_value_changed),
                            self,
                            G_CONNECT_SWAPPED);
-
-  EXB_EXIT;
-}
-
-/**
- * exb_engine_render:
- * @self: a #ExbEngine
- *
- * Returns: A boolean indicating if it was successful
- */
-gboolean
-exb_engine_render (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-  g_return_val_if_fail (priv->window != NULL, FALSE);
-
-  f3d_window_render (priv->window);
-
-  EXB_RETURN (TRUE);
-}
-
-/**
- * exb_engine_set_size:
- * @self: a #ExbEngine
- * @width: the target width
- * @height: the target height
- *
- */
-void
-exb_engine_set_size (ExbEngine *self,
-                     uint       width,
-                     uint       height)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  g_return_if_fail (EXB_IS_ENGINE (self));
-
-  if (priv->window)
-    f3d_window_set_size (priv->window, width, height);
-
-  priv->width = width;
-  priv->height = height;
 
   EXB_EXIT;
 }
@@ -1533,6 +1382,155 @@ exb_engine_new (void)
   ExbEngine *engine = g_object_new (EXB_TYPE_ENGINE, NULL);
 
   return engine;
+}
+
+/**
+ * exb_engine_render:
+ * @self: a #ExbEngine
+ *
+ * Returns: A boolean indicating if it was successful
+ */
+gboolean
+exb_engine_render (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  g_return_val_if_fail (priv->window != NULL, FALSE);
+
+  f3d_window_render (priv->window);
+
+  EXB_RETURN (TRUE);
+}
+
+/**
+ * exb_engine_set_size:
+ * @self: a #ExbEngine
+ * @width: the target width
+ * @height: the target height
+ *
+ */
+void
+exb_engine_set_size (ExbEngine *self,
+                     uint       width,
+                     uint       height)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  if (priv->window)
+    f3d_window_set_size (priv->window, width, height);
+
+  priv->width = width;
+  priv->height = height;
+
+  EXB_EXIT;
+}
+
+/**
+ * exb_engine_get_animations_n:
+ * @self: a #ExbEngine
+ *
+ * Returns: (transfer none): The number of animations
+ */
+int
+exb_engine_get_animations_n (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  int animations;
+
+  EXB_ENTRY;
+
+  if (!priv->scene)
+    EXB_RETURN (0);
+
+  animations = f3d_scene_available_animations (priv->scene);
+
+  EXB_RETURN (animations);
+}
+
+/**
+ * exb_engine_set_file:
+ * @self: a #ExbEngine
+ * @file: a #GFile
+ */
+void
+exb_engine_set_file(ExbEngine *self,
+                    GFile     *file)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (G_IS_FILE (file));
+
+  g_set_object (&priv->file, file);
+  g_timeout_add (10, _exb_engine_load_file, self);
+  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
+
+  EXB_EXIT;
+}
+
+/**
+ * exb_engine_get_file:
+ * @self: a #ExbEngine
+ *
+ * Returns: (transfer none): A GFile
+ */
+GFile *
+exb_engine_get_file(ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
+
+  EXB_RETURN (priv->file);
+}
+
+/**
+ * exb_engine_render_texture:
+ * @self: a #ExbEngine
+ *
+ * Returns: (transfer full): A GdkTexture with the rendered image
+ */
+GdkTexture *
+exb_engine_render_texture (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autoptr (f3d_image_t) img = NULL;
+  g_autoptr (GdkTexture) texture = NULL;
+  g_autoptr (GBytes) bytes = NULL;
+  unsigned int width, height, channels;
+  void *data = NULL;
+
+  EXB_ENTRY;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  g_return_val_if_fail (priv->window != NULL, NULL);
+
+  img = f3d_window_render_to_image (priv->window, FALSE);
+  if (!img)
+    return NULL;
+
+  width = f3d_image_get_width (img);
+  height = f3d_image_get_height (img);
+  channels = f3d_image_get_channel_count (img);
+
+  data = f3d_image_get_content (img);
+  bytes = g_bytes_new (data, (size_t) width * height * channels);
+
+  texture = gdk_memory_texture_new (
+      (int) width, (int) height, channels == 4 ? GDK_MEMORY_R8G8B8A8 : GDK_MEMORY_R8G8B8, bytes,
+      (size_t) width * channels);
+  EXB_RETURN (g_steal_pointer(&texture));
 }
 
 /**
