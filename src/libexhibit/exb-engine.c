@@ -63,12 +63,14 @@ enum
   PROP_GRID_ABSOLUTE,
   PROP_GRID_UNIT,
   PROP_GRID_COLOR,
+  PROP_GRID_SUBDIVISIONS,
   PROP_BLENDING,
   PROP_BLENDING_MODE,
   PROP_TONE_MAPPING,
   PROP_AMBIENT_OCCLUSION,
   PROP_ANTI_ALIASING,
   PROP_ANTI_ALIASING_MODE,
+  PROP_DISPLAY_DEPTH,
   PROP_HDRI_AMBIENT,
   PROP_HDRI_SKYBOX,
   PROP_HDRI_FILE,
@@ -85,6 +87,8 @@ enum
   PROP_MODEL_METALLIC,
   PROP_MODEL_ROUGHNESS,
   PROP_MODEL_OPACITY,
+  PROP_MODEL_CHECKERBOARD,
+  PROP_MODEL_UNLIT,
   PROP_TEXTURE_MATCAP,
   PROP_TEXTURE_BASE_COLOR,
   PROP_TEXTURE_EMISSIVE,
@@ -121,12 +125,14 @@ static const OptionMap option_maps[] = {
   { "grid-unit",              "render.grid.unit"                  },
   { "grid-subdivisions",      "render.grid.subdivisions"          },
   { "grid-color",             "render.grid.color"                 },
+  { "grid-subdivisions",      "render.grid.subdivisions"          },
   { "blending",               "render.effect.blending.enable"     },
   { "blending-mode",          "render.effect.blending.mode"       },
   { "tone-mapping",           "render.effect.tone_mapping"        },
   { "ambient-occlusion",      "render.effect.ambient_occlusion"   },
   { "anti-aliasing",          "render.effect.antialiasing.enable" },
   { "anti-aliasing-mode",     "render.effect.antialiasing.mode"   },
+  { "display-depth",          "render.effect.display_depth"       },
   { "hdri-ambient",           "render.hdri.ambient"               },
   { "hdri-skybox",            "render.background.skybox"          },
   { "hdri-file",              "render.hdri.file"                  },
@@ -143,6 +149,8 @@ static const OptionMap option_maps[] = {
   { "model-metallic",         "model.material.metallic"           },
   { "model-roughness",        "model.material.roughness"          },
   { "model-opacity",          "model.color.opacity"               },
+  { "model-checkerboard",     "model.checkerboard.enable"         },
+  { "model-unlit",            "model.unlit"                       },
   { "texture-matcap",         "model.matcap.texture"              },
   { "texture-base-color",     "model.color.texture"               },
   { "texture-emissive",       "model.emissive.texture"            },
@@ -1076,6 +1084,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                           GDK_TYPE_RGBA,
                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  properties[PROP_GRID_SUBDIVISIONS] =
+      g_param_spec_int ("grid-subdivisions",
+                        NULL, NULL,
+                        0, 100, 10,
+                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   properties[PROP_BLENDING] =
       g_param_spec_boolean ("blending",
                             NULL, NULL,
@@ -1096,6 +1110,12 @@ exb_engine_class_init (ExbEngineClass *klass)
 
   properties[PROP_ANTI_ALIASING] =
       g_param_spec_boolean ("anti-aliasing",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_DISPLAY_DEPTH] =
+      g_param_spec_boolean ("display-depth",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
@@ -1195,6 +1215,18 @@ exb_engine_class_init (ExbEngineClass *klass)
                            NULL, NULL,
                            0.0, 1.0, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_MODEL_CHECKERBOARD] =
+      g_param_spec_boolean ("model-checkerboard",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_MODEL_UNLIT] =
+      g_param_spec_boolean ("model-unlit",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_TEXTURE_MATCAP] =
       g_param_spec_object ("texture-matcap",
