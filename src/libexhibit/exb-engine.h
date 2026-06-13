@@ -36,19 +36,16 @@ struct _ExbEngineClass
 };
 
 ExbEngine * exb_engine_new               (void);
-
 void        exb_engine_set_file          (ExbEngine *self,
                                           GFile     *file);
-GFile *     exb_engine_get_file          (ExbEngine *self);
-
-GdkTexture *exb_engine_render_texture    (ExbEngine *self);
-
-gboolean    exb_engine_render            (ExbEngine *self);
-
 void        exb_engine_set_size          (ExbEngine *self,
                                           uint       width,
                                           uint       height);
-
+GFile *     exb_engine_get_file          (ExbEngine *self);
+int         exb_engine_get_animations_n  (ExbEngine *self);
+void        exb_engine_play_animation    (ExbEngine *self);
+GdkTexture *exb_engine_render_texture    (ExbEngine *self);
+gboolean    exb_engine_render            (ExbEngine *self);
 void        exb_engine_zoom              (ExbEngine *self,
                                           double     factor);
 void        exb_engine_pan               (ExbEngine *self,

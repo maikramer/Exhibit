@@ -44,13 +44,14 @@ typedef struct
 
   bool orthographic;
 
-  int width;
-  int height;
+  uint width;
+  uint height;
 
   GHashTable *pending_options;
   GHashTable *original_options;
 
   GtkAdjustment *animation_adj;
+  guint animation_handler_id;
 
   GFile *file;
 } ExbEnginePrivate;
@@ -60,6 +61,8 @@ G_DEFINE_TYPE_WITH_PRIVATE (ExbEngine, exb_engine, G_TYPE_OBJECT)
 enum
 {
   PROP_0,
+  PROP_WIDTH,
+  PROP_HEIGHT,
   PROP_FILE,
   PROP_UP,
   PROP_ORTHOGRAPHIC,
@@ -175,7 +178,7 @@ static const OptionMap option_maps[] = {
   /* { "scalar",                 "model.scivis.array_name"           }, */
   { "up",                     "scene.up_direction"                },
   { "orthographic",           "scene.camera.orthographic"         },
-  { "animation-index",        "scene.animation.index"             }
+  { "animation-index",        "scene.animation.indices"             }
 };
 
 static const gsize option_maps_len = G_N_ELEMENTS(option_maps);
@@ -309,6 +312,132 @@ exb_engine_get_file(ExbEngine *self)
   EXB_RETURN (priv->file);
 }
 
+static gboolean
+advance_animation (gpointer self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  float previous_value;
+
+  EXB_ENTRY;
+
+  previous_value = gtk_adjustment_get_value (priv->animation_adj);
+  gtk_adjustment_set_value (priv->animation_adj, previous_value + 1);
+
+  EXB_RETURN (TRUE);
+}
+
+void
+exb_engine_play_animation (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  if (!priv->animation_handler_id)
+    EXB_EXIT;
+
+  priv->animation_handler_id = g_timeout_add (1, advance_animation, self);
+
+  EXB_EXIT;
+}
+
+/**
+ * exb_engine_get_animations_n:
+ * @self: a #ExbEngine
+ *
+ * Returns: (transfer none): The number of animations
+ */
+int
+exb_engine_get_animations_n (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  int animations;
+
+  EXB_ENTRY;
+
+  if (!priv->scene)
+    EXB_RETURN (0);
+
+  animations = f3d_scene_available_animations (priv->scene);
+
+  EXB_RETURN (animations);
+}
+
+void
+update_animations_data (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  double min_time;
+  double max_time;
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  if (!priv->scene)
+    EXB_EXIT;
+
+  f3d_scene_animation_time_range (priv->scene, &min_time, &max_time);
+
+  gtk_adjustment_configure (priv->animation_adj,
+                            0, min_time * 1000, max_time * 1000,
+                            1, 0, 0);
+
+  EXB_EXIT;
+}
+
+void
+on_animation_adjustment_value_changed (ExbEngine     *self,
+                                       GtkAdjustment *adj)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (GTK_IS_ADJUSTMENT (adj));
+
+  if (!priv->scene)
+    EXB_EXIT;
+
+  f3d_scene_load_animation_time (priv->scene,
+                                 gtk_adjustment_get_value (adj) / 1000);
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+
+  EXB_EXIT;
+}
+
+static void
+exb_engine_set_animation_adjustment (ExbEngine     *self,
+                                     GtkAdjustment *adj)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (GTK_IS_ADJUSTMENT (adj));
+
+  g_set_object (&priv->animation_adj, adj);
+
+  update_animations_data (self);
+
+  g_signal_connect_object (adj,
+                           "value-changed",
+                           G_CALLBACK (on_animation_adjustment_value_changed),
+                           self,
+                           G_CONNECT_SWAPPED);
+
+  EXB_EXIT;
+}
+
+/**
+ * exb_engine_render:
+ * @self: a #ExbEngine
+ *
+ * Returns: A boolean indicating if it was successful
+ */
 gboolean
 exb_engine_render (ExbEngine *self)
 {
@@ -317,13 +446,20 @@ exb_engine_render (ExbEngine *self)
   EXB_ENTRY;
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-  g_return_val_if_fail (priv->window != NULL, false);
+  g_return_val_if_fail (priv->window != NULL, FALSE);
 
   f3d_window_render (priv->window);
 
   EXB_RETURN (TRUE);
 }
 
+/**
+ * exb_engine_set_size:
+ * @self: a #ExbEngine
+ * @width: the target width
+ * @height: the target height
+ *
+ */
 void
 exb_engine_set_size (ExbEngine *self,
                      uint       width,
@@ -572,7 +708,14 @@ f3d_get_option (ExbEngine  *self,
       EXB_RETURN (TRUE);
     }
 
-  if (type == G_TYPE_BOOLEAN)
+  if (g_str_equal (option_id, "animation-index"))
+    {
+      int values[] = {};
+      size_t size;
+      f3d_options_get_as_int_vector (options, f3d_key, values, &size);
+      g_value_set_int (value, values[0]);
+    }
+  else if (type == G_TYPE_BOOLEAN)
     {
       g_value_set_boolean (value, f3d_options_get_as_bool (options, f3d_key));
     }
@@ -702,7 +845,16 @@ f3d_set_option (ExbEngine    *self,
       EXB_RETURN (FALSE);
     }
 
-  if (type == G_TYPE_BOOLEAN)
+  if (g_str_equal (option_id, "animation-index"))
+    {
+      if (g_value_get_int (value) <= (gint)f3d_scene_available_animations (priv->scene))
+        {
+          const int values[] = { g_value_get_int (value) };
+          f3d_options_set_as_int_vector (options, f3d_key, values, 1);
+          f3d_scene_load_animation_time (priv->scene, 0);
+        }
+    }
+  else if (type == G_TYPE_BOOLEAN)
     {
       f3d_options_set_as_bool (options, f3d_key, g_value_get_boolean (value));
     }
@@ -789,7 +941,6 @@ f3d_get_distance (ExbEngine *self)
   return graphene_vec3_length (&camera_position);
 }
 
-
 static bool
 exb_engine_unoverride_option (ExbEngine  *self,
                               const char *option_id,
@@ -856,86 +1007,6 @@ exb_engine_override_option (ExbEngine  *self,
   EXB_RETURN (TRUE);
 }
 
-int
-exb_engine_get_animations_n (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  int animations;
-
-  EXB_ENTRY;
-
-  if (!priv->scene)
-    EXB_RETURN (0);
-
-  animations = f3d_scene_available_animations (priv->scene);
-
-  EXB_RETURN (animations);
-}
-
-void
-update_animations_data (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  double min_time;
-  double max_time;
-
-  EXB_ENTRY;
-
-  g_return_if_fail (EXB_IS_ENGINE (self));
-
-  if (!priv->scene)
-    EXB_EXIT;
-
-  f3d_scene_animation_time_range (priv->scene, &min_time, &max_time);
-
-  gtk_adjustment_configure (priv->animation_adj,
-                            0, min_time, max_time,
-                            1, 0, 1);
-
-  EXB_EXIT;
-}
-
-void
-on_animation_adjustment_value_changed (ExbEngine     *self,
-                                       GtkAdjustment *adj)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  g_return_if_fail (EXB_IS_ENGINE (self));
-  g_return_if_fail (GTK_IS_ADJUSTMENT (adj));
-
-  if (!priv->scene)
-    EXB_EXIT;
-
-  f3d_scene_load_animation_time (priv->scene, gtk_adjustment_get_value (adj));
-
-  EXB_EXIT;
-}
-
-static void
-exb_engine_set_animation_adjustment (ExbEngine     *self,
-                                     GtkAdjustment *adj)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  g_return_if_fail (EXB_IS_ENGINE (self));
-  g_return_if_fail (GTK_IS_ADJUSTMENT (adj));
-
-  g_set_object (&priv->animation_adj, adj);
-
-  g_signal_connect_object (adj,
-                           "value-changed",
-                           G_CALLBACK (on_animation_adjustment_value_changed),
-                           self,
-                           G_CONNECT_SWAPPED);
-
-  EXB_EXIT;
-}
-
 static void
 exb_engine_get_property (GObject    *object,
                          guint       prop_id,
@@ -951,6 +1022,12 @@ exb_engine_get_property (GObject    *object,
 
   switch (prop_id)
     {
+    case PROP_WIDTH:
+      g_value_set_uint (value, priv->width);
+      break;
+    case PROP_HEIGHT:
+      g_value_set_uint (value, priv->height);
+      break;
     case PROP_FILE:
       g_value_set_object (value, exb_engine_get_file (self));
       break;
@@ -989,6 +1066,12 @@ exb_engine_set_property (GObject      *object,
 
   switch (prop_id)
     {
+    case PROP_WIDTH:
+      exb_engine_set_size (self, g_value_get_uint (value), priv->height);
+      break;
+    case PROP_HEIGHT:
+      exb_engine_set_size (self, priv->width, g_value_get_uint (value));
+      break;
     case PROP_FILE:
       exb_engine_set_file (self, g_value_get_object (value));
       break;
@@ -1132,7 +1215,7 @@ exb_engine_init (ExbEngine *self)
       g_hash_table_insert (priv->original_options, (gpointer)option_id, NULL);
     }
 
-  priv->animation_adj = gtk_adjustment_new (0, 0, 0, 0, 0, 0);
+  exb_engine_set_animation_adjustment (self, g_object_new (GTK_TYPE_ADJUSTMENT, NULL));
 
   EXB_EXIT;
 }
@@ -1149,6 +1232,18 @@ exb_engine_class_init (ExbEngineClass *klass)
   signals[SIGNAL_CHANGED] =
       g_signal_new ("changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
                     NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
+
+  properties[PROP_WIDTH] =
+      g_param_spec_uint ("width",
+                         NULL, NULL,
+                         0, 300, G_MAXUINT,
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_HEIGHT] =
+      g_param_spec_uint ("height",
+                         NULL, NULL,
+                         0, 300, G_MAXUINT,
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_FILE] =
       g_param_spec_object ("file",
