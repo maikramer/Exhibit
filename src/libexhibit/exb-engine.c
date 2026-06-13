@@ -1485,7 +1485,7 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   angle = acos (dot) * (180.0 / M_PI);
 
   elevation = dy * 0.5;
-  azimuth = -dx * 0.5;
+  azimuth = dx * 0.5;
 
   if (!(angle < 10.0  && elevation > 0) &&
       !(angle > 170.0 && elevation < 0))
@@ -1493,9 +1493,10 @@ exb_engine_rotate_with_limit (ExbEngine *self,
       f3d_camera_elevation (priv->camera, elevation);
     }
 
+  azimuth *= - (90.0 - fabs (angle - 90.0)) / 90.0;
+
   f3d_camera_azimuth (priv->camera, azimuth);
 
-  graphene_vec3_to_float (&world_up, (float[3]){});
   f3d_up_dir[0] = graphene_vec3_get_x (&world_up);
   f3d_up_dir[1] = graphene_vec3_get_y (&world_up);
   f3d_up_dir[2] = graphene_vec3_get_z (&world_up);
