@@ -89,6 +89,7 @@ enum
   PROP_EDGES_WIDTH,
   PROP_POINT_SIZE,
   PROP_SHOW_ARMATURE,
+  PROP_FINAL_SHADER,
   PROP_OVERRIDE_MODEL_COLOR,
   PROP_MODEL_COLOR,
   PROP_MODEL_METALLIC,
@@ -153,7 +154,7 @@ static const OptionMap option_maps[] = {
   { "edges-width",            "render.line_width"                 },
   { "point-size",             "render.point_size"                 },
   { "show-armature",          "render.armature.enable"            },
-  /* { "final-shader",           "render.effect.final_shader"        }, */
+  { "final-shader",           "render.effect.final_shader"        },
   { "model-color",            "model.color.rgb"                   },
   { "model-metallic",         "model.material.metallic"           },
   { "model-roughness",        "model.material.roughness"          },
@@ -564,6 +565,10 @@ f3d_get_option (ExbEngine  *self,
       f3d_options_get_as_int_vector (options, f3d_key, values, &size);
       g_value_set_int (value, values[0]);
     }
+  else if (type == G_TYPE_STRING)
+    {
+      g_value_set_string (value, f3d_options_get_as_string (options, f3d_key));
+    }
   else if (type == G_TYPE_BOOLEAN)
     {
       g_value_set_boolean (value, f3d_options_get_as_bool (options, f3d_key));
@@ -702,6 +707,10 @@ f3d_set_option (ExbEngine    *self,
           f3d_options_set_as_int_vector (options, f3d_key, values, 1);
           f3d_scene_load_animation_time (priv->scene, 0);
         }
+    }
+  else if (type == G_TYPE_STRING)
+    {
+      f3d_options_set_as_string (options, f3d_key, g_value_get_string (value));
     }
   else if (type == G_TYPE_BOOLEAN)
     {
@@ -1085,13 +1094,13 @@ exb_engine_class_init (ExbEngineClass *klass)
   properties[PROP_WIDTH] =
       g_param_spec_uint ("width",
                          NULL, NULL,
-                         0, 300, G_MAXUINT,
+                         0, G_MAXUINT, 300,
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_HEIGHT] =
       g_param_spec_uint ("height",
                          NULL, NULL,
-                         0, 300, G_MAXUINT,
+                         0, G_MAXUINT, 300,
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_FILE] =
@@ -1230,6 +1239,12 @@ exb_engine_class_init (ExbEngineClass *klass)
       g_param_spec_boolean ("show-armature",
                             NULL, NULL,
                             FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_FINAL_SHADER] =
+      g_param_spec_string ("final-shader",
+                            NULL, NULL,
+                            "",
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_OVERRIDE_MODEL_COLOR] =
