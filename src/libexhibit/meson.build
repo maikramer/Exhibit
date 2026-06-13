@@ -22,12 +22,14 @@ libexhibit_sources = [
   'exb-view.c',
   'exb-engine.c',
   'exb-utils.c',
+  'exb-global.c',
 ]
 
 libexhibit_headers = [
   'exb-view.h',
   'exb-engine.h',
   'exb-utils.h',
+  'exb-global.h',
 ]
 
 libexhibit_enums = gnome.mkenums_simple(
