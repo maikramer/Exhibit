@@ -94,8 +94,8 @@ settings = Gio.Settings.new('io.github.nokse22.Exhibit')
 
 
 @Gtk.Template(resource_path='/io/github/nokse22/Exhibit/window.ui')
-class Viewer3dWindow(Adw.ApplicationWindow):
-    __gtype_name__ = 'Viewer3dWindow'
+class ExbWindow(Adw.ApplicationWindow):
+    __gtype_name__ = 'ExbWindow'
 
     loading_label = Gtk.Template.Child()
 
@@ -197,8 +197,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             settings.get_int("startup-width"),
             settings.get_int("startup-height")
         )
-        self.split_view.set_show_sidebar(
-            settings.get_boolean("startup-sidebar-show"))
+        self.sidebar_default_visible = settings.get_boolean("startup-sidebar-show")
+        self.split_view.set_show_sidebar(self.sidebar_default_visible)
 
         # Getting the saved HDRI and generating thumbnails
         self.hdri_file_row.file_patterns = image_patterns
@@ -575,18 +575,16 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback("on_unapply_breakpoint")
     def on_unapply_breakpoint(self, *args):
-        state = self.engine.get_property("sidebar-show").value
         self.applying_breakpoint = True
         self.split_view.set_collapsed(False)
-        self.split_view.set_show_sidebar(state)
+        self.split_view.set_show_sidebar(self.sidebar_default_visible)
         self.applying_breakpoint = False
 
     @Gtk.Template.Callback("on_split_view_show_sidebar_changed")
     def on_split_view_show_sidebar_changed(self, *args):
         if self.applying_breakpoint:
             return
-        state = self.split_view.get_show_sidebar()
-        settings.set_property("sidebar-show", state)
+        self.sidebar_default_visible = self.split_view.get_show_sidebar()
 
     def on_play_button_clicked(self, btn):
         engine = self.viewer.get_engine()

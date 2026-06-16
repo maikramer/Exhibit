@@ -22,12 +22,12 @@ import os
 import webbrowser
 
 from gi.repository import Gtk, Gio, Adw, GLib
-from .window import Viewer3dWindow
+from .window import ExbWindow
 
 from gettext import gettext as _
 
 
-class Viewer3dApplication(Adw.Application):
+class ExbApplication(Adw.Application):
     """The main application singleton class."""
 
     open_filepath = None
@@ -56,7 +56,7 @@ class Viewer3dApplication(Adw.Application):
 
         self.create_action(
             "open-new-window",
-            lambda *_: Viewer3dWindow(application=self).present(),
+            lambda *_: ExbWindow(application=self).present(),
             ["<primary><shift>n"],
         )
         self.create_action(
@@ -88,7 +88,7 @@ class Viewer3dApplication(Adw.Application):
     def do_open(self, files, n_files, hint):
         for file in files:
             file_path = file.get_path()
-            win = Viewer3dWindow(application=self, startup_filepath=file_path)
+            win = ExbWindow(application=self, startup_filepath=file_path)
             win.present()
 
     def show_image_external(self, _action, image_path: GLib.Variant, *args):
@@ -170,11 +170,11 @@ class Viewer3dApplication(Adw.Application):
         win = self.props.active_window
         if not win:
             if self.open_filepath:
-                win = Viewer3dWindow(
+                win = ExbWindow(
                     application=self, startup_filepath=self.open_filepath
                 )
             else:
-                win = Viewer3dWindow(application=self)
+                win = ExbWindow(application=self)
         win.present()
 
     def create_action(self, name, callback, shortcuts=None, *args):
@@ -190,5 +190,5 @@ class Viewer3dApplication(Adw.Application):
 
 def main(version):
     """The application's entry point."""
-    app = Viewer3dApplication()
+    app = ExbApplication()
     return app.run(sys.argv)
