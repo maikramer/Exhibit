@@ -10,7 +10,7 @@
         "-DF3D_MODULE_UI=OFF",
         "-DF3D_MODULE_RAYTRACING=OFF",
         "-DF3D_MODULE_EXR=ON",
-        "-DF3D_BINDINGS_PYTHON=ON",
+        "-DF3D_BINDINGS_PYTHON=OFF",
         "-DF3D_BINDINGS_JAVA=OFF",
         "-DF3D_BINDINGS_C=ON",
         "-DF3D_LINUX_GENERATE_MAN=OFF",
@@ -40,7 +40,7 @@
         {
             "type": "git",
             "url": "https://github.com/f3d-app/f3d",
-            "tag": "v3.4.1"
+            "commit": "e87b826d72c6420b831acd1176147eb06c8ff074"
         },
         {
             "type": "patch",
@@ -197,22 +197,6 @@
                     "type": "archive",
                     "url": "https://github.com/google/draco/archive/refs/tags/1.5.7.tar.gz",
                     "sha256": "bf6b105b79223eab2b86795363dfe5e5356050006a96521477973aba8f036fe1"
-                }
-            ]
-        },
-        {
-            "name": "pybind11",
-            "buildsystem": "cmake-ninja",
-            "builddir": true,
-            "config-opts": [
-                "-DPYBIND11_FINDPYTHON=ON",
-                "-DPYBIND11_TEST=OFF"
-            ],
-            "sources": [
-                {
-                    "type": "archive",
-                    "url": "https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz",
-                    "sha256": "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20"
                 }
             ]
         },
