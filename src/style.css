@@ -75,4 +75,9 @@ flowbox flowboxchild {
   color: var(--accent-color);
 }
 
+@media (prefers-color-scheme: dark) {
+  :root {
+    --btn-color: white;
+  }
+}
 
