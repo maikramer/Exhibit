@@ -259,13 +259,24 @@ static gboolean
 advance_animation (gpointer self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  float previous_value;
+  float pre_value;
+  float max_value;
+  float new_value;
 
   EXB_ENTRY;
 
-  previous_value = gtk_adjustment_get_value (priv->animation_adj);
-  gtk_adjustment_set_value (priv->animation_adj, previous_value + 1);
+  pre_value = gtk_adjustment_get_value (priv->animation_adj);
+  max_value = gtk_adjustment_get_upper (priv->animation_adj);
 
+  new_value = pre_value + 1;
+
+  if (new_value >= max_value)
+    {
+      gtk_adjustment_set_value (priv->animation_adj, max_value);
+      EXB_RETURN (FALSE);
+    }
+
+  gtk_adjustment_set_value (priv->animation_adj, new_value);
   EXB_RETURN (TRUE);
 }
 
@@ -276,7 +287,7 @@ exb_engine_play_animation (ExbEngine *self)
 
   EXB_ENTRY;
 
-  if (!priv->animation_handler_id)
+  if (priv->animation_handler_id)
     EXB_EXIT;
 
   priv->animation_handler_id = g_timeout_add (1, advance_animation, self);
@@ -1023,7 +1034,7 @@ _exb_engine_initialize (ExbEngine *self,
     }
 
   if (priv->file)
-    g_timeout_add (10, _exb_engine_load_file, self);
+    _exb_engine_load_file (self);
 
   EXB_EXIT;
 }
@@ -1140,10 +1151,10 @@ exb_engine_class_init (ExbEngineClass *klass)
                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_GRID_SUBDIVISIONS] =
-      g_param_spec_int ("grid-subdivisions",
-                        NULL, NULL,
-                        0, 100, 10,
-                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+      g_param_spec_uint ("grid-subdivisions",
+                         NULL, NULL,
+                         0, G_MAXINT, 10,
+                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_BLENDING] =
       g_param_spec_boolean ("blending",
@@ -1360,7 +1371,7 @@ exb_engine_class_init (ExbEngineClass *klass)
                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_ANIMATIONS_N] =
-      g_param_spec_int ("animations-available",
+      g_param_spec_int ("animations-n",
                         NULL, NULL,
                         0, 1000, 0,
                         G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
@@ -1486,7 +1497,7 @@ exb_engine_set_file(ExbEngine *self,
   g_return_if_fail (G_IS_FILE (file));
 
   g_set_object (&priv->file, file);
-  g_timeout_add (10, _exb_engine_load_file, self);
+  _exb_engine_load_file (self);
   g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
 
   EXB_EXIT;

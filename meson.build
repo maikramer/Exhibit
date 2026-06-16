@@ -15,6 +15,7 @@ subdir('data')
 subdir('src')
 subdir('po')
 subdir('help')
+subdir('libexhibit')
 
 gnome.post_install(
      glib_compile_schemas: true,

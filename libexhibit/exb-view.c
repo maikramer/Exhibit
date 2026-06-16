@@ -22,6 +22,7 @@
 #include "exb-engine.h"
 #include "exb-engine-private.h"
 #include "exb-view.h"
+#include "exb-debug.h"
 
 struct _ExbView {
   GtkGLArea parent_instance;
@@ -168,7 +169,11 @@ exb_view_realize (GtkWidget *widget)
   ExbView *self = EXB_VIEW (widget);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
+  EXB_ENTRY;
+
   _exb_engine_initialize (priv->engine, false);
+
+  EXB_EXIT;
 }
 
 static void
@@ -177,10 +182,14 @@ exb_view_unrealize (GtkWidget *widget)
   ExbView *self = EXB_VIEW (widget);
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
+  EXB_ENTRY;
+
   _exb_engine_finalize (priv->engine);
 
   g_signal_connect_object (priv->engine, "changed",
                            G_CALLBACK (gtk_gl_area_queue_render), GTK_GL_AREA (self), G_CONNECT_SWAPPED);
+
+  EXB_EXIT;
 }
 
 static gboolean

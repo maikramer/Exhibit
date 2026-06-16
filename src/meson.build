@@ -10,8 +10,6 @@ conf.set('VERSION', meson.project_version())
 conf.set('localedir', get_option('prefix') / get_option('localedir'))
 conf.set('pkgdatadir', pkgdatadir)
 
-subdir('libexhibit')
-
 configure_file(
   input: 'exhibit.in',
   output: 'exhibit',
