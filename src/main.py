@@ -20,14 +20,11 @@
 import sys
 import os
 import webbrowser
-import f3d
 
 from gi.repository import Gtk, Gio, Adw, GLib
 from .window import Viewer3dWindow
 
 from gettext import gettext as _
-
-from . import logger_lib
 
 
 class Viewer3dApplication(Adw.Application):
@@ -41,10 +38,8 @@ class Viewer3dApplication(Adw.Application):
             flags=Gio.ApplicationFlags.HANDLES_OPEN,
         )
 
-        logger_lib.init()
-
-        self.lib_info = f3d.Engine.get_lib_info()
-        self.backends = f3d.Engine.get_rendering_backend_list()
+        self.lib_info = "" #f3d.Engine.get_lib_info()
+        # self.backends = f3d.Engine.get_rendering_backend_list()
 
         self.create_action("quit", lambda *_: self.quit(), ["<primary>q"])
         self.create_action("about", self.on_about_action)

@@ -2,6 +2,13 @@ pkgdatadir = get_option('prefix') / get_option('datadir') / meson.project_name()
 moduledir = pkgdatadir / 'exhibit'
 gnome = import('gnome')
 
+gnome.compile_resources('exhibit',
+  'exhibit.gresource.xml',
+  gresource_bundle: true,
+  install: true,
+  install_dir: pkgdatadir,
+)
+
 python = import('python')
 
 conf = configuration_data()
@@ -23,11 +30,9 @@ exhibit_sources = [
   '__init__.py',
   'main.py',
   'window.py',
-  'vector_math.py',
-  'logger_lib.py',
-  'settings_manager.py',
+  'settings.py',
+  'settings_dialog.py',
+  'file_row.py'
 ]
 
 install_data(exhibit_sources, install_dir: moduledir)
-
-install_subdir('.', install_dir: moduledir)
