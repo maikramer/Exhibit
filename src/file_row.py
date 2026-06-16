@@ -46,7 +46,7 @@ class ImageThumbnail(Gtk.FlowBoxChild):
         self.set_tooltip_text(base_name)
 
 
-@Gtk.Template(resource_path="/io/github/nokse22/Exhibit/ui/file_row.ui")
+@Gtk.Template(resource_path="/io/github/nokse22/Exhibit/file_row.ui")
 class FileRow(Adw.PreferencesRow):
     __gtype_name__ = "FileRow"
 
@@ -66,6 +66,8 @@ class FileRow(Adw.PreferencesRow):
     def __init__(self):
         super().__init__()
 
+        self._file = None
+
         self.title = ""
 
         self.suggested_files_n = 0
@@ -80,6 +82,21 @@ class FileRow(Adw.PreferencesRow):
 
         self.drop_target.set_gtypes([Gdk.FileList])
 
+    @GObject.Property(type=Gio.File, default=None, flags=GObject.ParamFlags.READWRITE | GObject.ParamFlags.EXPLICIT_NOTIFY)
+    def file(self):
+        return self._file
+
+    @file.setter
+    def file(self, value):
+        if self._file == value:
+            return
+        self._file = value
+        if value is not None:
+            self.set_filename(value.get_path())
+        else:
+            self.on_delete_clicked()
+        self.notify("file")
+
     def on_open_clicked(self, btn):
         self.on_open_file_dialog()
 
@@ -87,8 +104,8 @@ class FileRow(Adw.PreferencesRow):
         if filepath == "":
             self.on_delete_clicked()
             return
-
         self.filepath = filepath
+        self._file = Gio.File.new_for_path(filepath)
         filename = os.path.basename(filepath)
         self.filename_label.set_label(filename)
         self.filename_label.set_visible(True)

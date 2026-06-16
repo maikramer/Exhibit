@@ -270,6 +270,7 @@
                                                 <property name="hexpand">True</property>
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Translucency</property>
+                                                <property name="active" bind-source="engine" bind-property="blending" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                             <child>
@@ -278,6 +279,7 @@
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Tone Mapping</property>
                                                 <property name="subtitle" translatable="yes">Map colors properly to the monitor colors</property>
+                                                <property name="active" bind-source="engine" bind-property="tone-mapping" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                             <child>
@@ -286,6 +288,7 @@
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Ambient Occlusion</property>
                                                 <property name="subtitle" translatable="yes">Provides approximate shadows</property>
+                                                <property name="active" bind-source="engine" bind-property="ambient-occlusion" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                             <child>
@@ -293,6 +296,7 @@
                                                 <property name="hexpand">True</property>
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Anti Aliasing</property>
+                                                <property name="active" bind-source="engine" bind-property="anti-aliasing" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                             <child>
@@ -301,6 +305,7 @@
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Light with HDRI</property>
                                                 <property name="subtitle" translatable="yes">Light the scene using a the loaded HDRI or the default</property>
+                                                <property name="active" bind-source="engine" bind-property="hdri-ambient" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                             <child>
@@ -308,7 +313,7 @@
                                                 <property name="adjustment">
                                                   <object class="GtkAdjustment">
                                                     <property name="upper">50.0</property>
-                                                    <property name="value">1.0</property>
+                                                    <property name="value" bind-source="engine" bind-property="light-intensity" bind-flags="bidirectional | sync-create">1.0</property>
                                                     <property name="step-increment">0.1</property>
                                                   </object>
                                                 </property>
@@ -330,6 +335,7 @@
                                                 <property name="hexpand">True</property>
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Show All Edges</property>
+                                                <property name="active" bind-source="engine" bind-property="show-edges" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                             <child>
@@ -342,7 +348,7 @@
                                                   <object class="GtkAdjustment">
                                                     <property name="lower">1</property>
                                                     <property name="upper">10</property>
-                                                    <property name="value">1</property>
+                                                    <property name="value" bind-source="engine" bind-property="edges-width" bind-flags="bidirectional | sync-create">1</property>
                                                     <property name="step-increment">0.5</property>
                                                   </object>
                                                 </property>
@@ -357,6 +363,7 @@
                                                 <property name="hexpand">True</property>
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Show Point Sprites</property>
+                                                <property name="active" bind-source="engine" bind-property="show-sprites" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                             <child>
@@ -379,7 +386,7 @@
                                                   <object class="GtkAdjustment">
                                                     <property name="lower">0</property>
                                                     <property name="upper">10</property>
-                                                    <property name="value">1</property>
+                                                    <property name="value" bind-source="engine" bind-property="sprites-size" bind-flags="bidirectional | sync-create">1</property>
                                                     <property name="step-increment">1</property>
                                                   </object>
                                                 </property>
@@ -392,7 +399,7 @@
                                                   <object class="GtkAdjustment">
                                                     <property name="lower">0</property>
                                                     <property name="upper">10</property>
-                                                    <property name="value">1</property>
+                                                    <property name="value" bind-source="engine" bind-property="point-size" bind-flags="bidirectional | sync-create">1</property>
                                                     <property name="step-increment">1</property>
                                                   </object>
                                                 </property>
@@ -435,7 +442,7 @@
                                                   <object class="GtkAdjustment">
                                                     <property name="lower">0</property>
                                                     <property name="upper">1</property>
-                                                    <property name="value">0</property>
+                                                    <property name="value" bind-source="engine" bind-property="model-metallic" bind-flags="bidirectional | sync-create">0</property>
                                                     <property name="step-increment">0.1</property>
                                                   </object>
                                                 </property>
@@ -451,7 +458,7 @@
                                                   <object class="GtkAdjustment">
                                                     <property name="lower">0</property>
                                                     <property name="upper">1</property>
-                                                    <property name="value">0.3</property>
+                                                    <property name="value" bind-source="engine" bind-property="model-roughness" bind-flags="bidirectional | sync-create">0.3</property>
                                                     <property name="step-increment">0.1</property>
                                                   </object>
                                                 </property>
@@ -468,7 +475,7 @@
                                                   <object class="GtkAdjustment">
                                                     <property name="lower">0</property>
                                                     <property name="upper">1</property>
-                                                    <property name="value">1</property>
+                                                    <property name="value" bind-source="engine" bind-property="model-opacity" bind-flags="bidirectional | sync-create">1</property>
                                                     <property name="step-increment">0.05</property>
                                                   </object>
                                                 </property>
@@ -507,7 +514,7 @@
                                                 <child>
                                                   <object class="GtkColorDialogButton" id="model_color_button">
                                                     <property name="valign">center</property>
-                                                    <property name="rgba">rgb(119,118,123)</property>
+                                                    <property name="rgba" bind-source="engine" bind-property="model-color" bind-flags="bidirectional | sync-create">rgb(246,97,81)</property>
                                                     <property name="dialog">
                                                       <object class="GtkColorDialog">
                                                         <property name="title" translatable="yes">Model Color</property>
@@ -525,6 +532,7 @@
                                             <child>
                                               <object class="AdwSwitchRow" id="armature_switch">
                                                 <property name="title" translatable="yes">Show Armature</property>
+                                                <property name="active" bind-source="engine" bind-property="show-armature" bind-flags="bidirectional | sync-create"></property>
                                               </object>
                                             </child>
                                           </object>
@@ -559,6 +567,7 @@
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">View Grid</property>
+                                            <property name="active" bind-source="engine" bind-property="show-grid" bind-flags="bidirectional | sync-create"></property>
                                           </object>
                                         </child>
                                         <child>
@@ -566,6 +575,7 @@
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">Grid Absolute</property>
+                                            <property name="active" bind-source="engine" bind-property="grid-absolute" bind-flags="bidirectional | sync-create"></property>
                                           </object>
                                         </child>
                                       </object>
@@ -581,6 +591,7 @@
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">HDRI as Background</property>
                                             <property name="subtitle" translatable="yes">Use the loaded HDRI or the default one as a background</property>
+                                            <property name="active" bind-source="engine" bind-property="hdri-skybox" bind-flags="bidirectional | sync-create"></property>
                                           </object>
                                         </child>
                                         <child>
@@ -588,6 +599,7 @@
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">HDRI Image</property>
+                                            <property name="file" bind-source="engine" bind-property="hdri-file" bind-flags="bidirectional | sync-create"></property>
                                           </object>
                                         </child>
                                         <child>
@@ -595,6 +607,7 @@
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">Blur Background</property>
+                                            <property name="active" bind-source="engine" bind-property="blur-background" bind-flags="bidirectional | sync-create"></property>
                                           </object>
                                         </child>
                                         <child>
@@ -606,7 +619,7 @@
                                               <object class="GtkAdjustment">
                                                 <property name="lower">5</property>
                                                 <property name="upper">120</property>
-                                                <property name="value">20</property>
+                                                <property name="value" bind-source="engine" bind-property="blur-coc" bind-flags="bidirectional | sync-create">20</property>
                                                 <property name="page-increment">10</property>
                                                 <property name="step-increment">1</property>
                                               </object>
@@ -635,7 +648,7 @@
                                             <child>
                                               <object class="GtkColorDialogButton" id="background_color_button">
                                                 <property name="valign">center</property>
-                                                <property name="rgba">rgb(246,97,81)</property>
+                                                <property name="rgba" bind-source="engine" bind-property="background-color" bind-flags="bidirectional | sync-create">rgb(246,97,81)</property>
                                                 <property name="dialog">
                                                   <object class="GtkColorDialog">
                                                     <property name="title" translatable="yes">Background Color</property>
@@ -678,6 +691,7 @@
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">Always Point Up</property>
+                                            <property name="active" bind-source="viewer" bind-property="always-point-up" bind-flags="bidirectional | sync-create"></property>
                                           </object>
                                         </child>
                                         <child>
@@ -687,16 +701,12 @@
                                             <property name="title" translatable="yes">Up Direction</property>
                                             <property name="subtitle" translatable="yes">Changing it will reload the file</property>
                                             <property name="model">
-                                              <object class="GtkStringList">
-                                                <items>
-                                                  <item translatable="yes">- X</item>
-                                                  <item translatable="yes">+ X</item>
-                                                  <item translatable="yes">- Y</item>
-                                                  <item translatable="yes">+ Y</item>
-                                                  <item translatable="yes">- Z</item>
-                                                  <item translatable="yes">+ Z</item>
-                                                </items>
+                                              <object class="AdwEnumListModel">
+                                                <property name="enum-type">ExbDirection</property>
                                               </object>
+                                            </property>
+                                            <property name="expression">
+                                              <lookup type="AdwEnumListItem" name="nick"/>
                                             </property>
                                           </object>
                                         </child>
@@ -709,10 +719,11 @@
                                           <object class="AdwSpinRow">
                                             <property name="title" translatable="yes">Animation Index</property>
                                             <property name="adjustment">
-                                              <object class="GtkAdjustment" id="animation_index_adj">
-                                                <property name="upper">99</property>
-                                                <property name="step-increment">1.0</property>
-                                              </object>
+                                               <object class="GtkAdjustment" id="animation_index_adj">
+                                                 <property name="upper">99</property>
+                                                 <property name="value" bind-source="engine" bind-property="animation-index" bind-flags="bidirectional | sync-create">0</property>
+                                                 <property name="step-increment">1.0</property>
+                                               </object>
                                             </property>
                                           </object>
                                         </child>
@@ -736,11 +747,7 @@
                                                   <object class="GtkScale">
                                                     <property name="digits">2</property>
                                                     <property name="hexpand">true</property>
-                                                    <property name="adjustment">
-                                                      <object class="GtkAdjustment" id="animation_time_adj">
-                                                        <property name="upper">20.0</property>
-                                                      </object>
-                                                    </property>
+                                                    <property name="adjustment" bind-source="engine" bind-property="animation-adjustment" bind-flags="sync-create"></property>
                                                   </object>
                                                 </child>
                                               </object>
@@ -859,10 +866,10 @@
                         <property name="content">
                           <object class="AdwToastOverlay" id="toast_overlay">
                             <property name="child">
-                              <object class="F3DViewer" id="f3d_viewer">
-                                <style>
-                                  <class name="fix-render"/>
-                                </style>
+                              <object class="ExbView" id="viewer">
+                                <property name="engine">
+                                  <object class="ExbEngine" id="engine"/>
+                                </property>
                               </object>
                             </property>
                           </object>
@@ -930,10 +937,10 @@
         <attribute name="label" translatable="yes">_Load New File</attribute>
         <attribute name="action">win.open-new</attribute>
       </item>
-      <!-- <item> -->
-      <!--   <attribute name="label" translatable="yes">_Add File to Scene</attribute> -->
-      <!--   <attribute name="action">win.add-new</attribute> -->
-      <!-- </item> -->
+      <item>
+        <attribute name="label" translatable="yes">_Add File to Scene</attribute>
+        <attribute name="action">win.add-new</attribute>
+      </item>
       <item>
         <attribute name="label" translatable="yes">_Export Image</attribute>
         <attribute name="action">win.save-as-image</attribute>
@@ -1006,108 +1013,4 @@
       </item>
     </section>
   </menu>
-  <object class="AdwDialog" id="save_dialog">
-    <property name="content-height">360</property>
-    <property name="content-width">360</property>
-    <property name="title">Save Settings</property>
-    <child>
-      <object class="AdwToolbarView">
-        <property name="content">
-          <object class="GtkScrolledWindow">
-            <property name="child">
-              <object class="AdwClamp">
-                <property name="child">
-                  <object class="GtkBox">
-                    <property name="orientation">vertical</property>
-                    <property name="spacing">12</property>
-                    <child>
-                      <object class="AdwPreferencesGroup">
-                        <child>
-                          <object class="AdwEntryRow" id="save_settings_name_entry">
-                            <property name="title">Name</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="AdwEntryRow" id="save_settings_extensions_entry">
-                            <property name="title">Extensions</property>
-                          </object>
-                        </child>
-                        <child>
-                          <object class="GtkLabel">
-                            <property name="label" translatable="yes">Comma separated list of the supported extensions</property>
-                            <property name="halign">start</property>
-                            <property name="margin-top">6</property>
-                            <style>
-                              <class name="dim-label"/>
-                              <class name="caption"/>
-                            </style>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkExpander" id="save_settings_expander">
-                        <property name="label">Settings</property>
-                        <child>
-                          <object class="GtkFrame">
-                            <property name="margin-top">6</property>
-                            <child>
-                              <object class="GtkColumnView" id="settings_column_view">
-                                <property name="reorderable">False</property>
-                                <property name="show-column-separators">True</property>
-                                <property name="show-row-separators">True</property>
-                                <child>
-                                  <object class="GtkColumnViewColumn" id="settings_column_view_name_column">
-                                    <property name="expand">True</property>
-                                    <property name="title">Setting</property>
-                                    <property name="factory">
-                                      <object class="GtkSignalListItemFactory"/>
-                                    </property>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkColumnViewColumn" id="settings_column_view_value_column">
-                                    <property name="expand">True</property>
-                                    <property name="title">Value</property>
-                                    <property name="factory">
-                                      <object class="GtkSignalListItemFactory"/>
-                                    </property>
-                                  </object>
-                                </child>
-                              </object>
-                            </child>
-                          </object>
-                        </child>
-                      </object>
-                    </child>
-                    <child>
-                      <object class="GtkButton" id="save_settings_button">
-                        <property name="halign">center</property>
-                        <property name="label">Save</property>
-                        <property name="valign">center</property>
-                        <property name="vexpand">True</property>
-                        <property name="sensitive">False</property>
-                        <style>
-                          <class name="pill"/>
-                          <class name="suggested-action"/>
-                        </style>
-                      </object>
-                    </child>
-                  </object>
-                </property>
-                <property name="margin-bottom">12</property>
-                <property name="margin-end">12</property>
-                <property name="margin-start">12</property>
-                <property name="margin-top">12</property>
-              </object>
-            </property>
-            <property name="hscrollbar-policy">never</property>
-          </object>
-        </property>
-        <child type="top">
-          <object class="AdwHeaderBar"/>
-        </child>
-      </object>
-    </child>
-  </object>
 </interface>
