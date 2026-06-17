@@ -223,9 +223,9 @@ _exb_engine_load_file (gpointer self)
 
   file_path = g_file_get_path (priv->file);
 
-  if (!file_path)
+  if (!file_path || !g_file_query_exists (priv->file, NULL))
     {
-      g_message ("ExbEngine: No file path");
+      g_message ("ExbEngine: Coudn't load file '%s'", file_path);
       EXB_RETURN (FALSE);
     }
 
@@ -368,7 +368,8 @@ exb_g_value_destroy (gpointer data)
 {
   GValue *value = data;
 
-  g_return_if_fail (G_IS_VALUE (value));
+  if(!G_IS_VALUE (value))
+    return;
 
   g_value_unset (value);
   g_free (value);
@@ -549,10 +550,8 @@ f3d_get_option (ExbEngine  *self,
 
   if (!priv->engine)
     {
-      if (copy_from_hash_table (priv->pending_options, option_id, value))
-        EXB_RETURN (TRUE);
-      else
-        EXB_RETURN (FALSE);
+      copy_from_hash_table (priv->pending_options, option_id, value);
+      EXB_RETURN (TRUE);
     }
 
   options = f3d_engine_get_options (priv->engine);
@@ -1406,6 +1405,21 @@ ExbEngine *
 exb_engine_new (void)
 {
   ExbEngine *engine = g_object_new (EXB_TYPE_ENGINE, NULL);
+
+  return engine;
+}
+
+/**
+ * exb_engine_new_standalone:
+ *
+ * Returns: (transfer full): A new #ExbEngine
+ */
+ExbEngine *
+exb_engine_new_standalone (void)
+{
+  ExbEngine *engine = g_object_new (EXB_TYPE_ENGINE, NULL);
+
+  _exb_engine_initialize (engine, TRUE);
 
   return engine;
 }

@@ -36,6 +36,7 @@ struct _ExbEngineClass
 };
 
 ExbEngine * exb_engine_new               (void);
+ExbEngine * exb_engine_new_standalone    (void);
 void        exb_engine_set_file          (ExbEngine *self,
                                           GFile     *file);
 void        exb_engine_set_size          (ExbEngine *self,

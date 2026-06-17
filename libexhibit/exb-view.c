@@ -202,7 +202,9 @@ exb_view_render (GtkGLArea    *gl_area,
 
   g_return_val_if_fail (EXB_IS_VIEW (self), TRUE);
 
+
   gtk_gl_area_make_current (gl_area);
+  _exb_engine_initialize (priv->engine, false);
 
   width = gtk_widget_get_width (GTK_WIDGET (gl_area));
   height = gtk_widget_get_height (GTK_WIDGET (gl_area));
@@ -344,7 +346,7 @@ exb_view_init (ExbView *self)
   gtk_gl_area_set_has_depth_buffer (GTK_GL_AREA (self), TRUE);
   gtk_gl_area_set_auto_render (GTK_GL_AREA (self), TRUE);
 
-  g_signal_connect_object (self, "realize",
+  g_signal_connect_object (self, "map",
                            G_CALLBACK (exb_view_realize), NULL, G_CONNECT_AFTER);
   g_signal_connect_object (self, "unrealize",
                            G_CALLBACK (exb_view_unrealize), NULL, G_CONNECT_DEFAULT);
