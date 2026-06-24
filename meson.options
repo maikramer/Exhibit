@@ -1,0 +1,5 @@
+option(
+    'thumbnailer',
+    type: 'boolean',
+    value: true,
+)
