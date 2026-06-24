@@ -23,6 +23,7 @@
 
 #include <gtk/gtk.h>
 #include <graphene.h>
+#include <libdex.h>
 
 G_BEGIN_DECLS
 
@@ -37,7 +38,7 @@ struct _ExbEngineClass
 
 ExbEngine * exb_engine_new               (void);
 ExbEngine * exb_engine_new_standalone    (void);
-void        exb_engine_set_file          (ExbEngine *self,
+DexFuture * exb_engine_load_file         (ExbEngine *self,
                                           GFile     *file);
 void        exb_engine_set_size          (ExbEngine *self,
                                           uint       width,

@@ -28,6 +28,8 @@
 
 #include "math.h"
 
+#include <libdex.h>
+
 #include <f3d/camera_c_api.h>
 #include <f3d/engine_c_api.h>
 #include <f3d/image_c_api.h>
@@ -43,6 +45,8 @@ typedef struct
   f3d_camera_t *camera;
 
   bool orthographic;
+  bool is_loading;
+  bool standalone;
 
   uint width;
   uint height;
@@ -64,6 +68,7 @@ enum
   PROP_WIDTH,
   PROP_HEIGHT,
   PROP_FILE,
+  PROP_STANDALONE,
   PROP_UP,
   PROP_ORTHOGRAPHIC,
   PROP_SHOW_GRID,
@@ -110,6 +115,9 @@ enum
   PROP_ANIMATION_INDEX,
   PROP_ANIMATIONS_N,
   PROP_ANIMATION_ADJUSTMENT,
+  PROP_SCIVIS,
+  PROP_SCIVIS_COMPONENT,
+  PROP_SCIVIS_CELLS,
   N_PROPS
 };
 
@@ -173,9 +181,9 @@ static const OptionMap option_maps[] = {
   { "show-sprites",           "model.point_sprites.enable"        },
   { "sprites-size",           "model.point_sprites.size"          },
   { "sprites-type",           "model.point_sprites.type"          },
-  /* { "scivis",                 "model.scivis.enable"               }, */
-  /* { "scivis-component",       "model.scivis.component"            }, */
-  /* { "cells",                  "model.scivis.cells"                }, */
+  { "scivis",                 "model.scivis.enable"               },
+  { "scivis-component",       "model.scivis.component"            },
+  { "scivis-cells",           "model.scivis.cells"                },
   /* { "scalar",                 "model.scivis.array_name"           }, */
   { "up",                     "scene.up_direction"                },
   { "orthographic",           "scene.camera.orthographic"         },
@@ -187,6 +195,20 @@ static const gsize option_maps_len = G_N_ELEMENTS(option_maps);
 static const char *overridable_options[] = {"model-color"};
 
 static const gsize overridable_options_len = G_N_ELEMENTS(overridable_options);
+
+typedef struct _LoadFileData
+{
+  GFile     *file;
+  ExbEngine *engine;
+} LoadFileData;
+
+static void
+load_file_data_free (LoadFileData *data)
+{
+  g_object_unref (&data->file);
+  g_object_unref (&data->engine);
+  g_free (data);
+}
 
 void
 update_animations_data (ExbEngine *self)
@@ -211,48 +233,67 @@ update_animations_data (ExbEngine *self)
   EXB_EXIT;
 }
 
-gboolean
-_exb_engine_load_file (gpointer self)
+static gboolean
+exb_engine_load_file_finish_func (gpointer user_data)
 {
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *file_path = NULL;
+  ExbEngine *self;
+  ExbEnginePrivate *priv;
+  LoadFileData *data = user_data;
 
   EXB_ENTRY;
 
-  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+  self = data->engine;
+  priv = exb_engine_get_instance_private (self);
 
-  file_path = g_file_get_path (priv->file);
+  f3d_camera_reset_to_bounds (priv->camera, 0.9);
+  update_animations_data (self);
 
-  if (!file_path || !g_file_query_exists (priv->file, NULL))
-    {
-      g_message ("ExbEngine: Coudn't load file '%s'", file_path);
-      EXB_RETURN (FALSE);
-    }
+  priv->is_loading = FALSE;
 
-  if (!priv->scene)
-    {
-      g_message ("ExbEngine: No scene");
-      EXB_RETURN (FALSE);
-    }
+  g_set_object (&priv->file, data->file);
+  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+
+  EXB_RETURN (G_SOURCE_REMOVE);
+}
+
+static DexFuture *
+exb_engine_load_file_thread_func (gpointer user_data)
+{
+  ExbEngine *self;
+  ExbEnginePrivate *priv;
+  LoadFileData *data = user_data;
+  g_autofree char *file_path = NULL;
+
+  EXB_ENTRY;
+
+  self = data->engine;
+  priv = exb_engine_get_instance_private (self);
+
+  file_path = g_file_get_path (data->file);
 
   g_message ("ExbEngine: Loading file: %s", file_path);
 
-  if (!f3d_scene_supports (priv->scene, file_path))
-    {
-      g_message ("ExbEngine: File not supported");
-      EXB_RETURN (FALSE);
-    }
+  priv->is_loading = TRUE;
 
   f3d_scene_clear (priv->scene);
-  f3d_scene_add (priv->scene, file_path);
+  if (!f3d_scene_add (priv->scene, file_path))
+    {
+      EXB_RETURN (dex_future_new_for_error (g_error_new (G_IO_ERROR,
+                                                         G_IO_ERROR_FAILED,
+                                                         "Error while loading file '%s'",
+                                                         file_path)));
+    }
+  else
+    {
+      LoadFileData *finish_data = g_new0 (LoadFileData, 1);
 
-  f3d_camera_reset_to_bounds (priv->camera, 0.9);
+      finish_data->engine = self;
+      finish_data->file = g_object_ref (data->file);
+      g_idle_add (exb_engine_load_file_finish_func, finish_data);
 
-  update_animations_data (self);
-
-  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
-
-  EXB_RETURN (FALSE);
+      EXB_RETURN (dex_future_new_for_boolean (TRUE));
+    }
 }
 
 static gboolean
@@ -899,6 +940,9 @@ exb_engine_get_property (GObject    *object,
     case PROP_FILE:
       g_value_set_object (value, exb_engine_get_file (self));
       break;
+    case PROP_STANDALONE:
+      g_value_set_boolean (value, priv->standalone);
+      break;
     case PROP_OVERRIDE_MODEL_COLOR:
       g_value_set_boolean (value, !g_hash_table_contains (priv->original_options, "model-color"));
       break;
@@ -939,9 +983,6 @@ exb_engine_set_property (GObject      *object,
       break;
     case PROP_HEIGHT:
       exb_engine_set_size (self, priv->width, g_value_get_uint (value));
-      break;
-    case PROP_FILE:
-      exb_engine_set_file (self, g_value_get_object (value));
       break;
     case PROP_OVERRIDE_MODEL_COLOR:
       if (!g_value_get_boolean (value))
@@ -984,8 +1025,7 @@ exb_engine_finalize (GObject *object)
 }
 
 void
-_exb_engine_initialize (ExbEngine *self,
-                        bool       standalone)
+_exb_engine_initialize (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
@@ -993,7 +1033,7 @@ _exb_engine_initialize (ExbEngine *self,
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
-  if (standalone)
+  if (priv->standalone)
     {
       g_message ("ExbViewer: Initializing F3D with automatic (offscreen)");
       priv->engine = f3d_engine_create (true);
@@ -1033,7 +1073,7 @@ _exb_engine_initialize (ExbEngine *self,
     }
 
   if (priv->file)
-    _exb_engine_load_file (self);
+    exb_engine_load_file (self, priv->file);
 
   EXB_EXIT;
 }
@@ -1058,6 +1098,18 @@ _exb_engine_finalize (ExbEngine *self)
   EXB_EXIT;
 }
 
+bool
+_exb_engine_is_loading (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
+
+  EXB_RETURN (priv->is_loading);
+}
+
 static void
 exb_engine_init (ExbEngine *self)
 {
@@ -1066,6 +1118,9 @@ exb_engine_init (ExbEngine *self)
   EXB_ENTRY;
 
   g_message ("ExbEngine: Initializing instance");
+
+  priv->is_loading = FALSE;
+  priv->standalone = FALSE;
 
   priv->pending_options = g_hash_table_new_full (g_str_hash,
                                                  g_str_equal,
@@ -1117,7 +1172,13 @@ exb_engine_class_init (ExbEngineClass *klass)
       g_param_spec_object ("file",
                            NULL, NULL,
                            G_TYPE_FILE,
-                           G_PARAM_READWRITE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+                           G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_STANDALONE] =
+      g_param_spec_boolean ("standalone",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
   properties[PROP_ORTHOGRAPHIC] =
       g_param_spec_boolean ("orthographic",
@@ -1393,6 +1454,24 @@ exb_engine_class_init (ExbEngineClass *klass)
                          exb_blending_mode_get_type (),
                          EXB_BLENDING_MODE_DDP, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  properties[PROP_SCIVIS] =
+      g_param_spec_boolean ("scivis",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_SCIVIS_COMPONENT] =
+      g_param_spec_int ("scivis-component",
+                        NULL, NULL,
+                        -2, -1, -1,
+                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  properties[PROP_SCIVIS_CELLS] =
+      g_param_spec_boolean ("scivis-cells",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   g_object_class_install_properties (object_class, N_PROPS, properties);
 }
 
@@ -1418,8 +1497,11 @@ ExbEngine *
 exb_engine_new_standalone (void)
 {
   ExbEngine *engine = g_object_new (EXB_TYPE_ENGINE, NULL);
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (engine);
 
-  _exb_engine_initialize (engine, TRUE);
+  priv->standalone = TRUE;
+
+  _exb_engine_initialize (engine);
 
   return engine;
 }
@@ -1439,6 +1521,9 @@ exb_engine_render (ExbEngine *self)
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (priv->window != NULL, FALSE);
+
+  if (priv->is_loading)
+    EXB_RETURN (FALSE);
 
   f3d_window_render (priv->window);
 
@@ -1476,7 +1561,7 @@ exb_engine_set_size (ExbEngine *self,
  * exb_engine_get_animations_n:
  * @self: a #ExbEngine
  *
- * Returns: (transfer none): The number of animations
+ * Returns: The number of animations
  */
 int
 exb_engine_get_animations_n (ExbEngine *self)
@@ -1495,26 +1580,59 @@ exb_engine_get_animations_n (ExbEngine *self)
 }
 
 /**
- * exb_engine_set_file:
+ * exb_engine_load_file:
  * @self: a #ExbEngine
  * @file: a #GFile
+ *
+ * Returns: (transfer full): a [class@Dex.Future] that resolves to a boolean
  */
-void
-exb_engine_set_file(ExbEngine *self,
-                    GFile     *file)
+DexFuture *
+exb_engine_load_file (ExbEngine *self,
+                      GFile     *file)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  LoadFileData *data = g_new0 (LoadFileData, 1);
+  g_autofree char *file_path = NULL;
+  DexFuture *future;
 
   EXB_ENTRY;
 
-  g_return_if_fail (EXB_IS_ENGINE (self));
-  g_return_if_fail (G_IS_FILE (file));
+  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
+  g_return_val_if_fail (G_IS_FILE (file), NULL);
 
-  g_set_object (&priv->file, file);
-  _exb_engine_load_file (self);
-  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
+  data->file = g_object_ref (file);
+  data->engine = g_object_ref (self);
 
-  EXB_EXIT;
+  file_path = g_file_get_path (data->file);
+
+  if (!file_path || !g_file_query_exists (data->file, NULL))
+    {
+      EXB_RETURN (dex_future_new_for_error (g_error_new (G_IO_ERROR,
+                                                         G_IO_ERROR_FAILED,
+                                                         "Coudn't load file '%s'",
+                                                         file_path)));
+    }
+
+  if (!priv->scene)
+    {
+      g_set_object (&priv->file, data->file);
+      EXB_RETURN (dex_future_new_for_boolean (TRUE));
+    }
+
+  if (!f3d_scene_supports (priv->scene, file_path))
+    {
+      EXB_RETURN (dex_future_new_for_error (g_error_new (G_IO_ERROR,
+                                                         G_IO_ERROR_FAILED,
+                                                         "File not supported '%s'",
+                                                         file_path)));
+    }
+
+  future = dex_thread_spawn ("[load-file]",
+                             exb_engine_load_file_thread_func,
+                             data,
+                             (GDestroyNotify) load_file_data_free);
+
+  EXB_RETURN (future);
 }
 
 /**
@@ -1524,7 +1642,7 @@ exb_engine_set_file(ExbEngine *self,
  * Returns: (transfer none): A GFile
  */
 GFile *
-exb_engine_get_file(ExbEngine *self)
+exb_engine_get_file (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
@@ -1555,6 +1673,9 @@ exb_engine_render_texture (ExbEngine *self)
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (priv->window != NULL, NULL);
+
+  if (priv->is_loading)
+    EXB_RETURN (NULL);
 
   img = f3d_window_render_to_image (priv->window, FALSE);
   if (!img)

@@ -43,6 +43,8 @@ typedef struct
   double drag_prev_x;
   double drag_prev_y;
 
+  bool engine_is_initialized;
+
 } ExbViewPrivate;
 
 G_DEFINE_FINAL_TYPE_WITH_PRIVATE (ExbView, exb_view, GTK_TYPE_GL_AREA)
@@ -58,41 +60,7 @@ enum
 
 static GParamSpec *properties[N_PROPS];
 
-/**
- * exb_view_get_engine:
- * @self: a #ExbView
- *
- * Returns: (transfer none): The #ExbEngine
- */
-ExbEngine *
-exb_view_get_engine (ExbView *self)
-{
-  ExbViewPrivate *priv = exb_view_get_instance_private (self);
-  return priv->engine;
-}
-
-/**
- * exb_view_set_engine:
- * @self: a #ExbView
- * @engine: a #ExbEngine
- *
- */
-void
-exb_view_set_engine (ExbView   *self,
-                     ExbEngine *engine)
-{
-  ExbViewPrivate *priv = exb_view_get_instance_private (self);
-
-  g_return_if_fail (EXB_IS_VIEW (self));
-  g_return_if_fail (EXB_IS_ENGINE (engine));
-
-  g_set_object (&priv->engine, engine);
-
-  g_signal_connect_object (priv->engine, "changed",
-                           G_CALLBACK (gtk_gl_area_queue_render),
-                           GTK_GL_AREA (self),
-                           G_CONNECT_SWAPPED);
-}
+void exb_view_set_engine (ExbView *self, ExbEngine *engine);
 
 static void
 exb_view_get_property (GObject    *object,
@@ -164,19 +132,6 @@ exb_view_dispose (GObject *object)
 }
 
 static void
-exb_view_realize (GtkWidget *widget)
-{
-  ExbView *self = EXB_VIEW (widget);
-  ExbViewPrivate *priv = exb_view_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  _exb_engine_initialize (priv->engine, false);
-
-  EXB_EXIT;
-}
-
-static void
 exb_view_unrealize (GtkWidget *widget)
 {
   ExbView *self = EXB_VIEW (widget);
@@ -200,11 +155,17 @@ exb_view_render (GtkGLArea    *gl_area,
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
   uint width, height;
 
+  EXB_ENTRY;
+
   g_return_val_if_fail (EXB_IS_VIEW (self), TRUE);
 
-
   gtk_gl_area_make_current (gl_area);
-  _exb_engine_initialize (priv->engine, false);
+
+  if (!priv->engine_is_initialized)
+    {
+      _exb_engine_initialize (priv->engine);
+      priv->engine_is_initialized = TRUE;
+    }
 
   width = gtk_widget_get_width (GTK_WIDGET (gl_area));
   height = gtk_widget_get_height (GTK_WIDGET (gl_area));
@@ -212,24 +173,21 @@ exb_view_render (GtkGLArea    *gl_area,
   exb_engine_set_size(priv->engine, width, height);
   exb_engine_render(priv->engine);
 
-  return TRUE;
+  EXB_RETURN (TRUE);
 }
 
 static void
 exb_view_snapshot (GtkWidget   *widget,
                    GtkSnapshot *snapshot)
 {
-  GdkRGBA color = { 0.0f, 0.0f, 0.0f, 1.0f }; // opaque black
+  GdkRGBA color = { 0.0f, 0.0f, 0.0f, 1.0f };
 
   gtk_snapshot_append_color (snapshot,
                               &color,
-                              &GRAPHENE_RECT_INIT (
-                                0, 0,
-                                gtk_widget_get_width (widget),
-                                gtk_widget_get_height (widget)
-                              ));
+                              &GRAPHENE_RECT_INIT (0, 0,
+                                                   gtk_widget_get_width (widget),
+                                                   gtk_widget_get_height (widget)));
 
-  // Chain up so GtkGLArea does its normal GL rendering on top
   GTK_WIDGET_CLASS (exb_view_parent_class)->snapshot (widget, snapshot);
 }
 
@@ -341,13 +299,12 @@ exb_view_init (ExbView *self)
 
   priv->always_point_up = TRUE;
   priv->interactive = TRUE;
+  priv->engine_is_initialized = FALSE;
 
   gtk_gl_area_set_allowed_apis (GTK_GL_AREA (self), GDK_GL_API_GL);
   gtk_gl_area_set_has_depth_buffer (GTK_GL_AREA (self), TRUE);
   gtk_gl_area_set_auto_render (GTK_GL_AREA (self), TRUE);
 
-  g_signal_connect_object (self, "map",
-                           G_CALLBACK (exb_view_realize), NULL, G_CONNECT_AFTER);
   g_signal_connect_object (self, "unrealize",
                            G_CALLBACK (exb_view_unrealize), NULL, G_CONNECT_DEFAULT);
   g_signal_connect_object (self, "render",
@@ -420,4 +377,42 @@ ExbView *
 exb_view_new (void)
 {
   return g_object_new (EXB_TYPE_VIEW, NULL);
+}
+
+/**
+ * exb_view_get_engine:
+ * @self: a #ExbView
+ *
+ * Returns: (transfer none): The #ExbEngine
+ */
+ExbEngine *
+exb_view_get_engine (ExbView *self)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  return priv->engine;
+}
+
+/**
+ * exb_view_set_engine:
+ * @self: a #ExbView
+ * @engine: a #ExbEngine
+ *
+ */
+void
+exb_view_set_engine (ExbView   *self,
+                     ExbEngine *engine)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  g_return_if_fail (EXB_IS_VIEW (self));
+  g_return_if_fail (EXB_IS_ENGINE (engine));
+
+  g_set_object (&priv->engine, engine);
+
+  priv->engine_is_initialized = FALSE;
+
+  g_signal_connect_object (priv->engine, "changed",
+                           G_CALLBACK (gtk_gl_area_queue_render),
+                           GTK_GL_AREA (self),
+                           G_CONNECT_SWAPPED);
 }

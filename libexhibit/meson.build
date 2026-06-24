@@ -8,7 +8,8 @@ libexhibit_deps = [
   dependency('glib-2.0'),
   dependency('gobject-2.0'),
   dependency('gtk4'),
-  dependency('graphene-1.0')
+  dependency('graphene-1.0'),
+  dependency('libdex-1'),
 ]
 
 # If we found the dependencies via pkgconfig, use them
@@ -70,7 +71,7 @@ gnome.generate_gir(
   nsversion: '0',
   symbol_prefix: 'exb',
   identifier_prefix: 'Exb',
-  includes: ['GObject-2.0', 'GLib-2.0', 'Gtk-4.0'],
+  includes: ['GObject-2.0', 'GLib-2.0', 'Gtk-4.0', 'Dex-1'],
   install: true,
   install_dir_gir: pkggirdir,
   install_dir_typelib: pkgtypelibdir,
