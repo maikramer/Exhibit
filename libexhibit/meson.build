@@ -24,6 +24,8 @@ libexhibit_sources = [
   'exb-engine.c',
   'exb-utils.c',
   'exb-global.c',
+  'exb-preset.c',
+  'exb-presets.c',
 ]
 
 libexhibit_headers = [
@@ -31,6 +33,8 @@ libexhibit_headers = [
   'exb-engine.h',
   'exb-utils.h',
   'exb-global.h',
+  'exb-preset.h',
+  'exb-presets.h',
 ]
 
 libexhibit_enums = gnome.mkenums_simple(
