@@ -42,9 +42,22 @@ libexhibit_enums = gnome.mkenums_simple(
   sources : libexhibit_headers
 )
 
-pkglibdir_abs = join_paths(get_option('prefix'), get_option('libdir'), 'exhibit')
-pkggirdir = join_paths(get_option('datadir'), 'gir-1.0')
+prefix = get_option('prefix')
+
+datadir = join_paths(prefix, get_option('datadir'))
+pkglibdir_abs = join_paths(prefix, get_option('libdir'), 'exhibit')
+pkggirdir = join_paths(datadir, 'gir-1.0')
 pkgtypelibdir = join_paths(get_option('libdir'), 'girepository-1.0')
+pkgdatadir = join_paths(prefix, pkgdatadir)
+presetsdir = join_paths(datadir, 'libexhibit', 'presets')
+
+config_h = configuration_data()
+config_h.set_quoted('DATADIR', datadir)
+
+configure_file(
+         output: 'config.h',
+  configuration: config_h
+)
 
 libexhibit = library(
   'exhibit',
@@ -57,7 +70,7 @@ libexhibit = library(
   soversion: 0,
   c_args: [
     '-DPKGLIBDIR="@0@"'.format(pkglibdir_abs),
-    '-DPKGDATADIR="@0@"'.format(join_paths(get_option('prefix'), pkgdatadir))
+    '-DPKGDATADIR="@0@"'.format(pkgdatadir)
   ],
   link_args: ['-lm']
 )
@@ -79,4 +92,17 @@ gnome.generate_gir(
   install: true,
   install_dir_gir: pkggirdir,
   install_dir_typelib: pkgtypelibdir,
+)
+
+preset_files = files(
+  'presets/3d_printing.ini',
+  'presets/general.ini',
+  'presets/mechanical.ini',
+  'presets/point_cloud.ini',
+  'presets/splat.ini',
+)
+
+install_data(
+  preset_files,
+  install_dir: presetsdir,
 )

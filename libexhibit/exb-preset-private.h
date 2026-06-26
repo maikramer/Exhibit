@@ -1,5 +1,5 @@
 /*
- * exb-presets.h
+ * exb-preset-private.h
  *
  * Copyright 2026 Nokse <nokse@posteo.com>
  *
@@ -21,22 +21,12 @@
 
 #pragma once
 
-#include <gio/gio.h>
-
 #include "exb-preset.h"
+#include "exb-engine.h"
 
 G_BEGIN_DECLS
 
-#define EXB_TYPE_PRESETS (exb_presets_get_type ())
-
-G_DECLARE_FINAL_TYPE (ExbPresets, exb_presets, EXB, PRESETS, GObject)
-
-ExbPresets *exb_presets_new             (void);
-ExbPresets *exb_presets_new_with_paths  (const char * const *paths);
-
-ExbPreset  *exb_presets_lookup          (ExbPresets  *self,
-                                         const char  *name);
-ExbPreset  *exb_presets_get_default_for (ExbPresets  *self,
-                                         const char  *filename);
+bool _exb_preset_apply (ExbPreset *self,
+                        ExbEngine *engine);
 
 G_END_DECLS

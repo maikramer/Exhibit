@@ -25,6 +25,8 @@
 #include <graphene.h>
 #include <libdex.h>
 
+#include "exb-preset.h"
+
 G_BEGIN_DECLS
 
 #define EXB_TYPE_ENGINE (exb_engine_get_type())
@@ -60,5 +62,7 @@ void        exb_engine_rotate_with_limit (ExbEngine *self,
                                           double     dx,
                                           double     dy);
 void        exb_engine_reset_camera      (ExbEngine *self);
+void        exb_engine_apply_preset      (ExbEngine *self,
+                                          ExbPreset *preset);
 
 G_END_DECLS

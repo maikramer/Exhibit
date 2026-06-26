@@ -19,12 +19,14 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
-#include "exb-engine.h"
 #include "exb-utils.h"
 #include "exb-utils-private.h"
 #include "exb-enums.h"
 #include "exb-debug.h"
 #include "exb-global.h"
+#include "exb-preset.h"
+#include "exb-preset-private.h"
+#include "exb-engine.h"
 
 #include "math.h"
 
@@ -1866,4 +1868,19 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   f3d_up_dir[1] = graphene_vec3_get_y (&world_up);
   f3d_up_dir[2] = graphene_vec3_get_z (&world_up);
   f3d_camera_set_view_up (priv->camera, f3d_up_dir);
+}
+
+/**
+ * exb_engine_apply_preset:
+ * @self: a #ExbEngine
+ *
+ */
+void
+exb_engine_apply_preset (ExbEngine *self,
+                         ExbPreset *preset)
+{
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (EXB_IS_PRESET (preset));
+
+  _exb_preset_apply (preset, self);
 }
