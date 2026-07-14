@@ -23,6 +23,7 @@ import f3d
 
 from ..vector_math import p_dist, v_abs, v_norm, v_add, v_sub, v_mul, v_dot_p
 from .. import logger_lib
+from ..meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
 
 up_dirs_vector = {
     "-X": (-1.0, 0.0, 0.0),
@@ -298,6 +299,13 @@ class F3DViewer(Gtk.GLArea):
     def supports(self, filepath):
         return self.scene.supports(filepath)
 
+    def _prepare_filepath(self, filepath):
+        try:
+            return prepare_glb_for_load(filepath)
+        except MeshoptError as e:
+            self.logger.error(f"Error while decompressing meshopt GLB: {e}")
+            return None, None
+
     def load_file(self, filepath):
         if self.settings["render.hdri.ambient"]:
             f3d_options = {"render.hdri.ambient": False}
@@ -305,11 +313,17 @@ class F3DViewer(Gtk.GLArea):
 
         self.scene.clear()
 
+        load_path, meshopt_temp = self._prepare_filepath(filepath)
+        if load_path is None:
+            return False
+
         try:
-            self.scene.add(filepath)
+            self.scene.add(load_path)
         except Exception as e:
             self.logger.error(f"Error while loading file: {e}")
             return False
+        finally:
+            cleanup_decompressed(meshopt_temp)
 
         self.notify("lower-time-range")
         self.notify("upper-time-range")
@@ -321,11 +335,17 @@ class F3DViewer(Gtk.GLArea):
             f3d_options = {"render.hdri.ambient": False}
             self.engine.options.update(f3d_options)
 
+        load_path, meshopt_temp = self._prepare_filepath(filepath)
+        if load_path is None:
+            return False
+
         try:
-            self.scene.add(filepath)
+            self.scene.add(load_path)
         except Exception as e:
             self.logger.error(f"Error while loading file: {e}")
             return False
+        finally:
+            cleanup_decompressed(meshopt_temp)
 
         self.notify("lower-time-range")
         self.notify("upper-time-range")

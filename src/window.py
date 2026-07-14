@@ -28,6 +28,7 @@ from wand.image import Image
 
 from . import logger_lib
 from .settings_manager import WindowSettings
+from .meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
 
 import f3d
 
@@ -886,18 +887,30 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self.logger.debug(f"best settings is {settings}")
             self.change_setting_state(GLib.Variant("s", settings))
 
-        if self.f3d_viewer.supports(filepath):
-            if add_file:
-                if not self.f3d_viewer.add_file(filepath):
-                    GLib.idle_add(self.on_file_not_opened, filepath)
-                    return
-            else:
-                if not self.f3d_viewer.load_file(filepath):
-                    GLib.idle_add(self.on_file_not_opened, filepath)
-                    return
-        else:
+        load_path = filepath
+        meshopt_temp = None
+        try:
+            load_path, meshopt_temp = prepare_glb_for_load(filepath)
+        except MeshoptError as e:
+            self.logger.error(f"Error while decompressing meshopt GLB: {e}")
             GLib.idle_add(self.on_file_not_opened, filepath)
             return
+
+        try:
+            if self.f3d_viewer.supports(load_path):
+                if add_file:
+                    if not self.f3d_viewer.add_file(load_path):
+                        GLib.idle_add(self.on_file_not_opened, filepath)
+                        return
+                else:
+                    if not self.f3d_viewer.load_file(load_path):
+                        GLib.idle_add(self.on_file_not_opened, filepath)
+                        return
+            else:
+                GLib.idle_add(self.on_file_not_opened, filepath)
+                return
+        finally:
+            cleanup_decompressed(meshopt_temp)
 
         if preserve_orientation:
             self.f3d_viewer.set_camera_state(camera_state)

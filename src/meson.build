@@ -26,6 +26,7 @@ exhibit_sources = [
   'vector_math.py',
   'logger_lib.py',
   'settings_manager.py',
+  'meshopt_decompress.py',
 ]
 
 install_data(exhibit_sources, install_dir: moduledir)
