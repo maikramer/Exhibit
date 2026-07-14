@@ -83,7 +83,7 @@ class F3DViewer(Gtk.GLArea):
         "grid-subdivisions": "render.grid.subdivisions",
         "grid-color": "render.grid.color",
         "scalar": "model.scivis.array_name",  # rename to scivis-name
-        "animation-index": "scene.animation.index",
+        "animation-index": "scene.animation.indices",
     }
 
     def __init__(self, *args):
@@ -281,6 +281,8 @@ class F3DViewer(Gtk.GLArea):
         for key, value in options.items():
             if key in self.keys:
                 f3d_key = self.keys[key]
+                if key == "animation-index" and not isinstance(value, (list, tuple)):
+                    value = [int(value)]
                 self.settings[f3d_key] = value
                 f3d_options[f3d_key] = value
 
@@ -288,6 +290,16 @@ class F3DViewer(Gtk.GLArea):
         if self.engine:
             self.engine.options.update(f3d_options)
             self.queue_render()
+
+    def available_animations(self):
+        if not self.scene:
+            return 0
+        return int(self.scene.available_animations())
+
+    def get_animation_names(self):
+        if not self.scene:
+            return []
+        return list(self.scene.get_animation_names())
 
     def render_image(self):
         self.get_context().make_current()

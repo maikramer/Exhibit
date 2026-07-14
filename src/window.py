@@ -177,8 +177,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     save_settings_expander = Gtk.Template.Child()
 
     animation_group = Gtk.Template.Child()
+    animation_combo = Gtk.Template.Child()
     animation_time_adj = Gtk.Template.Child()
-    animation_index_adj = Gtk.Template.Child()
     play_button = Gtk.Template.Child()
 
     width = 600
@@ -429,8 +429,9 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         self.f3d_viewer.connect("notify::playing", self.on_playing_changed)
 
-        self.animation_index_adj.connect_after(
-            "value-changed", self.on_animation_index_changed)
+        self._block_animation_combo = False
+        self.animation_combo.connect(
+            "notify::selected", self.on_animation_combo_changed)
 
         self.block_reload = True
 
@@ -550,9 +551,61 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     # Functions that are called when a UI changes, they should only
     #   set the corresponding setting.
 
-    def on_animation_index_changed(self, *args):
-        self.f3d_viewer.update_options(
-            {"animation-index": int(self.animation_index_adj.get_value())})
+    def _animation_index_from_combo(self):
+        selected = self.animation_combo.get_selected()
+        if selected == Gtk.INVALID_LIST_POSITION:
+            return 0
+        # First item is "All animations" → -1
+        if selected == 0:
+            return -1
+        return int(selected) - 1
+
+    def _combo_position_for_animation_index(self, index):
+        if index < 0:
+            return 0
+        return int(index) + 1
+
+    def refresh_animation_combo(self):
+        count = self.f3d_viewer.available_animations()
+        if count <= 0:
+            self.animation_group.set_visible(False)
+            return
+
+        names = self.f3d_viewer.get_animation_names()
+        string_list = Gtk.StringList()
+        string_list.append(_("All animations"))
+        for i in range(count):
+            name = names[i] if i < len(names) else ""
+            if name:
+                string_list.append(name)
+            else:
+                string_list.append(_("Animation {}").format(i))
+
+        current = self.window_settings.get_setting("animation-index").value
+        if current >= count:
+            current = 0
+            self.window_settings.set_setting("animation-index", current, False)
+
+        position = self._combo_position_for_animation_index(current)
+        if position >= string_list.get_n_items():
+            position = 1 if count > 0 else 0
+
+        self._block_animation_combo = True
+        try:
+            self.animation_combo.set_model(string_list)
+            self.animation_combo.set_selected(position)
+        finally:
+            self._block_animation_combo = False
+
+        self.animation_group.set_visible(True)
+
+    def on_animation_combo_changed(self, *args):
+        if self._block_animation_combo:
+            return
+
+        index = self._animation_index_from_combo()
+        self.window_settings.set_setting("animation-index", index)
+        self.f3d_viewer.update_options({"animation-index": index})
         self.f3d_viewer.animation_time = self.f3d_viewer.lower_time_range
         self.f3d_viewer.playing = False
 
@@ -923,10 +976,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         self.update_background_color()
 
-        if self.f3d_viewer.upper_time_range == 0.0:
-            self.animation_group.set_visible(False)
-        else:
-            self.animation_group.set_visible(True)
+        self.refresh_animation_combo()
 
         self.block_reload = False
         GLib.timeout_add(100, self.f3d_viewer.done)
