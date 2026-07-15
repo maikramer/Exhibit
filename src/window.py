@@ -606,10 +606,15 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         index = self._animation_index_from_combo()
         self.window_settings.set_setting("animation-index", index)
         self.f3d_viewer.update_options({"animation-index": index})
-        self.f3d_viewer.animation_time = self.f3d_viewer.lower_time_range
         self.f3d_viewer.playing = False
-
-        GLib.timeout_add(100, self.reload_file, True)
+        # F3D switches clip via scene.animation.indices — no file reload.
+        lower = self.f3d_viewer.lower_time_range
+        upper = self.f3d_viewer.upper_time_range
+        self.animation_time_adj.set_lower(lower)
+        self.animation_time_adj.set_upper(upper)
+        self.f3d_viewer.notify("lower-time-range")
+        self.f3d_viewer.notify("upper-time-range")
+        self.f3d_viewer.animation_time = lower
 
     def on_switch_toggled(self, switch, active, name):
         self.window_settings.set_setting(name, switch.get_active())
