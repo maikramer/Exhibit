@@ -144,7 +144,9 @@ def _configure_lib(lib: CDLL) -> None:
         "meshopt_decodeFilterExp",
         "meshopt_decodeFilterColor",
     ):
-        fn = getattr(lib, filter_name)
+        fn = getattr(lib, filter_name, None)
+        if fn is None:
+            continue
         fn.argtypes = [c_void_p, c_size_t, c_size_t]
         fn.restype = None
 
@@ -284,7 +286,11 @@ def _decode_view(lib: CDLL, source: bytes, ext: dict[str, Any]) -> bytes:
     if count < 0 or stride <= 0:
         raise MeshoptError("Invalid meshopt bufferView parameters")
 
-    destination = (c_ubyte * (count * stride))()
+    # meshopt filters process vertices in groups of 4 and may write past
+    # ``count`` up to the next multiple of 4 — allocate that pad.
+    count4 = (count + 3) & ~3
+    alloc_count = count4 if filter_name != "NONE" else count
+    destination = (c_ubyte * (alloc_count * stride))()
     source_buf = (c_ubyte * len(source)).from_buffer_copy(source)
 
     decoders = {
@@ -302,21 +308,23 @@ def _decode_view(lib: CDLL, source: bytes, ext: dict[str, Any]) -> bytes:
 
     filters = {
         "NONE": None,
-        "OCTAHEDRAL": lib.meshopt_decodeFilterOct,
-        "QUATERNION": lib.meshopt_decodeFilterQuat,
-        "EXPONENTIAL": lib.meshopt_decodeFilterExp,
-        "COLOR": lib.meshopt_decodeFilterColor,
+        "OCTAHEDRAL": getattr(lib, "meshopt_decodeFilterOct", None),
+        "QUATERNION": getattr(lib, "meshopt_decodeFilterQuat", None),
+        "EXPONENTIAL": getattr(lib, "meshopt_decodeFilterExp", None),
+        "COLOR": getattr(lib, "meshopt_decodeFilterColor", None),
     }
     if filter_name not in filters:
         raise MeshoptError(f"Unsupported meshopt filter: {filter_name}")
 
     filter_fn = filters[filter_name]
+    if filter_name != "NONE" and filter_fn is None:
+        raise MeshoptError(
+            f"meshopt filter {filter_name} is not available in libmeshoptimizer"
+        )
     if filter_fn is not None:
-        # Match meshoptimizer JS decoder: round count up to multiple of 4.
-        count4 = (count + 3) & ~3
         filter_fn(cast(destination, c_void_p), count4, stride)
 
-    return bytes(destination)
+    return bytes(destination)[: count * stride]
 
 
 def _align4(value: int) -> int:
