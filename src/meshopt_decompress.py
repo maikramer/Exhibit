@@ -9,11 +9,12 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Decompress GLBs that use EXT/KHR_meshopt_compression before F3D/VTK load."""
+"""Prepare GLBs for F3D/VTK by expanding meshopt + KHR_mesh_quantization."""
 
 from __future__ import annotations
 
 import json
+import math
 import os
 import struct
 import tempfile
@@ -33,17 +34,45 @@ MESHOPT_EXTENSIONS = (
     "EXT_meshopt_compression",
     "KHR_meshopt_compression",
 )
+QUANTIZATION_EXTENSION = "KHR_mesh_quantization"
 
 _GLB_MAGIC = 0x46546C67
 _CHUNK_JSON = 0x4E4F534A
 _CHUNK_BIN = 0x004E4942
+
+_COMPONENT_SIZE = {
+    5120: 1,  # BYTE
+    5121: 1,  # UNSIGNED_BYTE
+    5122: 2,  # SHORT
+    5123: 2,  # UNSIGNED_SHORT
+    5125: 4,  # UNSIGNED_INT
+    5126: 4,  # FLOAT
+}
+_COMPONENT_STRUCT = {
+    5120: "b",
+    5121: "B",
+    5122: "h",
+    5123: "H",
+    5125: "I",
+    5126: "f",
+}
+_TYPE_COUNT = {
+    "SCALAR": 1,
+    "VEC2": 2,
+    "VEC3": 3,
+    "VEC4": 4,
+    "MAT2": 4,
+    "MAT3": 9,
+    "MAT4": 16,
+}
+_FLOAT = 5126
 
 _lib: CDLL | None = None
 _lib_failed = False
 
 
 class MeshoptError(Exception):
-    """Raised when a meshopt-compressed GLB cannot be decompressed."""
+    """Raised when a GLB cannot be prepared for load."""
 
 
 def _load_library() -> CDLL:
@@ -195,21 +224,34 @@ def _is_fallback_buffer(buffer_def: dict[str, Any]) -> bool:
     return False
 
 
+def _lists_extension(gltf: dict[str, Any], name: str) -> bool:
+    for key in ("extensionsRequired", "extensionsUsed"):
+        values = gltf.get(key) or []
+        if name in values:
+            return True
+    return False
+
+
+def _gltf_has_meshopt(gltf: dict[str, Any]) -> bool:
+    for view in gltf.get("bufferViews") or []:
+        if _extension_on_view(view):
+            return True
+    return any(_lists_extension(gltf, name) for name in MESHOPT_EXTENSIONS)
+
+
+def _gltf_has_quantization(gltf: dict[str, Any]) -> bool:
+    return _lists_extension(gltf, QUANTIZATION_EXTENSION)
+
+
 def needs_meshopt_decompress(path: str) -> bool:
-    """Return True if path is a GLB that uses meshopt bufferView compression."""
+    """Return True if path is a GLB that needs meshopt and/or dequantization."""
     if not path or not str(path).lower().endswith(".glb"):
         return False
     try:
         gltf, _bin = _read_glb(path)
     except (OSError, MeshoptError):
         return False
-
-    for view in gltf.get("bufferViews") or []:
-        if _extension_on_view(view):
-            return True
-
-    required = gltf.get("extensionsRequired") or []
-    return any(name in required for name in MESHOPT_EXTENSIONS)
+    return _gltf_has_meshopt(gltf) or _gltf_has_quantization(gltf)
 
 
 def _buffer_payloads(gltf: dict[str, Any], bin_chunk: bytes) -> list[bytes | None]:
@@ -281,19 +323,37 @@ def _align4(value: int) -> int:
     return (value + 3) & ~3
 
 
-def decompress_glb(path: str) -> str:
-    """
-    Return a path to a GLB without meshopt compression.
+def _append_bytes(dest: bytearray, payload: bytes) -> int:
+    padding = _align4(len(dest)) - len(dest)
+    if padding:
+        dest.extend(b"\x00" * padding)
+    offset = len(dest)
+    dest.extend(payload)
+    return offset
 
-    If decompression is unnecessary, returns ``path``. Otherwise writes a
-    temporary ``.glb`` and returns that path. Caller should delete temps via
-    ``cleanup_decompressed``.
-    """
-    if not needs_meshopt_decompress(path):
-        return path
 
+def _strip_extensions(gltf: dict[str, Any], names: tuple[str, ...] | list[str]) -> None:
+    drop = set(names)
+    for key in ("extensionsUsed", "extensionsRequired"):
+        values = gltf.get(key)
+        if not values:
+            continue
+        filtered = [name for name in values if name not in drop]
+        if filtered:
+            gltf[key] = filtered
+        else:
+            del gltf[key]
+
+    top_ext = gltf.get("extensions")
+    if top_ext:
+        for name in drop:
+            top_ext.pop(name, None)
+        if not top_ext:
+            del gltf["extensions"]
+
+
+def _decompress_meshopt(gltf: dict[str, Any], bin_chunk: bytes) -> bytes:
     lib = _load_library()
-    gltf, bin_chunk = _read_glb(path)
     payloads = _buffer_payloads(gltf, bin_chunk)
 
     new_bin = bytearray()
@@ -328,20 +388,15 @@ def decompress_glb(path: str) -> str:
             if len(decoded) != src_length:
                 raise MeshoptError("Uncompressed bufferView data is truncated")
 
-        padding = _align4(len(new_bin)) - len(new_bin)
-        if padding:
-            new_bin.extend(b"\x00" * padding)
-
         new_view = {
             key: value
             for key, value in view.items()
             if key not in ("buffer", "byteOffset", "byteLength", "extensions")
         }
         new_view["buffer"] = 0
-        new_view["byteOffset"] = len(new_bin)
+        new_view["byteOffset"] = _append_bytes(new_bin, decoded)
         new_view["byteLength"] = len(decoded)
 
-        # Preserve parent extensions except meshopt.
         old_ext = view.get("extensions")
         if old_ext:
             kept = {
@@ -352,34 +407,235 @@ def decompress_glb(path: str) -> str:
             if kept:
                 new_view["extensions"] = kept
 
-        new_bin.extend(decoded)
         new_views.append(new_view)
 
     gltf["bufferViews"] = new_views
     gltf["buffers"] = [{"byteLength": len(new_bin)}]
+    _strip_extensions(gltf, MESHOPT_EXTENSIONS)
+    return bytes(new_bin)
 
-    for key in ("extensionsUsed", "extensionsRequired"):
-        values = gltf.get(key)
-        if not values:
+
+def _should_dequant_attr(name: str) -> bool:
+    if name in ("POSITION", "NORMAL", "TANGENT"):
+        return True
+    return name.startswith("TEXCOORD_")
+
+
+def _collect_dequant_accessors(gltf: dict[str, Any]) -> set[int]:
+    result: set[int] = set()
+    for mesh in gltf.get("meshes") or []:
+        for prim in mesh.get("primitives") or []:
+            for name, accessor_index in (prim.get("attributes") or {}).items():
+                if _should_dequant_attr(name):
+                    result.add(int(accessor_index))
+            for target in prim.get("targets") or []:
+                for name, accessor_index in target.items():
+                    if _should_dequant_attr(name):
+                        result.add(int(accessor_index))
+    return result
+
+
+def _dequant_scalar(value: int | float, component_type: int, normalized: bool) -> float:
+    if component_type == _FLOAT:
+        return float(value)
+    ivalue = int(value)
+    if not normalized:
+        return float(ivalue)
+    if component_type == 5120:
+        return max(ivalue / 127.0, -1.0)
+    if component_type == 5121:
+        return ivalue / 255.0
+    if component_type == 5122:
+        return max(ivalue / 32767.0, -1.0)
+    if component_type == 5123:
+        return ivalue / 65535.0
+    raise MeshoptError(
+        f"Unsupported quantized componentType for dequantization: {component_type}"
+    )
+
+
+def _accessor_stride(accessor: dict[str, Any], view: dict[str, Any]) -> int:
+    component_type = int(accessor["componentType"])
+    type_name = accessor["type"]
+    if type_name not in _TYPE_COUNT or component_type not in _COMPONENT_SIZE:
+        raise MeshoptError("Unsupported accessor type for dequantization")
+    default = _TYPE_COUNT[type_name] * _COMPONENT_SIZE[component_type]
+    stride = view.get("byteStride")
+    if stride is None:
+        return default
+    stride_i = int(stride)
+    if stride_i < default:
+        raise MeshoptError("Invalid accessor byteStride")
+    return stride_i
+
+
+def _read_accessor_floats(
+    gltf: dict[str, Any], bin_chunk: bytes, accessor: dict[str, Any]
+) -> list[float]:
+    if "bufferView" not in accessor:
+        raise MeshoptError("Sparse-only accessors are not supported for dequantization")
+
+    view = (gltf.get("bufferViews") or [])[int(accessor["bufferView"])]
+    component_type = int(accessor["componentType"])
+    type_name = accessor["type"]
+    count = int(accessor["count"])
+    normalized = bool(accessor.get("normalized"))
+    ncomp = _TYPE_COUNT[type_name]
+    fmt = _COMPONENT_STRUCT[component_type]
+    stride = _accessor_stride(accessor, view)
+    base = int(view.get("byteOffset") or 0) + int(accessor.get("byteOffset") or 0)
+
+    values: list[float] = []
+    for index in range(count):
+        offset = base + index * stride
+        comps = struct.unpack_from("<" + fmt * ncomp, bin_chunk, offset)
+        for comp in comps:
+            values.append(_dequant_scalar(comp, component_type, normalized))
+    return values
+
+
+def _copy_view_bytes(view: dict[str, Any], bin_chunk: bytes) -> bytes:
+    src_offset = int(view.get("byteOffset") or 0)
+    src_length = int(view["byteLength"])
+    payload = bin_chunk[src_offset : src_offset + src_length]
+    if len(payload) != src_length:
+        raise MeshoptError("bufferView data is truncated")
+    return payload
+
+
+def _dequant_mesh_quantization(gltf: dict[str, Any], bin_chunk: bytes) -> bytes:
+    accessors = gltf.get("accessors") or []
+    buffer_views = gltf.get("bufferViews") or []
+    dequant_accessors = {
+        index
+        for index in _collect_dequant_accessors(gltf)
+        if 0 <= index < len(accessors)
+        and int(accessors[index].get("componentType", _FLOAT)) != _FLOAT
+    }
+
+    if not dequant_accessors and not _gltf_has_quantization(gltf):
+        return bin_chunk
+
+    raw_views: set[int] = set()
+    for image in gltf.get("images") or []:
+        if "bufferView" in image:
+            raw_views.add(int(image["bufferView"]))
+    for index, accessor in enumerate(accessors):
+        if index in dequant_accessors:
             continue
-        filtered = [name for name in values if name not in MESHOPT_EXTENSIONS]
-        if filtered:
-            gltf[key] = filtered
-        else:
-            del gltf[key]
+        if "bufferView" in accessor:
+            raw_views.add(int(accessor["bufferView"]))
 
-    # Drop top-level meshopt extension objects if present.
-    top_ext = gltf.get("extensions")
-    if top_ext:
-        for name in MESHOPT_EXTENSIONS:
-            top_ext.pop(name, None)
-        if not top_ext:
-            del gltf["extensions"]
+    new_bin = bytearray()
+    new_views: list[dict[str, Any]] = []
+    view_remap: dict[int, int] = {}
+
+    for old_index in sorted(raw_views):
+        if old_index < 0 or old_index >= len(buffer_views):
+            raise MeshoptError(f"Invalid bufferView index {old_index}")
+        old_view = buffer_views[old_index]
+        payload = _copy_view_bytes(old_view, bin_chunk)
+        new_view = {
+            key: value
+            for key, value in old_view.items()
+            if key not in ("buffer", "byteOffset", "byteLength")
+        }
+        new_view["buffer"] = 0
+        new_view["byteOffset"] = _append_bytes(new_bin, payload)
+        new_view["byteLength"] = len(payload)
+        view_remap[old_index] = len(new_views)
+        new_views.append(new_view)
+
+    for image in gltf.get("images") or []:
+        if "bufferView" in image:
+            image["bufferView"] = view_remap[int(image["bufferView"])]
+
+    for index, accessor in enumerate(accessors):
+        if index in dequant_accessors:
+            continue
+        if "bufferView" not in accessor:
+            continue
+        accessor["bufferView"] = view_remap[int(accessor["bufferView"])]
+
+    for index in sorted(dequant_accessors):
+        accessor = accessors[index]
+        floats = _read_accessor_floats(gltf, bin_chunk, accessor)
+        payload = struct.pack("<" + "f" * len(floats), *floats)
+        ncomp = _TYPE_COUNT[accessor["type"]]
+
+        new_view = {
+            "buffer": 0,
+            "byteOffset": _append_bytes(new_bin, payload),
+            "byteLength": len(payload),
+            "byteStride": ncomp * 4,
+            "target": 34962,  # ARRAY_BUFFER
+        }
+        # Preserve target from old view when present.
+        old_view_index = int(accessor["bufferView"])
+        if 0 <= old_view_index < len(buffer_views):
+            old_target = buffer_views[old_view_index].get("target")
+            if old_target is not None:
+                new_view["target"] = old_target
+
+        accessor["bufferView"] = len(new_views)
+        accessor["byteOffset"] = 0
+        accessor["componentType"] = _FLOAT
+        accessor.pop("normalized", None)
+
+        # min/max in quantized files are in the quantized domain; rewrite from floats.
+        if floats and ("min" in accessor or "max" in accessor):
+            mins = [math.inf] * ncomp
+            maxs = [-math.inf] * ncomp
+            for row in range(int(accessor["count"])):
+                base = row * ncomp
+                for comp_i in range(ncomp):
+                    value = floats[base + comp_i]
+                    if value < mins[comp_i]:
+                        mins[comp_i] = value
+                    if value > maxs[comp_i]:
+                        maxs[comp_i] = value
+            if "min" in accessor:
+                accessor["min"] = mins
+            if "max" in accessor:
+                accessor["max"] = maxs
+
+        new_views.append(new_view)
+
+    gltf["bufferViews"] = new_views
+    gltf["buffers"] = [{"byteLength": len(new_bin)}]
+    _strip_extensions(gltf, (QUANTIZATION_EXTENSION,))
+    return bytes(new_bin)
+
+
+def decompress_glb(path: str) -> str:
+    """
+    Return a path to a GLB without meshopt compression / mesh quantization.
+
+    If preparation is unnecessary, returns ``path``. Otherwise writes a
+    temporary ``.glb`` and returns that path. Caller should delete temps via
+    ``cleanup_decompressed``.
+    """
+    if not needs_meshopt_decompress(path):
+        return path
+
+    gltf, bin_chunk = _read_glb(path)
+    changed = False
+
+    if _gltf_has_meshopt(gltf):
+        bin_chunk = _decompress_meshopt(gltf, bin_chunk)
+        changed = True
+
+    if _gltf_has_quantization(gltf):
+        bin_chunk = _dequant_mesh_quantization(gltf, bin_chunk)
+        changed = True
+
+    if not changed:
+        return path
 
     fd, temp_path = tempfile.mkstemp(prefix="exhibit-meshopt-", suffix=".glb")
     os.close(fd)
     try:
-        _write_glb(temp_path, gltf, bytes(new_bin))
+        _write_glb(temp_path, gltf, bin_chunk)
     except Exception:
         cleanup_decompressed(temp_path)
         raise
