@@ -75,4 +75,33 @@ flowbox flowboxchild {
   color: var(--accent-color);
 }
 
+.object-tree-popover contents {
+  background-color: alpha(var(--view-bg-color), 0.82);
+  border: 1px solid alpha(var(--border-color), 0.4);
+  border-radius: 12px;
+  padding: 0;
+}
+
+.object-tree-panel {
+  background-color: transparent;
+}
+
+.object-tree-view {
+  background: transparent;
+}
+
+.object-tree-view > row {
+  background: transparent;
+  border-radius: 6px;
+  padding: 2px 4px;
+}
+
+.object-tree-view > row:hover {
+  background-color: alpha(var(--view-fg-color), 0.08);
+}
+
+.object-tree-structural {
+  opacity: 0.72;
+}
+
 
