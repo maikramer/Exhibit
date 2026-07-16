@@ -1,77 +1,90 @@
 <img height="128" src="data/icons/hicolor/scalable/apps/io.github.nokse22.Exhibit.svg" align="left"/>
 
-# Exhibit
-  [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
-  [![made-with-python](https://img.shields.io/badge/Made%20with-Python-ff7b3f.svg)](https://www.python.org/)
-  [![Downloads](https://img.shields.io/badge/dynamic/json?color=brightgreen&label=Flathub%20Downloads&query=%24.installs_total&url=https%3A%2F%2Fflathub.org%2Fapi%2Fv2%2Fstats%2Fio.github.nokse22.Exhibit)](https://flathub.org/apps/details/io.github.nokse22.Exhibit)
-  
+# Exhibit (fork)
 
-View 3D models, powered by the [F3D](https://github.com/f3d-app/f3d) library that supports many file formats, from digital content to scientific datasets (including glTF, USD, STL, STEP, PLY, OBJ, FBX, Alembic)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
+[![made-with-python](https://img.shields.io/badge/Made%20with-Python-ff7b3f.svg)](https://www.python.org/)
 
-<div align="center">
-    <img src="data/resources/screenshot 1.png" max-height="500"/>
-</div>
-<details>
-<summary>Click for more screenshots</summary>
-    <div align="center">
-    <img src="data/resources/screenshot 2.png" max-height="500"/>
-    <img src="data/resources/screenshot 3.png" max-height="500"/>
-    <img src="data/resources/screenshot 4.png" max-height="500"/>
-    <img src="data/resources/screenshot 5.png" max-height="500"/>
-    <img src="data/resources/screenshot 6.png" max-height="500"/>
-    <img src="data/resources/screenshot 7.png" max-height="500"/>
-    </div>
-</details>
+Fork of **Exhibit** tuned for a **gamedev asset workflow**: preview packed GLBs, flip animation clips, and toggle mesh parts without leaving the desktop.
 
-### Screenshots Credits
-- [Planetary reducer](https://sketchfab.com/3d-models/planet-reducer-animation-273823b0b7014a31a1ef2e1148ca8205)
-- [Retro computer setup](https://sketchfab.com/3d-models/retro-computer-setup-free-82eaf2047e0447a1bfea22482f1d1404)
-- [Benchy](https://www.printables.com/model/3161-3d-benchy#preview:file-3QVl)
-- [Nissan Fairlady](https://sketchfab.com/3d-models/nissan-fairlady-z-s30240z-1978-0d9286ebb8cc426e993e1d398b874a34)
-- [Vase](https://sketchfab.com/3d-models/vase-rawscan-98a29620a45e47ccb80a75d5416c8255)
-- [Point Cloud Ship](https://sketchfab.com/3d-models/mv-spartan-point-cloud-3bf41cd55bd1406b99f7008c0184a057)
+Powered by [F3D](https://github.com/f3d-app/f3d) (glTF, USD, STL, FBX, OBJ, PLY, and more).
 
-## Installation
+<br clear="left"/>
 
-### Flathub
-<a href='https://flathub.org/apps/io.github.nokse22.Exhibit'>
-<img height='80' alt='Get it on Flathub on Flathub' src='https://flathub.org/api/badge'/>
-</a>
+## Credits
 
-### From latest build
+- **Original app:** [Nokse22/Exhibit](https://github.com/Nokse22/Exhibit) by [Nokse](https://github.com/Nokse22) — GPLv3.
+- **Renderer:** [F3D](https://github.com/f3d-app/f3d) — BSD-3-Clause (see F3D license notes for bundled libs).
+- **This fork:** [maikramer/Exhibit](https://github.com/maikramer/Exhibit) — gamedev-focused changes on top of upstream.
 
-Go to the [Actions page](https://github.com/Nokse22/Exhibit/actions), click on the latest working build and download the Artifact.
-Extract the downloaded .zip file and install it clicking on the flatpak file or with:
+Upstream Flathub build (original app, not this fork):  
+https://flathub.org/apps/io.github.nokse22.Exhibit
 
-`flatpak install io.github.nokse22.Exhibit.flatpak`
+## Why this fork
 
-### From source
+Upstream Exhibit is a great GNOME viewer. This fork adds what a game pipeline needs when assets come from **gltfpack** / mesh pipelines:
 
-You just need to clone the repository
+| Feature | What it does |
+|--------|----------------|
+| **Meshopt + quantization** | Decompress `EXT`/`KHR_meshopt_compression` and expand `KHR_mesh_quantization` before F3D/VTK load |
+| **Animation by name** | Sidebar combo lists clip names; switch without full reload |
+| **Object tree** | Header popover (next to home/reset) shows glTF hierarchy; hide/show mesh parts |
+| **Flatpak local paths** | Sandbox can read `$HOME` and `/tmp` for CLI/drop loads |
+
+App ID stays `io.github.nokse22.Exhibit` so local Flatpak/GSettings stay compatible with upstream installs.
+
+## Gamedev quick start
 
 ```sh
-git clone https://github.com/Nokse22/Exhibit.git
+# Packed GLB (meshopt + quant), e.g. from gltfpack
+gltfpack -c -i hero.gltf -o hero.glb
+
+# Preview (after installing this fork as Flatpak)
+flatpak run io.github.nokse22.Exhibit ./hero.glb
+# or
+flatpak run io.github.nokse22.Exhibit /tmp/hero.glb
 ```
 
-Open the project in GNOME Builder and click "Run Project".
+- **Animations:** open sidebar → Scene → **Active animation**.
+- **Parts:** with a multipart `.glb`, click the **list** icon beside home/reset → checkboxes on the tree.
+- **Multipart demo:** [Cesium Milk Truck](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/CesiumMilkTruck) (GLB).
 
-## Help
+## Build (Flatpak, local)
 
-You can view the extended help pages from `Main Menu > Help` or by pressing `F1`.
+Needs `org.flatpak.Builder`, GNOME 49 SDK/Platform, and Flathub remotes.
 
-### Custom Configurations
-Custom configurations are saved in `/home/username/.var/app/io.github.nokse22.Exhibit/data/configurations`. The best way to make a custom configuration is to use the app and save it to file, but if you want to use some of the supported options that don't have an UI you will need to later edit it manually.
+```sh
+git clone https://github.com/maikramer/Exhibit.git
+cd Exhibit
 
-The default configurations can not be changed, but if one of your custom configurations supports the file you are opening it will have priority over the default ones.
+mkdir -p "$HOME/exhibit-fp-state" "$HOME/exhibit-fp-repo" "$HOME/exhibit-fp-build"
 
-### HDRI
-There are 4 default 1k HDRIs, you can add more by opening the HDRIs folder from the app hamburger menu and placing them there. Any image added in this path will be used as an HDRI and a thumbnail will be generated. Images added when the app is running will be visible the next time the app is started.
+flatpak run org.flatpak.Builder \
+  --force-clean \
+  --user \
+  --install \
+  --ccache \
+  --state-dir="$HOME/exhibit-fp-state" \
+  --repo="$HOME/exhibit-fp-repo" \
+  "$HOME/exhibit-fp-build" \
+  build-aux/io.github.nokse22.Exhibit.json
+```
 
-If you save a configuration that uses an HDRI make sure it is placed in this folder, this way the app will always be able to access the file.
+Then:
 
-### Options
-To view all the options description and also all the supported options that don't have an UI you can visit the `Options` page in the `Help`.
+```sh
+flatpak run io.github.nokse22.Exhibit path/to/model.glb
+```
+
+GNOME Builder against this repo also works if you prefer an IDE workflow.
+
+## Roadmap (fork)
+
+- Reliable preview of **meshopt / quantized** GLBs from pack tools  
+- Fast **animation clip** iteration by name  
+- **Part visibility** for multipart characters/props  
+- Further gamedev conveniences as the pipeline needs them  
 
 ## License
 
-Exhibit is distributed under the GPLv3 license, it uses F3D that is distributed under the 3-Clause BSD License, see [this](https://github.com/f3d-app/f3d?tab=readme-ov-file#license) for more info on F3D libraries licenses.
+Exhibit (including this fork) is **GPLv3**. F3D is under the **3-Clause BSD License**; see [F3D licensing](https://github.com/f3d-app/f3d?tab=readme-ov-file#license) for dependent libraries.
