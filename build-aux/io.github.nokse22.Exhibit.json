@@ -8,7 +8,9 @@
         "--share=ipc",
         "--socket=wayland",
         "--socket=fallback-x11",
-        "--device=dri"
+        "--device=dri",
+        "--filesystem=home",
+        "--filesystem=/tmp"
     ],
     "cleanup" : [
         "/include",
@@ -23,6 +25,24 @@
     "modules" : [
         "imagemagick.json",
         "libf3d.json",
+        {
+            "name": "meshoptimizer",
+            "buildsystem": "cmake-ninja",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DMESHOPT_BUILD_SHARED_LIBS=ON",
+                "-DMESHOPT_BUILD_DEMO=OFF",
+                "-DMESHOPT_BUILD_GLTFPACK=OFF"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/zeux/meshoptimizer/archive/refs/tags/v1.2.tar.gz",
+                    "sha256": "e40f71b809cdf3361b9a4def85fd44534e8733ce29d4b943c145b76859e4c2b4"
+                }
+            ]
+        },
         {
             "name" : "exhibit",
             "buildsystem" : "meson",

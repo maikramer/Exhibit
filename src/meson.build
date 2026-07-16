@@ -26,6 +26,8 @@ exhibit_sources = [
   'vector_math.py',
   'logger_lib.py',
   'settings_manager.py',
+  'meshopt_decompress.py',
+  'gltf_scene_graph.py',
 ]
 
 install_data(exhibit_sources, install_dir: moduledir)

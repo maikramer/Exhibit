@@ -23,6 +23,15 @@ import f3d
 
 from ..vector_math import p_dist, v_abs, v_norm, v_add, v_sub, v_mul, v_dot_p
 from .. import logger_lib
+from ..meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
+from ..gltf_scene_graph import (
+    ScenePart,
+    SceneTreeNode,
+    build_scene_tree,
+    cleanup_parts_temp,
+    list_mesh_parts,
+    write_glb_hiding_nodes,
+)
 
 up_dirs_vector = {
     "-X": (-1.0, 0.0, 0.0),
@@ -148,6 +157,8 @@ class F3DViewer(Gtk.GLArea):
 
         self._animation_time = 0
         self._playing = False
+        self._loaded_filepath = None
+        self._hidden_part_indices: set[int] = set()
 
         self.set_allowed_apis(Gdk.GLAPI.GL)
 
@@ -298,19 +309,36 @@ class F3DViewer(Gtk.GLArea):
     def supports(self, filepath):
         return self.scene.supports(filepath)
 
+    def _prepare_filepath(self, filepath):
+        try:
+            return prepare_glb_for_load(filepath)
+        except MeshoptError as e:
+            self.logger.error(f"Error while decompressing meshopt GLB: {e}")
+            return None, None
+
     def load_file(self, filepath):
         if self.settings["render.hdri.ambient"]:
             f3d_options = {"render.hdri.ambient": False}
             self.engine.options.update(f3d_options)
 
         self.scene.clear()
+        self._hidden_part_indices = set()
 
-        try:
-            self.scene.add(filepath)
-        except Exception as e:
-            self.logger.error(f"Error while loading file: {e}")
+        load_path, meshopt_temp = self._prepare_filepath(filepath)
+        if load_path is None:
+            self._loaded_filepath = None
             return False
 
+        try:
+            self.scene.add(load_path)
+        except Exception as e:
+            self.logger.error(f"Error while loading file: {e}")
+            self._loaded_filepath = None
+            return False
+        finally:
+            cleanup_decompressed(meshopt_temp)
+
+        self._loaded_filepath = filepath
         self.notify("lower-time-range")
         self.notify("upper-time-range")
 
@@ -321,17 +349,108 @@ class F3DViewer(Gtk.GLArea):
             f3d_options = {"render.hdri.ambient": False}
             self.engine.options.update(f3d_options)
 
+        load_path, meshopt_temp = self._prepare_filepath(filepath)
+        if load_path is None:
+            return False
+
         try:
-            self.scene.add(filepath)
+            self.scene.add(load_path)
         except Exception as e:
             self.logger.error(f"Error while loading file: {e}")
             return False
+        finally:
+            cleanup_decompressed(meshopt_temp)
 
+        self._loaded_filepath = filepath
         self.notify("lower-time-range")
         self.notify("upper-time-range")
 
         self.get_distance()
 
+        return True
+
+    def get_scene_parts(self) -> list[ScenePart]:
+        if not self._loaded_filepath:
+            return []
+        return list_mesh_parts(self._loaded_filepath)
+
+    def get_scene_tree(self) -> list[SceneTreeNode]:
+        if not self._loaded_filepath:
+            return []
+        return build_scene_tree(self._loaded_filepath)
+
+    def get_hidden_part_indices(self) -> set[int]:
+        return set(self._hidden_part_indices)
+
+    def set_part_visible(self, node_index: int, visible: bool) -> bool:
+        """Show/hide a mesh node. Returns False if the scene could not be updated."""
+        if not self._loaded_filepath:
+            return False
+
+        if visible:
+            self._hidden_part_indices.discard(int(node_index))
+        else:
+            self._hidden_part_indices.add(int(node_index))
+
+        return self._reload_with_part_visibility()
+
+    def _reload_with_part_visibility(self) -> bool:
+        filepath = self._loaded_filepath
+        if not filepath:
+            return False
+
+        camera_state = None
+        if self.camera is not None:
+            try:
+                camera_state = self.get_camera_state()
+            except Exception:
+                camera_state = None
+
+        anim_time = self._animation_time
+        was_playing = self._playing
+        self.playing = False
+
+        if self.settings["render.hdri.ambient"]:
+            self.engine.options.update({"render.hdri.ambient": False})
+
+        parts_temp = None
+        try:
+            if self._hidden_part_indices:
+                load_path, parts_temp = write_glb_hiding_nodes(
+                    filepath, self._hidden_part_indices
+                )
+            else:
+                load_path, parts_temp = self._prepare_filepath(filepath)
+                if load_path is None:
+                    return False
+
+            self.scene.clear()
+            self.scene.add(load_path)
+        except Exception as e:
+            self.logger.error(f"Error while updating part visibility: {e}")
+            return False
+        finally:
+            cleanup_parts_temp(parts_temp)
+
+        self.notify("lower-time-range")
+        self.notify("upper-time-range")
+
+        lower = self.lower_time_range
+        upper = self.upper_time_range
+        if anim_time < lower or anim_time > upper:
+            anim_time = lower
+        self.animation_time = anim_time
+
+        if camera_state is not None:
+            try:
+                self.set_camera_state(camera_state)
+            except Exception:
+                pass
+
+        if was_playing:
+            self.playing = True
+
+        self.queue_render()
         return True
 
     def done(self):
@@ -344,6 +463,7 @@ class F3DViewer(Gtk.GLArea):
         # self.engine.options.update(f3d_options)
 
         self.reset_to_bounds()
+        return GLib.SOURCE_REMOVE
 
     def on_resize(self, gl_area, width, height):
         self.width = width

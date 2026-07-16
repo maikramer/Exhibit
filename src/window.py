@@ -22,16 +22,32 @@ import json
 import re
 import threading
 
-from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject
+from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
 from .widgets import F3DViewer, FileRow
 from wand.image import Image
 
 from . import logger_lib
 from .settings_manager import WindowSettings
+from .meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
+from .gltf_scene_graph import SceneTreeNode, tree_has_mesh
 
 import f3d
 
 from gettext import gettext as _
+
+
+class ObjectTreeItem(GObject.Object):
+    """GObject wrapper for a glTF scene node in the floating object tree."""
+
+    __gtype_name__ = "ExhibitObjectTreeItem"
+
+    def __init__(self, node: SceneTreeNode):
+        super().__init__()
+        self.index = int(node.index)
+        self.name = node.name
+        self.has_mesh = bool(node.has_mesh)
+        self.children = [ObjectTreeItem(child) for child in node.children]
+
 
 up_dir_n_to_string = {
     0: "-X",
@@ -180,6 +196,10 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     animation_time_adj = Gtk.Template.Child()
     animation_index_adj = Gtk.Template.Child()
     play_button = Gtk.Template.Child()
+
+    object_tree_button = Gtk.Template.Child()
+    object_tree_popover = Gtk.Template.Child()
+    object_tree_view = Gtk.Template.Child()
 
     width = 600
     height = 600
@@ -432,6 +452,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.animation_index_adj.connect_after(
             "value-changed", self.on_animation_index_changed)
 
+        self._block_object_tree = False
+        self._scene_tree_roots: list[ObjectTreeItem] = []
+        self._object_tree_check_handlers: dict[int, int] = {}
+        self._setup_object_tree_view()
+
         self.block_reload = True
 
         # Sync the UI with the settings
@@ -557,6 +582,119 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.f3d_viewer.playing = False
 
         GLib.timeout_add(100, self.reload_file, True)
+
+    def _setup_object_tree_view(self):
+        factory = Gtk.SignalListItemFactory()
+        factory.connect("setup", self._on_object_tree_setup)
+        factory.connect("bind", self._on_object_tree_bind)
+        factory.connect("unbind", self._on_object_tree_unbind)
+        self.object_tree_view.set_factory(factory)
+        empty = Gio.ListStore.new(ObjectTreeItem)
+        self.object_tree_view.set_model(Gtk.NoSelection.new(empty))
+
+    def _object_tree_child_model(self, item):
+        if not isinstance(item, ObjectTreeItem) or not item.children:
+            return None
+        store = Gio.ListStore.new(ObjectTreeItem)
+        for child in item.children:
+            store.append(child)
+        return store
+
+    def refresh_object_tree(self):
+        try:
+            roots = self.f3d_viewer.get_scene_tree()
+            available = tree_has_mesh(roots)
+            self.object_tree_button.set_visible(available)
+
+            if not available:
+                self._scene_tree_roots = []
+                empty = Gio.ListStore.new(ObjectTreeItem)
+                self.object_tree_view.set_model(Gtk.NoSelection.new(empty))
+                if self.object_tree_popover is not None and self.object_tree_popover.get_visible():
+                    self.object_tree_popover.popdown()
+                return
+
+            self._scene_tree_roots = [ObjectTreeItem(node) for node in roots]
+            root_store = Gio.ListStore.new(ObjectTreeItem)
+            for item in self._scene_tree_roots:
+                root_store.append(item)
+
+            tree_model = Gtk.TreeListModel.new(
+                root_store,
+                False,
+                True,
+                self._object_tree_child_model,
+            )
+            self.object_tree_view.set_model(Gtk.NoSelection.new(tree_model))
+        except Exception as e:
+            self.logger.error(f"Error while building object tree: {e}")
+            self.object_tree_button.set_visible(False)
+
+    def _on_object_tree_setup(self, factory, list_item):
+        expander = Gtk.TreeExpander()
+        expander.set_indent_for_icon(True)
+
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        check = Gtk.CheckButton()
+        label = Gtk.Label(xalign=0.0, hexpand=True)
+        label.set_wrap(False)
+        label.set_ellipsize(Pango.EllipsizeMode.END)
+        row.append(check)
+        row.append(label)
+        expander.set_child(row)
+        list_item.set_child(expander)
+
+    def _on_object_tree_bind(self, factory, list_item):
+        tree_row = list_item.get_item()
+        if tree_row is None:
+            return
+        item = tree_row.get_item()
+        expander = list_item.get_child()
+        expander.set_list_row(tree_row)
+
+        row = expander.get_child()
+        check = row.get_first_child()
+        label = check.get_next_sibling()
+        label.set_label(item.name)
+        if item.has_mesh:
+            label.remove_css_class("object-tree-structural")
+        else:
+            label.add_css_class("object-tree-structural")
+
+        hidden = self.f3d_viewer.get_hidden_part_indices()
+        self._block_object_tree = True
+        try:
+            check.set_active(item.index not in hidden)
+        finally:
+            self._block_object_tree = False
+
+        handler_id = check.connect(
+            "notify::active", self.on_object_part_toggled, item.index
+        )
+        self._object_tree_check_handlers[id(check)] = handler_id
+
+    def _on_object_tree_unbind(self, factory, list_item):
+        expander = list_item.get_child()
+        if expander is None:
+            return
+        row = expander.get_child()
+        if row is None:
+            return
+        check = row.get_first_child()
+        handler_id = self._object_tree_check_handlers.pop(id(check), None)
+        if handler_id is not None:
+            check.disconnect(handler_id)
+
+    def on_object_part_toggled(self, check, _pspec, node_index):
+        if self._block_object_tree:
+            return
+        if not self.f3d_viewer.set_part_visible(node_index, check.get_active()):
+            self.send_toast(_("Couldn't update object visibility"))
+            self._block_object_tree = True
+            try:
+                check.set_active(not check.get_active())
+            finally:
+                self._block_object_tree = False
 
     def on_switch_toggled(self, switch, active, name):
         self.window_settings.set_setting(name, switch.get_active())
@@ -837,6 +975,10 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         if file:
             filepath = file.get_path()
+            if not filepath:
+                self.logger.error("Opened file has no local path")
+                self.on_file_not_opened(file.get_basename() or _("Unknown"))
+                return
             self.logger.info("open file response")
             self.load_file(filepath=filepath)
 
@@ -848,10 +990,14 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                 os.path.basename(kwargs.get("filepath", "Nothing"))))
         self.block_reload = True
         self.f3d_viewer.initialize()
-        GLib.timeout_add(
-            100,
-            lambda *args: threading.Thread(
-                target=self._load_file, kwargs=(kwargs)).start())
+
+        def _start_load(*_args):
+            threading.Thread(
+                target=self._load_file, kwargs=kwargs, daemon=True
+            ).start()
+            return GLib.SOURCE_REMOVE
+
+        GLib.timeout_add(100, _start_load)
 
     def _load_file(self, **kwargs):
         filepath = kwargs.get("filepath", None)
@@ -866,6 +1012,12 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             filepath = self.filepath
 
         if filepath == "" or filepath is None:
+            GLib.idle_add(self.on_file_not_opened, _("Unknown"))
+            return
+
+        if not os.path.isfile(filepath):
+            self.logger.error(f"File is not readable in sandbox: {filepath}")
+            GLib.idle_add(self.on_file_not_opened, filepath)
             return
 
         self.logger.debug(
@@ -886,18 +1038,38 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self.logger.debug(f"best settings is {settings}")
             self.change_setting_state(GLib.Variant("s", settings))
 
-        if self.f3d_viewer.supports(filepath):
-            if add_file:
-                if not self.f3d_viewer.add_file(filepath):
-                    GLib.idle_add(self.on_file_not_opened, filepath)
-                    return
-            else:
-                if not self.f3d_viewer.load_file(filepath):
-                    GLib.idle_add(self.on_file_not_opened, filepath)
-                    return
-        else:
+        load_path = filepath
+        meshopt_temp = None
+        try:
+            load_path, meshopt_temp = prepare_glb_for_load(filepath)
+        except MeshoptError as e:
+            self.logger.error(f"Error while decompressing meshopt GLB: {e}")
             GLib.idle_add(self.on_file_not_opened, filepath)
             return
+        except Exception as e:
+            self.logger.error(f"Error while preparing file: {e}")
+            GLib.idle_add(self.on_file_not_opened, filepath)
+            return
+
+        try:
+            if self.f3d_viewer.supports(load_path):
+                if add_file:
+                    if not self.f3d_viewer.add_file(load_path):
+                        GLib.idle_add(self.on_file_not_opened, filepath)
+                        return
+                else:
+                    if not self.f3d_viewer.load_file(load_path):
+                        GLib.idle_add(self.on_file_not_opened, filepath)
+                        return
+            else:
+                GLib.idle_add(self.on_file_not_opened, filepath)
+                return
+        except Exception as e:
+            self.logger.error(f"Error while loading into viewer: {e}")
+            GLib.idle_add(self.on_file_not_opened, filepath)
+            return
+        finally:
+            cleanup_decompressed(meshopt_temp)
 
         if preserve_orientation:
             self.f3d_viewer.set_camera_state(camera_state)
@@ -923,13 +1095,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         self.update_background_color()
 
-        if self.f3d_viewer.upper_time_range == 0.0:
-            self.animation_group.set_visible(False)
-        else:
-            self.animation_group.set_visible(True)
+        self.refresh_object_tree()
 
         self.block_reload = False
         GLib.timeout_add(100, self.f3d_viewer.done)
+        return GLib.SOURCE_REMOVE
 
     def on_file_not_opened(self, filepath):
         self.logger.debug("on file not opened")
@@ -939,11 +1109,13 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self.stack.set_visible_child_name("startup_page")
             self.startup_stack.set_visible_child_name("error_page")
         else:
-            self.send_toast(_("Can't open") + " " + os.path.basename(filepath))
+            self.send_toast(_("Can't open") + " " + os.path.basename(str(filepath)))
 
         self.update_background_color()
+        self.refresh_object_tree()
 
         self.block_reload = False
+        return GLib.SOURCE_REMOVE
 
     def send_toast(self, message):
         toast = Adw.Toast(title=message, timeout=2)
@@ -1003,7 +1175,13 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     @Gtk.Template.Callback("on_drop_received")
     def on_drop_received(self, drop, value, x, y):
-        filepath = value.get_files()[0].get_path()
+        dropped = value.get_files()[0]
+        filepath = dropped.get_path()
+        if not filepath:
+            self.logger.error("Dropped file has no local path")
+            self.on_file_not_opened(dropped.get_basename() or _("Unknown"))
+            return
+
         extension = os.path.splitext(filepath)[1][1:].lower()
 
         if extension in image_patterns:

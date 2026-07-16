@@ -160,7 +160,12 @@ class WindowSettings(Gio.ListStore):
         # "scalar": ""
     }
 
-    other_settings = {"use-color": False, "point-up": True, "auto-reload": True}
+    other_settings = {
+        "use-color": False,
+        "point-up": True,
+        "auto-reload": True,
+        "object-tree": True,
+    }
 
     internal_settings = {"auto-best": True, "sidebar-show": True}
 
