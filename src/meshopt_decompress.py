@@ -70,6 +70,10 @@ _FLOAT = 5126
 _lib: CDLL | None = None
 _lib_failed = False
 
+# Prepared GLB cache: (realpath, mtime_ns, size) → temp path owned by this module.
+_prepare_cache: dict[tuple[str, int, int], str] = {}
+_prepare_cache_by_abs: dict[str, tuple[tuple[str, int, int], str]] = {}
+
 
 class MeshoptError(Exception):
     """Raised when a GLB cannot be prepared for load."""
@@ -151,18 +155,55 @@ def _configure_lib(lib: CDLL) -> None:
         fn.restype = None
 
 
-def _read_glb(path: str) -> tuple[dict[str, Any], bytes]:
-    with open(path, "rb") as handle:
-        data = handle.read()
-
-    if len(data) < 12:
+def _parse_glb_header(header: bytes, path: str) -> tuple[int, int]:
+    if len(header) < 12:
         raise MeshoptError(f"File too small to be a GLB: {path}")
-
-    magic, version, length = struct.unpack_from("<III", data, 0)
+    magic, version, length = struct.unpack_from("<III", header, 0)
     if magic != _GLB_MAGIC:
         raise MeshoptError(f"Not a GLB file: {path}")
     if version != 2:
         raise MeshoptError(f"Unsupported GLB version {version}: {path}")
+    return version, length
+
+
+def _decode_gltf_json(json_chunk: bytes, path: str) -> dict[str, Any]:
+    try:
+        gltf = json.loads(json_chunk.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise MeshoptError(f"Invalid GLB JSON chunk: {path}") from exc
+    if not isinstance(gltf, dict):
+        raise MeshoptError(f"Invalid GLB JSON root: {path}")
+    return gltf
+
+
+def _read_glb_json(path: str) -> dict[str, Any]:
+    """Read only the JSON chunk of a GLB (skip BIN payload)."""
+    with open(path, "rb") as handle:
+        header = handle.read(12)
+        _parse_glb_header(header, path)
+
+        while True:
+            chunk_header = handle.read(8)
+            if len(chunk_header) < 8:
+                break
+            chunk_length, chunk_type = struct.unpack("<II", chunk_header)
+            if chunk_type == _CHUNK_JSON:
+                json_chunk = handle.read(chunk_length)
+                if len(json_chunk) < chunk_length:
+                    raise MeshoptError(f"Truncated GLB JSON chunk: {path}")
+                return _decode_gltf_json(json_chunk, path)
+            # Skip non-JSON chunks without loading them into memory.
+            handle.seek(chunk_length, os.SEEK_CUR)
+
+    raise MeshoptError(f"GLB missing JSON chunk: {path}")
+
+
+def _read_glb(path: str) -> tuple[dict[str, Any], bytes]:
+    with open(path, "rb") as handle:
+        data = handle.read()
+
+    _parse_glb_header(data[:12], path)
+    _magic, _version, length = struct.unpack_from("<III", data, 0)
     if length > len(data):
         raise MeshoptError(f"Truncated GLB: {path}")
 
@@ -183,12 +224,52 @@ def _read_glb(path: str) -> tuple[dict[str, Any], bytes]:
     if json_chunk is None:
         raise MeshoptError(f"GLB missing JSON chunk: {path}")
 
-    try:
-        gltf = json.loads(json_chunk.decode("utf-8"))
-    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise MeshoptError(f"Invalid GLB JSON chunk: {path}") from exc
+    return _decode_gltf_json(json_chunk, path), bin_chunk
 
-    return gltf, bin_chunk
+
+def _file_cache_key(path: str) -> tuple[str, int, int]:
+    abs_path = os.path.realpath(path)
+    stat = os.stat(abs_path)
+    return abs_path, int(stat.st_mtime_ns), int(stat.st_size)
+
+
+def _cache_prepared(key: tuple[str, int, int], temp_path: str) -> None:
+    abs_path = key[0]
+    previous = _prepare_cache_by_abs.get(abs_path)
+    if previous is not None:
+        prev_key, prev_temp = previous
+        _prepare_cache.pop(prev_key, None)
+        if prev_temp != temp_path:
+            try:
+                os.unlink(prev_temp)
+            except OSError:
+                pass
+    _prepare_cache[key] = temp_path
+    _prepare_cache_by_abs[abs_path] = (key, temp_path)
+
+
+def _cached_prepared(key: tuple[str, int, int]) -> str | None:
+    cached = _prepare_cache.get(key)
+    if cached and os.path.isfile(cached):
+        return cached
+    if cached:
+        _prepare_cache.pop(key, None)
+        abs_path = key[0]
+        entry = _prepare_cache_by_abs.get(abs_path)
+        if entry and entry[0] == key:
+            _prepare_cache_by_abs.pop(abs_path, None)
+    return None
+
+
+def clear_prepare_cache() -> None:
+    """Delete all cached prepared GLBs (tests / shutdown)."""
+    for temp_path in list(_prepare_cache.values()):
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
+    _prepare_cache.clear()
+    _prepare_cache_by_abs.clear()
 
 
 def _write_glb(path: str, gltf: dict[str, Any], bin_chunk: bytes) -> None:
@@ -250,7 +331,7 @@ def needs_meshopt_decompress(path: str) -> bool:
     if not path or not str(path).lower().endswith(".glb"):
         return False
     try:
-        gltf, _bin = _read_glb(path)
+        gltf = _read_glb_json(path)
     except (OSError, MeshoptError):
         return False
     return _gltf_has_meshopt(gltf) or _gltf_has_quantization(gltf)
@@ -620,8 +701,8 @@ def decompress_glb(path: str) -> str:
     Return a path to a GLB without meshopt compression / mesh quantization.
 
     If preparation is unnecessary, returns ``path``. Otherwise writes a
-    temporary ``.glb`` and returns that path. Caller should delete temps via
-    ``cleanup_decompressed``.
+    temporary ``.glb`` and returns that path. Prefer ``prepare_glb_for_load``,
+    which caches prepared temps.
     """
     if not needs_meshopt_decompress(path):
         return path
@@ -645,14 +726,20 @@ def decompress_glb(path: str) -> str:
     try:
         _write_glb(temp_path, gltf, bin_chunk)
     except Exception:
-        cleanup_decompressed(temp_path)
+        try:
+            os.unlink(temp_path)
+        except OSError:
+            pass
         raise
     return temp_path
 
 
 def cleanup_decompressed(path: str | None) -> None:
-    """Delete a temporary GLB created by ``decompress_glb``."""
+    """Delete a temporary GLB created by ``decompress_glb`` (not cache-owned)."""
     if not path:
+        return
+    # Cached prepared files are owned by the prepare cache.
+    if path in _prepare_cache.values():
         return
     try:
         if os.path.basename(path).startswith("exhibit-meshopt-"):
@@ -665,12 +752,29 @@ def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
     """
     Prepare a path for F3D.
 
-    Returns ``(load_path, temp_path)``. ``temp_path`` is set when a temporary
-    decompressed file was created and must be cleaned up by the caller.
+    Returns ``(load_path, temp_path)``. Prepared meshopt temps are owned by an
+    internal cache keyed by ``(realpath, mtime, size)``; ``temp_path`` is then
+    ``None`` and callers must not delete ``load_path``. Legacy callers that
+    still receive a ``temp_path`` should call ``cleanup_decompressed``.
     """
+    if not path or not str(path).lower().endswith(".glb"):
+        return path, None
+
+    try:
+        key = _file_cache_key(path)
+    except OSError:
+        return path, None
+
+    cached = _cached_prepared(key)
+    if cached is not None:
+        return cached, None
+
     if not needs_meshopt_decompress(path):
         return path, None
+
     load_path = decompress_glb(path)
     if load_path == path:
         return path, None
-    return load_path, load_path
+
+    _cache_prepared(key, load_path)
+    return load_path, None

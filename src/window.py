@@ -460,8 +460,9 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         self.block_reload = True
 
-        # Sync the UI with the settings
+        # Sync the UI with the settings (batched → one viewer options update)
         self.window_settings.sync_all_settings()
+        self.f3d_viewer.update_options(self.window_settings.get_view_settings())
 
         self.block_reload = False
 
@@ -812,14 +813,12 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                 "bg-color": self.window_settings.get_setting("bg-color").value,
             }
             self.f3d_viewer.update_options(options)
-            GLib.idle_add(self.f3d_viewer.queue_render)
             return
         if self.style_manager.get_dark():
             options = {"bg-color": [0.117, 0.117, 0.117]}
         else:
             options = {"bg-color": [1.0, 1.0, 1.0]}
         self.f3d_viewer.update_options(options)
-        GLib.idle_add(self.f3d_viewer.queue_render)
 
     # Functions to set the settings
 
@@ -929,16 +928,18 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         for key, value in self.configurations[name]["view-settings"].items():
             options[key] = value
 
-        # Set all the settings
-        for key, value in options.items():
-            self.window_settings.set_setting(key, value)
-
-        # Update all the viewer settings, to support settings without UI
-        self.f3d_viewer.update_options(options)
-
-        # Set all the settings not related to the viewer
-        for key, value in self.configurations[name]["other-settings"].items():
-            self.window_settings.set_setting(key, value)
+        # Batch view emits so presets do one update_options + one queue_render
+        self.window_settings.begin_view_batch()
+        self.f3d_viewer.begin_options_batch()
+        try:
+            for key, value in options.items():
+                self.window_settings.set_setting(key, value)
+            self.f3d_viewer.update_options(options, queue_render=False)
+            for key, value in self.configurations[name]["other-settings"].items():
+                self.window_settings.set_setting(key, value)
+        finally:
+            self.window_settings.end_view_batch()
+            self.f3d_viewer.end_options_batch()
 
     def check_for_options_change(self):
         if self.block_reload:
@@ -1047,6 +1048,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             _("Loading {}").format(
                 os.path.basename(kwargs.get("filepath", "Nothing"))))
         self.block_reload = True
+        # Reuse existing F3D engine; initialize() is a no-op after first create.
         self.f3d_viewer.initialize()
 
         def _start_load(*_args):
@@ -1099,6 +1101,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         load_path = filepath
         meshopt_temp = None
         try:
+            # Single prepare owner for this open; viewer skips re-prepare.
             load_path, meshopt_temp = prepare_glb_for_load(filepath)
         except MeshoptError as e:
             self.logger.error(f"Error while decompressing meshopt GLB: {e}")
@@ -1112,11 +1115,15 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         try:
             if self.f3d_viewer.supports(load_path):
                 if add_file:
-                    if not self.f3d_viewer.add_file(load_path):
+                    if not self.f3d_viewer.add_file(
+                        filepath, prepared_path=load_path
+                    ):
                         GLib.idle_add(self.on_file_not_opened, filepath)
                         return
                 else:
-                    if not self.f3d_viewer.load_file(load_path):
+                    if not self.f3d_viewer.load_file(
+                        filepath, prepared_path=load_path
+                    ):
                         GLib.idle_add(self.on_file_not_opened, filepath)
                         return
             else:
@@ -1127,6 +1134,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             GLib.idle_add(self.on_file_not_opened, filepath)
             return
         finally:
+            # Cached prepared files are not deleted here.
             cleanup_decompressed(meshopt_temp)
 
         if preserve_orientation:

@@ -84,11 +84,14 @@ def _depth_and_path(
     return len(chain) - 1, " / ".join(chain)
 
 
-def _load_prepared_gltf(path: str) -> dict[str, Any] | None:
+def _load_gltf(path: str, *, already_prepared: bool = False) -> dict[str, Any] | None:
     if not is_glb(path):
         return None
 
-    load_path, temp_path = prepare_glb_for_load(path)
+    temp_path = None
+    load_path = path
+    if not already_prepared:
+        load_path, temp_path = prepare_glb_for_load(path)
     try:
         try:
             gltf, _bin = _read_glb(load_path)
@@ -147,14 +150,17 @@ def tree_has_mesh(roots: list[SceneTreeNode]) -> bool:
     return False
 
 
-def build_scene_tree(path: str) -> list[SceneTreeNode]:
+def build_scene_tree(
+    path: str, *, already_prepared: bool = False
+) -> list[SceneTreeNode]:
     """
     Return the glTF scene hierarchy as nested nodes.
 
     Runs meshopt/quantization preparation first so the graph matches what F3D
-    loads. Returns an empty list for non-GLB paths or unreadable files.
+    loads (unless ``already_prepared``). Returns an empty list for non-GLB
+    paths or unreadable files.
     """
-    gltf = _load_prepared_gltf(path)
+    gltf = _load_gltf(path, already_prepared=already_prepared)
     if not gltf:
         return []
 
@@ -171,14 +177,15 @@ def build_scene_tree(path: str) -> list[SceneTreeNode]:
     return roots
 
 
-def list_mesh_parts(path: str) -> list[ScenePart]:
+def list_mesh_parts(path: str, *, already_prepared: bool = False) -> list[ScenePart]:
     """
     Return mesh-bearing nodes from a GLB.
 
     Runs meshopt/quantization preparation first so the graph matches what F3D
-    loads. Returns an empty list for non-GLB paths or unreadable files.
+    loads (unless ``already_prepared``). Returns an empty list for non-GLB
+    paths or unreadable files.
     """
-    gltf = _load_prepared_gltf(path)
+    gltf = _load_gltf(path, already_prepared=already_prepared)
     if not gltf:
         return []
 
@@ -221,24 +228,32 @@ def _effective_hidden(nodes: list[dict[str, Any]], hidden: set[int]) -> set[int]
 
 
 def write_glb_hiding_nodes(
-    source_path: str, hidden_node_indices: set[int]
+    source_path: str,
+    hidden_node_indices: set[int],
+    *,
+    prepared_path: str | None = None,
 ) -> tuple[str, str | None]:
     """
     Write a temporary GLB with ``mesh`` removed from hidden nodes.
 
-    Returns ``(load_path, temp_path)``. ``temp_path`` must be cleaned up by the
-    caller (may include the meshopt temp and/or the filtered temp).
+    When ``prepared_path`` is given, that file is used as-is (no meshopt
+    prepare). Returns ``(load_path, temp_path)``. ``temp_path`` must be cleaned
+    up by the caller.
     """
-    if not is_glb(source_path):
+    if not is_glb(source_path) and not (prepared_path and is_glb(prepared_path)):
         raise MeshoptError("Object visibility filtering supports .glb only")
 
-    prepared_path, prepare_temp = prepare_glb_for_load(source_path)
     temps: list[str] = []
-    if prepare_temp:
-        temps.append(prepare_temp)
+    prepare_temp = None
+    if prepared_path:
+        prepared = prepared_path
+    else:
+        prepared, prepare_temp = prepare_glb_for_load(source_path)
+        if prepare_temp:
+            temps.append(prepare_temp)
 
     try:
-        gltf, bin_chunk = _read_glb(prepared_path)
+        gltf, bin_chunk = _read_glb(prepared)
         nodes = gltf.get("nodes") or []
         if not isinstance(nodes, list):
             raise MeshoptError("Invalid glTF nodes")

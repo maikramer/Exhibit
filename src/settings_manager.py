@@ -173,6 +173,7 @@ class WindowSettings(Gio.ListStore):
         super().__init__()
 
         self.logger = logger_lib.logger
+        self._batch_view = False
 
         for name, value in self.default_settings.items():
             setting = Setting(name, value, SettingType.VIEW)
@@ -192,11 +193,25 @@ class WindowSettings(Gio.ListStore):
             setting.connect("changed-no-ui-update", self.on_other_setting_changed)
             self.append(setting)
 
+    def begin_view_batch(self):
+        """Suppress per-key changed-view emits (UI Setting.changed still fires)."""
+        self._batch_view = True
+
+    def end_view_batch(self):
+        self._batch_view = False
+
     def sync_all_settings(self):
-        for setting in self:
-            setting.emit("changed", setting.name, setting.type)
+        """Sync UI from settings without N viewer update_options storms."""
+        self.begin_view_batch()
+        try:
+            for setting in self:
+                setting.emit("changed", setting.name, setting.type)
+        finally:
+            self.end_view_batch()
 
     def on_view_setting_changed(self, setting, name, enum):
+        if self._batch_view:
+            return
         self.emit("changed-view", setting)
 
     def on_other_setting_changed(self, setting, name, enum):

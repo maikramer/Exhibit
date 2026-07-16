@@ -110,8 +110,7 @@ class F3DViewer(Gtk.GLArea):
         self._sprites_type = "sphere"
 
         f3d.Log.set_use_coloring(True)
-        f3d.Log.set_verbose_level(f3d.Log.DEBUG)
-        f3d.Log.print(f3d.Log.DEBUG, "debug")
+        f3d.Log.set_verbose_level(f3d.Log.WARN)
 
         self.action_group = Gio.SimpleActionGroup()
         self.insert_action_group("f3dviewer", self.action_group)
@@ -135,7 +134,8 @@ class F3DViewer(Gtk.GLArea):
         self.create_action("tilt-up", self.tilt_action, "up")
         self.create_action("tilt-down", self.tilt_action, "down")
 
-        self.set_auto_render(True)
+        # Idle: demand-driven paints. Playback enables continuous auto-render.
+        self.set_auto_render(False)
         # self.connect("realize", self.on_realize)
         self.connect("render", self.on_render)
         self.connect("resize", self.on_resize)
@@ -163,14 +163,22 @@ class F3DViewer(Gtk.GLArea):
 
         self._animation_time = 0
         self._playing = False
+        self._animation_tick_ms = 16
+        self._animation_tick_dt = 0.016
         self._loaded_filepath = None
+        self._prepared_path = None
         self._hidden_part_indices: set[int] = set()
+        self._suppress_render = False
 
         self.set_allowed_apis(Gdk.GLAPI.GL)
 
         self.initialize()
 
     def initialize(self):
+        if self.engine is not None:
+            self.logger.debug("F3D viewer already initialized; reusing engine")
+            return
+
         backends_list = f3d.Engine.get_rendering_backend_list()
         self.logger.info(f"Available F3D backends: {backends_list}")
 
@@ -223,15 +231,21 @@ class F3DViewer(Gtk.GLArea):
 
     @playing.setter
     def playing(self, value):
+        was_playing = self._playing
         self._playing = value
 
         if self._playing:
             if self.animation_time >= self.upper_time_range:
                 self.animation_time = self.lower_time_range
-            GLib.timeout_add(10, self._advance_animation)
+            self.set_auto_render(True)
+            if not was_playing:
+                GLib.timeout_add(self._animation_tick_ms, self._advance_animation)
+        else:
+            self.set_auto_render(False)
+            self.queue_render()
 
     def _advance_animation(self):
-        self.animation_time = self.animation_time + 0.01
+        self.animation_time = self.animation_time + self._animation_tick_dt
         if self.animation_time >= self.upper_time_range:
             self.playing = False
         return self._playing
@@ -311,7 +325,7 @@ class F3DViewer(Gtk.GLArea):
             return self.keys[key], [int(value)]
         return self.keys[key], value
 
-    def update_options(self, options):
+    def update_options(self, options, *, queue_render=True):
         # Prefer bulk sprite state so type/enable order does not matter.
         if "sprite-enabled" in options:
             self._sprite_enabled = bool(options["sprite-enabled"])
@@ -327,9 +341,17 @@ class F3DViewer(Gtk.GLArea):
             f3d_options[f3d_key] = mapped
 
         self.logger.debug(f"f3d options update: {f3d_options}")
-        if self.engine:
+        if self.engine and f3d_options:
             self.engine.options.update(f3d_options)
-            self.queue_render()
+            if queue_render and not self._suppress_render:
+                self.queue_render()
+
+    def begin_options_batch(self):
+        self._suppress_render = True
+
+    def end_options_batch(self):
+        self._suppress_render = False
+        self.queue_render()
 
     def available_animations(self):
         if not self.scene:
@@ -357,17 +379,24 @@ class F3DViewer(Gtk.GLArea):
             self.logger.error(f"Error while decompressing meshopt GLB: {e}")
             return None, None
 
-    def load_file(self, filepath):
-        if self.settings["render.hdri.ambient"]:
+    def _resolve_load_path(self, filepath, prepared_path=None):
+        """Return path ready for F3D. Prefer caller-prepared path (single owner)."""
+        if prepared_path:
+            return prepared_path, None
+        return self._prepare_filepath(filepath)
+
+    def load_file(self, filepath, prepared_path=None):
+        if self.settings.get("render.hdri.ambient"):
             f3d_options = {"render.hdri.ambient": False}
             self.engine.options.update(f3d_options)
 
         self.scene.clear()
         self._hidden_part_indices = set()
 
-        load_path, meshopt_temp = self._prepare_filepath(filepath)
+        load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
         if load_path is None:
             self._loaded_filepath = None
+            self._prepared_path = None
             return False
 
         try:
@@ -375,22 +404,25 @@ class F3DViewer(Gtk.GLArea):
         except Exception as e:
             self.logger.error(f"Error while loading file: {e}")
             self._loaded_filepath = None
+            self._prepared_path = None
             return False
         finally:
             cleanup_decompressed(meshopt_temp)
 
         self._loaded_filepath = filepath
+        self._prepared_path = load_path
         self.notify("lower-time-range")
         self.notify("upper-time-range")
+        self.queue_render()
 
         return True
 
-    def add_file(self, filepath):
-        if self.settings["render.hdri.ambient"]:
+    def add_file(self, filepath, prepared_path=None):
+        if self.settings.get("render.hdri.ambient"):
             f3d_options = {"render.hdri.ambient": False}
             self.engine.options.update(f3d_options)
 
-        load_path, meshopt_temp = self._prepare_filepath(filepath)
+        load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
         if load_path is None:
             return False
 
@@ -403,22 +435,26 @@ class F3DViewer(Gtk.GLArea):
             cleanup_decompressed(meshopt_temp)
 
         self._loaded_filepath = filepath
+        self._prepared_path = load_path
         self.notify("lower-time-range")
         self.notify("upper-time-range")
 
         self.get_distance()
+        self.queue_render()
 
         return True
 
     def get_scene_parts(self) -> list[ScenePart]:
-        if not self._loaded_filepath:
+        path = self._prepared_path or self._loaded_filepath
+        if not path:
             return []
-        return list_mesh_parts(self._loaded_filepath)
+        return list_mesh_parts(path, already_prepared=bool(self._prepared_path))
 
     def get_scene_tree(self) -> list[SceneTreeNode]:
-        if not self._loaded_filepath:
+        path = self._prepared_path or self._loaded_filepath
+        if not path:
             return []
-        return build_scene_tree(self._loaded_filepath)
+        return build_scene_tree(path, already_prepared=bool(self._prepared_path))
 
     def get_hidden_part_indices(self) -> set[int]:
         return set(self._hidden_part_indices)
@@ -436,7 +472,15 @@ class F3DViewer(Gtk.GLArea):
         return self._reload_with_part_visibility()
 
     def _reload_with_part_visibility(self) -> bool:
+        """
+        Reimport scene with hidden meshes stripped from GLB JSON.
+
+        F3D Scene has no per-actor visibility API (GLTF stream add unsupported),
+        so clear+add remains required. We reuse the already-prepared GLB to avoid
+        a second meshopt/quantization decode.
+        """
         filepath = self._loaded_filepath
+        prepared = self._prepared_path
         if not filepath:
             return False
 
@@ -451,19 +495,26 @@ class F3DViewer(Gtk.GLArea):
         was_playing = self._playing
         self.playing = False
 
-        if self.settings["render.hdri.ambient"]:
+        if self.settings.get("render.hdri.ambient"):
             self.engine.options.update({"render.hdri.ambient": False})
 
         parts_temp = None
         try:
             if self._hidden_part_indices:
                 load_path, parts_temp = write_glb_hiding_nodes(
-                    filepath, self._hidden_part_indices
+                    filepath,
+                    self._hidden_part_indices,
+                    prepared_path=prepared,
                 )
             else:
-                load_path, parts_temp = self._prepare_filepath(filepath)
-                if load_path is None:
-                    return False
+                # Restore full scene from the prepared path (no re-prepare).
+                if prepared:
+                    load_path = prepared
+                else:
+                    load_path, parts_temp = self._prepare_filepath(filepath)
+                    if load_path is None:
+                        return False
+                    self._prepared_path = load_path
 
             self.scene.clear()
             self.scene.add(load_path)
