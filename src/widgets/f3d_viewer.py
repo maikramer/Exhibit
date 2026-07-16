@@ -50,10 +50,11 @@ class F3DViewer(Gtk.GLArea):
     keys = {
         "grid": "render.grid.enable",
         "grid-absolute": "render.grid.absolute",
-        "translucency-support": "render.effect.translucency_support",
+        # Bool UI → enum options (F3D master / post-3.5 API)
+        "translucency-support": "render.effect.blending.mode",
         "tone-mapping": "render.effect.tone_mapping",
         "ambient-occlusion": "render.effect.ambient_occlusion",
-        "anti-aliasing": "render.effect.antialiasing.enable",
+        "anti-aliasing": "render.effect.antialiasing.mode",
         "hdri-ambient": "render.hdri.ambient",
         "hdri-skybox": "render.background.skybox",
         "light-intensity": "render.light.intensity",
@@ -64,7 +65,8 @@ class F3DViewer(Gtk.GLArea):
         "show-edges": "render.show_edges",
         "edges-width": "render.line_width",
         "up": "scene.up_direction",
-        "sprite-enabled": "model.point_sprites.enable",
+        # sprite-enabled is folded into model.point_sprites.type ("none" when off)
+        "sprite-enabled": "model.point_sprites.type",
         "sprites-size": "model.point_sprites.size",
         "sprites-type": "model.point_sprites.type",
         "point-size": "render.point_size",
@@ -102,6 +104,10 @@ class F3DViewer(Gtk.GLArea):
         self.scene = None
         self.window = None
         self.camera = None
+
+        # Cached UI values for enum options that replaced bools in recent F3D.
+        self._sprite_enabled = False
+        self._sprites_type = "sphere"
 
         f3d.Log.set_use_coloring(True)
         f3d.Log.set_verbose_level(f3d.Log.DEBUG)
@@ -287,17 +293,40 @@ class F3DViewer(Gtk.GLArea):
         self.get_distance()
         self.queue_render()
 
+    def _map_setting_to_f3d(self, key, value):
+        """Translate Exhibit settings to current F3D option names/values."""
+        if key == "translucency-support":
+            return "render.effect.blending.mode", ("ddp" if value else "none")
+        if key == "anti-aliasing":
+            return "render.effect.antialiasing.mode", ("fxaa" if value else "none")
+        if key == "sprite-enabled":
+            self._sprite_enabled = bool(value)
+            sprite_type = self._sprites_type if self._sprite_enabled else "none"
+            return "model.point_sprites.type", sprite_type
+        if key == "sprites-type":
+            self._sprites_type = value if value else "sphere"
+            sprite_type = self._sprites_type if self._sprite_enabled else "none"
+            return "model.point_sprites.type", sprite_type
+        if key == "animation-index" and not isinstance(value, (list, tuple)):
+            return self.keys[key], [int(value)]
+        return self.keys[key], value
+
     def update_options(self, options):
+        # Prefer bulk sprite state so type/enable order does not matter.
+        if "sprite-enabled" in options:
+            self._sprite_enabled = bool(options["sprite-enabled"])
+        if "sprites-type" in options and options["sprites-type"]:
+            self._sprites_type = options["sprites-type"]
+
         f3d_options = {}
         for key, value in options.items():
-            if key in self.keys:
-                f3d_key = self.keys[key]
-                if key == "animation-index" and not isinstance(value, (list, tuple)):
-                    value = [int(value)]
-                self.settings[f3d_key] = value
-                f3d_options[f3d_key] = value
+            if key not in self.keys:
+                continue
+            f3d_key, mapped = self._map_setting_to_f3d(key, value)
+            self.settings[f3d_key] = mapped
+            f3d_options[f3d_key] = mapped
 
-        print(f3d_options)
+        self.logger.debug(f"f3d options update: {f3d_options}")
         if self.engine:
             self.engine.options.update(f3d_options)
             self.queue_render()

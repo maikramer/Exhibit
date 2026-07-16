@@ -13,7 +13,6 @@
         "-DF3D_BINDINGS_PYTHON=ON",
         "-DF3D_BINDINGS_JAVA=OFF",
         "-DF3D_BINDINGS_C=OFF",
-        "-DF3D_LINUX_GENERATE_MAN=OFF",
         "-DF3D_PLUGINS_STATIC_BUILD=ON",
         "-DF3D_PLUGIN_BUILD_ALEMBIC=ON",
         "-DF3D_PLUGIN_BUILD_ASSIMP=ON",
@@ -29,12 +28,8 @@
         {
             "type": "git",
             "url": "https://github.com/f3d-app/f3d",
-            "branch": "master",
+            "commit": "302c6f00695666ca090389ab8ed212283213faa9",
             "disable-lfs": true
-        },
-        {
-            "type": "patch",
-            "path": "./0001-Fix-rendering-backend-detection.patch"
         }
     ],
     "modules": [
@@ -201,8 +196,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/pybind/pybind11/archive/refs/tags/v2.13.6.tar.gz",
-                    "sha256": "e08cb87f4773da97fa7b5f035de8763abc656d87d5773e62f6da0587d1f0ec20"
+                    "url": "https://github.com/pybind/pybind11/archive/refs/tags/v3.0.1.tar.gz",
+                    "sha256": "741633da746b7c738bb71f1854f957b9da660bcd2dce68d71949037f0969d0ca"
                 }
             ]
         },

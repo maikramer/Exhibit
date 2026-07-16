@@ -49,6 +49,10 @@ flatpak run io.github.nokse22.Exhibit /tmp/hero.glb
 - **Parts:** with a multipart `.glb`, click the **list** icon beside home/reset → checkboxes on the tree.
 - **Multipart demo:** [Cesium Milk Truck](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/CesiumMilkTruck) (GLB).
 
+## F3D pin
+
+libf3d is pinned to F3D commit `302c6f00695666ca090389ab8ed212283213faa9` (master tip at pin time) in [`build-aux/libf3d.json`](build-aux/libf3d.json). Exhibit option keys are mapped to the current F3D API (blending / antialiasing modes, point-sprite type enum).
+
 ## Build (Flatpak, local)
 
 Needs `org.flatpak.Builder`, GNOME 49 SDK/Platform, and Flathub remotes.
