@@ -22,6 +22,7 @@ from typing import Any
 from .meshopt_decompress import (
     MeshoptError,
     _read_glb,
+    _read_glb_json,
     _write_glb,
     cleanup_decompressed,
     prepare_glb_for_load,
@@ -50,6 +51,22 @@ class SceneTreeNode:
 
 def is_glb(path: str) -> bool:
     return bool(path) and str(path).lower().endswith(".glb")
+
+
+def glb_has_skins(path: str) -> bool | None:
+    """
+    Return whether a GLB declares skins (armature).
+
+    ``None`` means the file is not a readable GLB (unknown / N/A).
+    """
+    if not is_glb(path):
+        return None
+    try:
+        gltf = _read_glb_json(path)
+    except (OSError, MeshoptError):
+        return None
+    skins = gltf.get("skins") or []
+    return isinstance(skins, list) and len(skins) > 0
 
 
 def _node_name(nodes: list[dict[str, Any]], index: int) -> str:

@@ -29,7 +29,7 @@ from wand.image import Image
 from . import logger_lib
 from .settings_manager import WindowSettings
 from .meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
-from .gltf_scene_graph import SceneTreeNode, tree_has_mesh
+from .gltf_scene_graph import SceneTreeNode, glb_has_skins, tree_has_mesh
 
 import f3d
 
@@ -458,6 +458,9 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self._object_tree_check_handlers: dict[int, int] = {}
         self._setup_object_tree_view()
 
+        # Saved opacity / line width while armature X-ray mode is active.
+        self._armature_xray_restore: dict[str, float] | None = None
+
         self.block_reload = True
 
         # Sync the UI with the settings (batched → one viewer options update)
@@ -824,12 +827,84 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     def on_view_setting_changed(self, window_settings, setting):
         self.logger.info(f"Setting: {setting.name} to {setting.value}")
+        if setting.name == "armature-enable":
+            self._apply_armature_mode(bool(setting.value))
+            self.check_for_options_change()
+            return
+
         options = {setting.name: setting.value}
         self.f3d_viewer.update_options(options)
         self.check_for_options_change()
 
         if setting.name == "up":
             self.reload_file()
+
+    def _apply_armature_mode(self, enabled: bool):
+        """
+        Toggle F3D armature and apply an X-ray presentation.
+
+        F3D draws bones on top, but with default opacity=1 and line_width=1 the
+        skeleton is nearly invisible. Match the documented look (thicker lines
+        + translucent mesh).
+        """
+        xray_opacity = 0.35
+        min_line_width = 4.0
+
+        if enabled:
+            if self._armature_xray_restore is None:
+                self._armature_xray_restore = {
+                    "model-opacity": float(
+                        self.window_settings.get_setting("model-opacity").value
+                    ),
+                    "edges-width": float(
+                        self.window_settings.get_setting("edges-width").value
+                    ),
+                }
+            line_width = max(
+                min_line_width, float(self._armature_xray_restore["edges-width"])
+            )
+            self.window_settings.begin_view_batch()
+            try:
+                self.window_settings.set_setting("model-opacity", xray_opacity)
+                self.window_settings.set_setting("edges-width", line_width)
+            finally:
+                self.window_settings.end_view_batch()
+
+            self.f3d_viewer.update_options(
+                {
+                    "armature-enable": True,
+                    "model-opacity": xray_opacity,
+                    "edges-width": line_width,
+                }
+            )
+
+            probe = self.f3d_viewer.get_prepared_path() or self.filepath
+            has_skins = glb_has_skins(probe) if probe else None
+            if has_skins is False:
+                self.send_toast(_("No armature found in this model"))
+            return
+
+        restore = self._armature_xray_restore or {
+            "model-opacity": 1.0,
+            "edges-width": 1.0,
+        }
+        self._armature_xray_restore = None
+        self.window_settings.begin_view_batch()
+        try:
+            self.window_settings.set_setting(
+                "model-opacity", restore["model-opacity"]
+            )
+            self.window_settings.set_setting("edges-width", restore["edges-width"])
+        finally:
+            self.window_settings.end_view_batch()
+
+        self.f3d_viewer.update_options(
+            {
+                "armature-enable": False,
+                "model-opacity": restore["model-opacity"],
+                "edges-width": restore["edges-width"],
+            }
+        )
 
     def on_other_setting_changed(self, window_settings, setting):
         self.logger.info(f"Setting: {setting.name} to {setting.value}")

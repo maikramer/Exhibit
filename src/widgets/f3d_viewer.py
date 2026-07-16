@@ -459,6 +459,10 @@ class F3DViewer(Gtk.GLArea):
     def get_hidden_part_indices(self) -> set[int]:
         return set(self._hidden_part_indices)
 
+    def get_prepared_path(self) -> str | None:
+        """Path currently prepared for F3D (may equal the source file)."""
+        return self._prepared_path or self._loaded_filepath
+
     def set_part_visible(self, node_index: int, visible: bool) -> bool:
         """Show/hide a mesh node. Returns False if the scene could not be updated."""
         if not self._loaded_filepath:

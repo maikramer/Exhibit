@@ -525,6 +525,7 @@
                                             <child>
                                               <object class="AdwSwitchRow" id="armature_switch">
                                                 <property name="title" translatable="yes">Show Armature</property>
+                                                <property name="subtitle" translatable="yes">X-ray skeleton overlay (glTF skins)</property>
                                               </object>
                                             </child>
                                           </object>
