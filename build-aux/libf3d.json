@@ -29,7 +29,8 @@
         {
             "type": "git",
             "url": "https://github.com/f3d-app/f3d",
-            "branch": "master"
+            "branch": "master",
+            "disable-lfs": true
         },
         {
             "type": "patch",
