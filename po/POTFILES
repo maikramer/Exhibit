@@ -5,3 +5,4 @@ src/main.py
 src/window.py
 data/ui/window.ui
 data/ui/file_row.ui
+data/gtk/help-overlay.ui
