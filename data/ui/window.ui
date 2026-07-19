@@ -357,6 +357,10 @@
                                                     <items>
                                                       <item translatable="yes">Sphere</item>
                                                       <item translatable="yes">Gaussian</item>
+                                                      <item translatable="yes">Circle</item>
+                                                      <item translatable="yes">Cross</item>
+                                                      <item translatable="yes">Stddev</item>
+                                                      <item translatable="yes">Bound</item>
                                                     </items>
                                                   </object>
                                                 </property>
@@ -557,9 +561,10 @@
                                                   </object>
                                                 </child>
                                                 <child>
-                                                  <object class="GtkScale">
+                                                  <object class="GtkScale" id="animation_time_scale">
                                                     <property name="digits">2</property>
                                                     <property name="hexpand">true</property>
+                                                    <property name="draw-value">false</property>
                                                     <property name="adjustment">
                                                       <object class="GtkAdjustment" id="animation_time_adj">
                                                         <property name="upper">20.0</property>
@@ -581,6 +586,24 @@
                                           <object class="AdwSwitchRow" id="armature_switch">
                                             <property name="title" translatable="yes">Show Armature</property>
                                             <property name="subtitle" translatable="yes">X-ray skeleton overlay (glTF skins)</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="AdwSwitchRow" id="checkerboard_switch">
+                                            <property name="title" translatable="yes">Checkerboard</property>
+                                            <property name="subtitle" translatable="yes">Replace textures with UV checker (reload)</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="AdwSwitchRow" id="normal_glyphs_switch">
+                                            <property name="title" translatable="yes">Normal Glyphs</property>
+                                            <property name="subtitle" translatable="yes">Draw vertex normals as arrows</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="AdwSwitchRow" id="display_depth_switch">
+                                            <property name="title" translatable="yes">Display Depth</property>
+                                            <property name="subtitle" translatable="yes">Show depth buffer as grayscale</property>
                                           </object>
                                         </child>
                                         <child>

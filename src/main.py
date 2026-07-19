@@ -44,8 +44,6 @@ _STYLE_DARK_RESOURCE = "/io/github/nokse22/Exhibit/style-dark.css"
 class Viewer3dApplication(Adw.Application):
     """The main application singleton class."""
 
-    open_filepath = None
-
     def __init__(self):
         super().__init__(
             application_id="io.github.nokse22.Exhibit",
@@ -53,6 +51,7 @@ class Viewer3dApplication(Adw.Application):
         )
 
         logger_lib.init()
+        self.logger = logger_lib.logger
 
         self.lib_info = f3d.Engine.get_lib_info()
         self.backends = f3d.Engine.get_rendering_backend_list()
@@ -71,7 +70,9 @@ class Viewer3dApplication(Adw.Application):
         )
         self.create_action(
             "open-configs-folder",
-            lambda *_: webbrowser.open(self.props.active_window.configs_path),
+            lambda *_: webbrowser.open(
+                self.props.active_window.user_configurations_path
+            ),
         )
 
         self.create_action(
@@ -246,12 +247,7 @@ class Viewer3dApplication(Adw.Application):
     def do_activate(self):
         win = self.props.active_window
         if not win:
-            if self.open_filepath:
-                win = Viewer3dWindow(
-                    application=self, startup_filepath=self.open_filepath
-                )
-            else:
-                win = Viewer3dWindow(application=self)
+            win = Viewer3dWindow(application=self)
         win.present()
 
     def create_action(self, name, callback, shortcuts=None, *args):

@@ -22,6 +22,7 @@ from .meshopt_decompress import (
     _read_glb_json,
     prepare_glb_for_load,
     cleanup_decompressed,
+    release_prepared,
 )
 
 _MODE_TRIANGLES = 4
@@ -36,17 +37,20 @@ _MODE_POINTS = 0
 class _LazyHeight:
     """Defer world-AABB height until overlay/manifest asks for it."""
 
-    __slots__ = ("_gltf", "_value", "_done")
+    __slots__ = ("_gltf", "_up", "_value", "_done")
 
-    def __init__(self, gltf: dict[str, Any]) -> None:
+    def __init__(self, gltf: dict[str, Any], up: str = "+Y") -> None:
         self._gltf: dict[str, Any] | None = gltf
+        self._up = up
         self._value: float | None = None
         self._done = False
 
     def get(self) -> float | None:
         if not self._done:
             gltf = self._gltf
-            self._value = _scene_height_m(gltf) if gltf is not None else None
+            self._value = (
+                _scene_height_m(gltf, up=self._up) if gltf is not None else None
+            )
             self._done = True
             self._gltf = None
         return self._value
@@ -103,6 +107,7 @@ class MeshStats:
     vertices: int | None = None
     faces: int | None = None
     edges: int | None = None
+    edges_approximate: bool = False
     meshes: int | None = None
     primitives: int | None = None
     materials: int | None = None
@@ -111,7 +116,7 @@ class MeshStats:
     skins: int | None = None
     animations: int | None = None
     morph_targets: int | None = None
-    # Materialized world AABB height on +Y (glTF / Three.js meters).
+    # Materialized world AABB height on the scene up axis (glTF units).
     height_m: float | None = None
     format: str | None = None
     # Private: cheap snapshot; height computed on first resolved_height_m().
@@ -319,9 +324,19 @@ def _expand_aabb_with_oriented_box(
                     scene_max[2] = wz
 
 
-def _scene_height_m(gltf: dict[str, Any]) -> float | None:
+_UP_AXIS = {
+    "+X": 0,
+    "-X": 0,
+    "+Y": 1,
+    "-Y": 1,
+    "+Z": 2,
+    "-Z": 2,
+}
+
+
+def _scene_height_m(gltf: dict[str, Any], up: str = "+Y") -> float | None:
     """
-    World-space AABB height on +Y in meters (glTF unit / Three.js default).
+    World-space AABB extent along the scene up axis (glTF units).
 
     Uses POSITION accessor min/max transformed by node world matrices — same
     idea as ``Box3.setFromObject`` with geometry bounding boxes.
@@ -332,6 +347,7 @@ def _scene_height_m(gltf: dict[str, Any]) -> float | None:
     if not isinstance(meshes, list) or not isinstance(nodes, list):
         return None
 
+    axis = _UP_AXIS.get(up, 1)
     worlds = _world_matrices(gltf)
     scene_min = [math.inf, math.inf, math.inf]
     scene_max = [-math.inf, -math.inf, -math.inf]
@@ -367,7 +383,7 @@ def _scene_height_m(gltf: dict[str, Any]) -> float | None:
 
     if not found:
         return None
-    height = scene_max[1] - scene_min[1]
+    height = scene_max[axis] - scene_min[axis]
     if not math.isfinite(height) or height < 0:
         return None
     return float(height)
@@ -444,7 +460,11 @@ def _triangle_edges(indices: list[int]) -> set[tuple[int, int]]:
 
 
 def _stats_from_gltf(
-    path: str, gltf: dict[str, Any], bin_chunk: bytes | None
+    path: str,
+    gltf: dict[str, Any],
+    bin_chunk: bytes | None,
+    *,
+    up: str = "+Y",
 ) -> MeshStats:
     meshes = gltf.get("meshes") or []
     materials = gltf.get("materials") or []
@@ -459,6 +479,8 @@ def _stats_from_gltf(
     morph_targets = 0
     edge_set: set[tuple[int, int]] = set()
     edges_exact = True
+    # Offset local indices so edges from distinct primitives do not collide.
+    vertex_base = 0
 
     for mesh in meshes if isinstance(meshes, list) else []:
         if not isinstance(mesh, dict):
@@ -471,6 +493,8 @@ def _stats_from_gltf(
             pos = attrs.get("POSITION")
             vert_count = _accessor_count(gltf, int(pos) if pos is not None else None)
             vertices += vert_count
+            base = vertex_base
+            vertex_base += max(vert_count, 0)
 
             targets = prim.get("targets") or []
             if isinstance(targets, list):
@@ -497,7 +521,10 @@ def _stats_from_gltf(
                         if indices is None:
                             edges_exact = False
                         else:
-                            edge_set |= _triangle_edges(indices)
+                            offset = [
+                                base + int(i) for i in indices
+                            ]
+                            edge_set |= _triangle_edges(offset)
                     else:
                         edges_exact = False
                 else:
@@ -513,11 +540,13 @@ def _stats_from_gltf(
                 pass
 
     edges: int | None
+    edges_approximate = False
     if edges_exact and edge_set:
         edges = len(edge_set)
     elif faces > 0:
         # Closed-manifold estimate; marked as approximate in overlay text.
         edges = int(round(faces * 1.5))
+        edges_approximate = True
     else:
         edges = None
 
@@ -532,6 +561,7 @@ def _stats_from_gltf(
         vertices=vertices or None,
         faces=faces or None,
         edges=edges,
+        edges_approximate=edges_approximate,
         meshes=len(meshes) if isinstance(meshes, list) else 0,
         primitives=primitives,
         materials=len(materials) if isinstance(materials, list) else 0,
@@ -543,11 +573,13 @@ def _stats_from_gltf(
         format="glb",
         # Height is O(nodes×prims) via min/max corners — still deferred until
         # overlay / manifest asks (never scans vertex buffers).
-        _lazy_height=_LazyHeight(_height_input_snapshot(gltf)),
+        _lazy_height=_LazyHeight(_height_input_snapshot(gltf), up=up),
     )
 
 
-def collect_mesh_stats(path: str, *, already_prepared: bool = False) -> MeshStats:
+def collect_mesh_stats(
+    path: str, *, already_prepared: bool = False, up: str = "+Y"
+) -> MeshStats:
     """
     Collect stats for ``path``.
 
@@ -566,9 +598,11 @@ def collect_mesh_stats(path: str, *, already_prepared: bool = False) -> MeshStat
 
     temp = None
     load_path = abs_path
+    retained = False
     if not already_prepared:
         try:
             load_path, temp = prepare_glb_for_load(abs_path)
+            retained = load_path != abs_path and temp is None
         except (OSError, MeshoptError):
             return MeshStats(path=abs_path, file_bytes=file_bytes, format="glb")
 
@@ -581,10 +615,12 @@ def collect_mesh_stats(path: str, *, already_prepared: bool = False) -> MeshStat
                 gltf = _read_glb_json(load_path)
             except (OSError, MeshoptError):
                 return MeshStats(path=abs_path, file_bytes=file_bytes, format="glb")
-            return _stats_from_gltf(abs_path, gltf, None)
-        return _stats_from_gltf(abs_path, gltf, bin_chunk)
+            return _stats_from_gltf(abs_path, gltf, None, up=up)
+        return _stats_from_gltf(abs_path, gltf, bin_chunk, up=up)
     finally:
         cleanup_decompressed(temp)
+        if retained:
+            release_prepared(load_path)
 
 
 def format_overlay_text(stats: MeshStats, *, approximate_edges: bool = False) -> str:
@@ -627,12 +663,7 @@ def format_overlay_text(stats: MeshStats, *, approximate_edges: bool = False) ->
     if stats.faces is not None:
         lines.append(_row("Faces", _fmt(stats.faces)))
     if stats.edges is not None:
-        # When we couldn't read indices, edges are 1.5×faces estimate.
-        est = (
-            stats.faces is not None
-            and stats.edges == int(round(stats.faces * 1.5))
-        )
-        mark = "~" if est or approximate_edges else ""
+        mark = "~" if stats.edges_approximate or approximate_edges else ""
         lines.append(_row("Edges", f"{mark}{_fmt(stats.edges)}"))
 
     meta: list[str] = []

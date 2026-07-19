@@ -128,6 +128,9 @@ class WindowSettings(Gio.ListStore):
         "model-roughness": 0.3,
         "model-opacity": 1.0,
         "armature-enable": False,
+        "checkerboard-enable": False,
+        "normal-glyphs": False,
+        "display-depth": False,
         "stats-overlay": False,
         "scivis-component": -1,
         "cells": True,
@@ -179,7 +182,8 @@ class WindowSettings(Gio.ListStore):
         for name, value in self.default_settings.items():
             setting = Setting(name, value, SettingType.VIEW)
             setting.connect("changed", self.on_view_setting_changed)
-            setting.connect("changed-no-ui-update", self.on_other_setting_changed)
+            # Still push to the viewer; skip UI-only sync handlers.
+            setting.connect("changed-no-ui-update", self.on_view_setting_changed)
             self.append(setting)
 
         for name, value in self.other_settings.items():
@@ -191,7 +195,7 @@ class WindowSettings(Gio.ListStore):
         for name, value in self.internal_settings.items():
             setting = Setting(name, value, SettingType.INTERNAL)
             setting.connect("changed", self.on_internal_setting_changed)
-            setting.connect("changed-no-ui-update", self.on_other_setting_changed)
+            setting.connect("changed-no-ui-update", self.on_internal_setting_changed)
             self.append(setting)
 
     def begin_view_batch(self):
@@ -247,7 +251,8 @@ class WindowSettings(Gio.ListStore):
         return settings
 
     def set_settings(self, dictionary):
-        for key, value in dictionary:
+        items = dictionary.items() if isinstance(dictionary, dict) else dictionary
+        for key, value in items:
             self.set_setting(key, value)
 
     def get_view_settings(self):

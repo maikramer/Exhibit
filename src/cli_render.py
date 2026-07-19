@@ -19,11 +19,19 @@ import f3d
 from .camera_views import PRESET_VIEWS, UP_DIRS, apply_orbit, apply_view
 from .gltf_scene_graph import glb_has_skins
 from .mesh_stats import collect_mesh_stats, format_overlay_for_f3d
-from .meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
+from .meshopt_decompress import (
+    MeshoptError,
+    cleanup_decompressed,
+    prepare_glb_for_load,
+    release_prepared,
+)
+from .settings_manager import WindowSettings
 
 DEFAULT_VIEWS = ("front", "right", "back", "left", "top", "isometric")
 DEFAULT_SIZE = (1024, 1024)
-DEFAULT_BG = (0.12, 0.12, 0.12)
+# Match GUI WindowSettings defaults for closer parity.
+DEFAULT_BG = WindowSettings.default_settings["bg-color"]
+DEFAULT_GRID = WindowSettings.default_settings["grid"]
 XRAY_OPACITY = 0.35
 XRAY_LINE_WIDTH = 4.0
 
@@ -116,6 +124,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Show glTF armature with X-ray defaults (opacity/line-width)",
     )
     parser.add_argument(
+        "--checkerboard",
+        action="store_true",
+        help="Replace model textures with a UV checkerboard",
+    )
+    parser.add_argument(
+        "--normal-glyphs",
+        action="store_true",
+        dest="normal_glyphs",
+        help="Draw vertex normals as arrows",
+    )
+    parser.add_argument(
+        "--display-depth",
+        action="store_true",
+        dest="display_depth",
+        help="Render the depth buffer as grayscale",
+    )
+    parser.add_argument(
         "--opacity",
         type=float,
         default=None,
@@ -136,14 +161,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--grid",
         action=argparse.BooleanOptionalAction,
-        default=False,
-        help="Show ground grid (default: off)",
+        default=DEFAULT_GRID,
+        help="Show ground grid (default: on, matches GUI)",
     )
     parser.add_argument(
         "--bg",
         type=_parse_rgb,
         default=DEFAULT_BG,
-        help="Background RGB 0..1 (default: 0.12,0.12,0.12)",
+        help="Background RGB 0..1 (default: 1,1,1 — matches GUI)",
     )
     parser.add_argument(
         "--animation-index",
@@ -198,9 +223,16 @@ def _build_options(
         "render.line_width": float(line_width),
         "model.color.opacity": float(opacity),
         "render.armature.enable": bool(args.armature),
+        "model.checkerboard.enable": bool(args.checkerboard),
+        "model.normal_glyphs.enable": bool(args.normal_glyphs),
+        "render.effect.display_depth": bool(args.display_depth),
         "scene.animation.indices": [int(args.animation_index)],
         "render.effect.antialiasing.mode": "fxaa",
         "render.effect.tone_mapping": True,
+        "render.effect.blending.mode": "ddp",
+        "render.light.intensity": float(
+            WindowSettings.default_settings["light-intensity"]
+        ),
     }
     if args.overlay and overlay_text:
         options.update(
@@ -254,15 +286,19 @@ def render_model(args: argparse.Namespace) -> str:
     print(f"Loading {model_path}", file=sys.stderr)
     load_path = model_path
     prepare_temp = None
-    prepared = False
+    retained = False
     try:
         load_path, prepare_temp = prepare_glb_for_load(model_path)
-        prepared = load_path != model_path
+        retained = load_path != model_path and prepare_temp is None
     except MeshoptError as exc:
+        raise SystemExit(f"Failed to prepare model: {exc}") from exc
+    except Exception as exc:
         raise SystemExit(f"Failed to prepare model: {exc}") from exc
 
     print("Collecting mesh stats", file=sys.stderr)
-    stats = collect_mesh_stats(load_path, already_prepared=True)
+    stats = collect_mesh_stats(
+        load_path, already_prepared=True, up=str(args.up)
+    )
     overlay_text = format_overlay_for_f3d(stats) if args.overlay else None
     options = _build_options(args, overlay_text=overlay_text)
 
@@ -272,12 +308,16 @@ def render_model(args: argparse.Namespace) -> str:
 
     if not eng.scene.supports(load_path):
         cleanup_decompressed(prepare_temp)
+        if retained:
+            release_prepared(load_path)
         raise SystemExit(f"Unsupported model format: {model_path}")
 
     try:
         eng.scene.add(load_path)
     except Exception as exc:
         cleanup_decompressed(prepare_temp)
+        if retained:
+            release_prepared(load_path)
         raise SystemExit(f"Failed to load model: {exc}") from exc
 
     # Keep prepared file until after load; cache may own it (temp=None).
@@ -300,32 +340,39 @@ def render_model(args: argparse.Namespace) -> str:
     has_skins = glb_has_skins(model_path)
 
     view_entries: list[dict[str, Any]] = []
-    for job in jobs:
-        name = job["name"]
-        if job["kind"] == "preset":
-            apply_view(eng.window.camera, name, up=args.up)
-        else:
-            apply_orbit(eng.window.camera, float(job["yaw_deg"]), up=args.up)
+    try:
+        for job in jobs:
+            name = job["name"]
+            if job["kind"] == "preset":
+                apply_view(eng.window.camera, name, up=args.up)
+            else:
+                apply_orbit(eng.window.camera, float(job["yaw_deg"]), up=args.up)
 
-        filename = f"{stem}_{name}.{args.format}"
-        out_path = os.path.join(out_dir, filename)
-        print(f"Rendering {name} -> {out_path}", file=sys.stderr)
-        image = eng.window.render_to_image()
-        image.save(out_path)
+            filename = f"{stem}_{name}.{args.format}"
+            out_path = os.path.join(out_dir, filename)
+            print(f"Rendering {name} -> {out_path}", file=sys.stderr)
+            image = eng.window.render_to_image()
+            image.save(out_path)
 
-        entry: dict[str, Any] = {"name": name, "file": filename}
-        if "yaw_deg" in job:
-            entry["yaw_deg"] = job["yaw_deg"]
-        view_entries.append(entry)
+            entry: dict[str, Any] = {"name": name, "file": filename}
+            if "yaw_deg" in job:
+                entry["yaw_deg"] = job["yaw_deg"]
+            view_entries.append(entry)
+    finally:
+        if retained:
+            release_prepared(load_path)
 
     manifest = {
         "model": model_path,
-        "prepared": prepared,
+        "prepared": load_path != model_path,
         "has_skins": has_skins,
         "animation_names": animation_names,
         "stats": stats.to_dict(),
         "options": {
             "armature": bool(args.armature),
+            "checkerboard": bool(args.checkerboard),
+            "normal_glyphs": bool(args.normal_glyphs),
+            "display_depth": bool(args.display_depth),
             "opacity": options["model.color.opacity"],
             "line_width": options["render.line_width"],
             "edges": bool(args.edges),

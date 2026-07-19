@@ -19,6 +19,8 @@ def v_abs(vector):
 
 def v_norm(vector):
     norm = math.sqrt(sum(x**2 for x in vector))
+    if norm < 1e-12:
+        return tuple(0.0 for _ in vector)
     return tuple(x / norm for x in vector)
 
 

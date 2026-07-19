@@ -18,6 +18,7 @@ import math
 import os
 import struct
 import tempfile
+import threading
 from ctypes import (
     CDLL,
     POINTER,
@@ -71,8 +72,12 @@ _lib: CDLL | None = None
 _lib_failed = False
 
 # Prepared GLB cache: (realpath, mtime_ns, size) → temp path owned by this module.
+_prepare_lock = threading.Lock()
 _prepare_cache: dict[tuple[str, int, int], str] = {}
 _prepare_cache_by_abs: dict[str, tuple[tuple[str, int, int], str]] = {}
+# Active users of a cached temp; unlink only when refs hit 0 and entry gone.
+_prepare_refs: dict[str, int] = {}
+_prepare_orphans: set[str] = set()
 
 
 class MeshoptError(Exception):
@@ -233,6 +238,49 @@ def _file_cache_key(path: str) -> tuple[str, int, int]:
     return abs_path, int(stat.st_mtime_ns), int(stat.st_size)
 
 
+def _retain_temp(temp_path: str) -> None:
+    _prepare_refs[temp_path] = _prepare_refs.get(temp_path, 0) + 1
+
+
+def _try_unlink_temp(temp_path: str) -> None:
+    """Unlink temp when no refs remain and it is not the live cache entry."""
+    if _prepare_refs.get(temp_path, 0) > 0:
+        return
+    if temp_path in _prepare_cache.values():
+        return
+    _prepare_orphans.discard(temp_path)
+    _prepare_refs.pop(temp_path, None)
+    try:
+        os.unlink(temp_path)
+    except OSError:
+        pass
+
+
+def _retire_temp(temp_path: str) -> None:
+    """Drop a cache entry's temp; unlink now or when last retainer releases."""
+    if temp_path in _prepare_cache.values():
+        return
+    if _prepare_refs.get(temp_path, 0) > 0:
+        _prepare_orphans.add(temp_path)
+        return
+    _try_unlink_temp(temp_path)
+
+
+def release_prepared(path: str | None) -> None:
+    """Drop one retain on a cached prepared GLB (tab close / replace load)."""
+    if not path:
+        return
+    with _prepare_lock:
+        if path not in _prepare_refs and path not in _prepare_orphans:
+            return
+        refs = _prepare_refs.get(path, 0) - 1
+        if refs > 0:
+            _prepare_refs[path] = refs
+            return
+        _prepare_refs.pop(path, None)
+        _try_unlink_temp(path)
+
+
 def _cache_prepared(key: tuple[str, int, int], temp_path: str) -> None:
     abs_path = key[0]
     previous = _prepare_cache_by_abs.get(abs_path)
@@ -240,17 +288,17 @@ def _cache_prepared(key: tuple[str, int, int], temp_path: str) -> None:
         prev_key, prev_temp = previous
         _prepare_cache.pop(prev_key, None)
         if prev_temp != temp_path:
-            try:
-                os.unlink(prev_temp)
-            except OSError:
-                pass
+            _retire_temp(prev_temp)
     _prepare_cache[key] = temp_path
     _prepare_cache_by_abs[abs_path] = (key, temp_path)
+    _prepare_orphans.discard(temp_path)
+    _retain_temp(temp_path)
 
 
 def _cached_prepared(key: tuple[str, int, int]) -> str | None:
     cached = _prepare_cache.get(key)
     if cached and os.path.isfile(cached):
+        _retain_temp(cached)
         return cached
     if cached:
         _prepare_cache.pop(key, None)
@@ -258,21 +306,27 @@ def _cached_prepared(key: tuple[str, int, int]) -> str | None:
         entry = _prepare_cache_by_abs.get(abs_path)
         if entry and entry[0] == key:
             _prepare_cache_by_abs.pop(abs_path, None)
+        _retire_temp(cached)
     return None
 
 
 def clear_prepare_cache() -> None:
     """Delete all cached prepared GLBs (tests / shutdown)."""
-    for temp_path in list(_prepare_cache.values()):
-        try:
-            os.unlink(temp_path)
-        except OSError:
-            pass
-    _prepare_cache.clear()
-    _prepare_cache_by_abs.clear()
+    with _prepare_lock:
+        temps = set(_prepare_cache.values()) | set(_prepare_orphans)
+        _prepare_cache.clear()
+        _prepare_cache_by_abs.clear()
+        _prepare_refs.clear()
+        _prepare_orphans.clear()
+        for temp_path in temps:
+            try:
+                os.unlink(temp_path)
+            except OSError:
+                pass
 
 
-def _write_glb(path: str, gltf: dict[str, Any], bin_chunk: bytes) -> None:
+def _glb_bytes(gltf: dict[str, Any], bin_chunk: bytes) -> bytes:
+    """Serialize glTF JSON + BIN chunk into a GLB byte buffer."""
     json_bytes = json.dumps(gltf, separators=(",", ":")).encode("utf-8")
     json_padding = (4 - (len(json_bytes) % 4)) % 4
     json_bytes += b" " * json_padding
@@ -281,12 +335,20 @@ def _write_glb(path: str, gltf: dict[str, Any], bin_chunk: bytes) -> None:
     bin_bytes = bin_chunk + (b"\x00" * bin_padding)
 
     total = 12 + 8 + len(json_bytes) + 8 + len(bin_bytes)
+    return b"".join(
+        (
+            struct.pack("<III", _GLB_MAGIC, 2, total),
+            struct.pack("<II", len(json_bytes), _CHUNK_JSON),
+            json_bytes,
+            struct.pack("<II", len(bin_bytes), _CHUNK_BIN),
+            bin_bytes,
+        )
+    )
+
+
+def _write_glb(path: str, gltf: dict[str, Any], bin_chunk: bytes) -> None:
     with open(path, "wb") as handle:
-        handle.write(struct.pack("<III", _GLB_MAGIC, 2, total))
-        handle.write(struct.pack("<II", len(json_bytes), _CHUNK_JSON))
-        handle.write(json_bytes)
-        handle.write(struct.pack("<II", len(bin_bytes), _CHUNK_BIN))
-        handle.write(bin_bytes)
+        handle.write(_glb_bytes(gltf, bin_chunk))
 
 
 def _extension_on_view(view: dict[str, Any]) -> dict[str, Any] | None:
@@ -380,8 +442,13 @@ def _buffer_payloads(gltf: dict[str, Any], bin_chunk: bytes) -> list[bytes | Non
 def _decode_view(lib: CDLL, source: bytes, ext: dict[str, Any]) -> bytes:
     mode = ext.get("mode")
     filter_name = ext.get("filter") or "NONE"
-    count = int(ext["count"])
-    stride = int(ext["byteStride"])
+    try:
+        count = int(ext["count"])
+        stride = int(ext["byteStride"])
+    except (KeyError, TypeError, ValueError) as exc:
+        raise MeshoptError(
+            "meshopt bufferView missing count/byteStride"
+        ) from exc
     if count < 0 or stride <= 0:
         raise MeshoptError("Invalid meshopt bufferView parameters")
 
@@ -763,9 +830,12 @@ def cleanup_decompressed(path: str | None) -> None:
     """Delete a temporary GLB created by ``decompress_glb`` (not cache-owned)."""
     if not path:
         return
-    # Cached prepared files are owned by the prepare cache.
-    if path in _prepare_cache.values():
-        return
+    with _prepare_lock:
+        # Cached prepared files are owned by the prepare cache / retainers.
+        if path in _prepare_cache.values() or path in _prepare_refs:
+            return
+        if path in _prepare_orphans:
+            return
     try:
         if os.path.basename(path).startswith("exhibit-meshopt-"):
             os.unlink(path)
@@ -780,6 +850,8 @@ def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
     Returns ``(load_path, temp_path)``. Prepared temps (meshopt / KTX2) are
     owned by an internal cache keyed by ``(realpath, mtime, size)``;
     ``temp_path`` is then ``None`` and callers must not delete ``load_path``.
+    Each successful return of a cached/new temp retains it — call
+    ``release_prepared(load_path)`` when the viewer no longer needs it.
     Legacy callers that still receive a ``temp_path`` should call
     ``cleanup_decompressed``.
     """
@@ -791,16 +863,28 @@ def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
     except OSError:
         return path, None
 
-    cached = _cached_prepared(key)
-    if cached is not None:
-        return cached, None
+    with _prepare_lock:
+        cached = _cached_prepared(key)
+        if cached is not None:
+            return cached, None
 
-    if not needs_glb_prepare(path):
-        return path, None
+        if not needs_glb_prepare(path):
+            return path, None
 
+    # Decode outside the lock (CPU/IO heavy).
     load_path = decompress_glb(path)
     if load_path == path:
         return path, None
 
-    _cache_prepared(key, load_path)
-    return load_path, None
+    with _prepare_lock:
+        # Another thread may have cached the same key meanwhile.
+        cached = _cached_prepared(key)
+        if cached is not None:
+            try:
+                if os.path.basename(load_path).startswith("exhibit-meshopt-"):
+                    os.unlink(load_path)
+            except OSError:
+                pass
+            return cached, None
+        _cache_prepared(key, load_path)
+        return load_path, None

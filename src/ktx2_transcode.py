@@ -179,10 +179,15 @@ def _encode_png_rgba(width: int, height: int, rgba: bytes) -> bytes:
     )
 
 
+_KTX2_IDENTIFIER = b"\xabKTX 20\xbb\r\n\x1a\n"
+
+
 def ktx2_bytes_to_png(ktx_bytes: bytes) -> bytes:
     """Decode a KTX2 (BasisU/UASTC) blob to PNG bytes."""
     if not ktx_bytes:
         raise _error("Empty KTX2 image")
+    if not ktx_bytes.startswith(_KTX2_IDENTIFIER):
+        raise _error("Not a KTX2 file (KTX1 / other formats unsupported)")
 
     lib = _load_library()
     texture_ptr = c_void_p()
@@ -205,11 +210,20 @@ def ktx2_bytes_to_png(ktx_bytes: bytes) -> bytes:
         texture = cast(texture_ptr, POINTER(_KtxTexture)).contents
         width = int(texture.baseWidth)
         height = int(texture.baseHeight)
+        if width <= 0 or height <= 0 or width > 65536 or height > 65536:
+            raise _error(f"Invalid KTX2 dimensions: {width}x{height}")
+
         data_ptr = lib.ktxTexture_GetData(texture_ptr)
         if not data_ptr:
             raise _error("ktxTexture_GetData returned NULL")
 
-        nbytes = width * height * 4
+        expected = width * height * 4
+        data_size = int(texture.dataSize)
+        if data_size > 0 and data_size < expected:
+            raise _error(
+                f"KTX2 dataSize {data_size} smaller than RGBA32 {expected}"
+            )
+        nbytes = expected
         rgba = bytes(cast(data_ptr, POINTER(c_ubyte * nbytes)).contents)
         return _encode_png_rgba(width, height, rgba)
     finally:
@@ -218,10 +232,10 @@ def ktx2_bytes_to_png(ktx_bytes: bytes) -> bytes:
 
 def _image_is_ktx2(image: dict[str, Any]) -> bool:
     mime = str(image.get("mimeType") or "").lower()
-    if mime in ("image/ktx2", "image/ktx"):
+    if mime == "image/ktx2":
         return True
     uri = str(image.get("uri") or "").lower()
-    return uri.endswith(".ktx2") or uri.endswith(".ktx")
+    return uri.endswith(".ktx2")
 
 
 def _lists_extension(gltf: dict[str, Any], name: str) -> bool:

@@ -75,8 +75,7 @@ def offset_for_view(
         return offset, up_v
     if name == "top":
         offset = v_mul(up_v, distance)
-        view_up = v_mul(tuple([up_v[1], up_v[2], up_v[0]]), distance)
-        # Normalize view_up direction (GUI used unnormalized; F3D accepts either).
+        view_up = v_norm(tuple([up_v[1], up_v[2], up_v[0]]))
         return offset, view_up
     if name == "isometric":
         vector = v_add(

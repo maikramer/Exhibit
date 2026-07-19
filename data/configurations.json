@@ -45,19 +45,17 @@
         "name": "Splat",
         "formats": ".*(splat)",
         "view-settings": {
-            "anti-aliasing": true,
-            "tone-mapping": true,
-	    "sprites-size": 1.0,
-	    "sprites-type": "gaussian",
-	    "sprite-enabled": true,
-	    "scivis-enabled": true,
-	    "scivis-component": -2,
-	    "cells": false,
-	    "up": "-Y",
-	    "tone-mapping": false,
-	    "grid": false,
-	    "anti-aliasing": false,
-	    "translucency-support": false
+            "anti-aliasing": false,
+            "tone-mapping": false,
+            "sprites-size": 1.0,
+            "sprites-type": "gaussian",
+            "sprite-enabled": true,
+            "scivis-enabled": true,
+            "scivis-component": -2,
+            "cells": false,
+            "up": "-Y",
+            "grid": false,
+            "translucency-support": false
         },
         "other-settings": {
             "point-up": false

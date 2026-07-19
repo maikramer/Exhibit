@@ -1,4 +1,4 @@
-# window.py
+# f3d_viewer.py
 #
 # Copyright 2024-2025 Nokse <nokse@posteo.com>
 #
@@ -28,14 +28,20 @@ import f3d
 from ..camera_views import UP_DIRS, apply_view
 from ..vector_math import p_dist, v_abs, v_add, v_sub, v_mul, v_dot_p
 from .. import logger_lib
-from ..meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
+from ..meshopt_decompress import (
+    MeshoptError,
+    cleanup_decompressed,
+    prepare_glb_for_load,
+    release_prepared,
+)
 from ..gltf_scene_graph import (
     ScenePart,
     SceneTreeNode,
+    _effective_hidden,
+    _load_gltf,
+    build_glb_hiding_nodes_bytes,
     build_scene_tree,
-    cleanup_parts_temp,
     list_mesh_parts,
-    write_glb_hiding_nodes,
 )
 
 # Back-compat alias used across pan/tilt helpers.
@@ -78,6 +84,9 @@ class F3DViewer(Gtk.GLArea):
         "cells": "model.scivis.cells",
         "scivis-enabled": "model.scivis.enable",
         "armature-enable": "render.armature.enable",
+        "checkerboard-enable": "model.checkerboard.enable",
+        "normal-glyphs": "model.normal_glyphs.enable",
+        "display-depth": "render.effect.display_depth",
         # The following settings don't have an UI
         "texture-matcap": "model.matcap.texture",
         "texture-base-color": "model.color.texture",
@@ -121,6 +130,8 @@ class F3DViewer(Gtk.GLArea):
         )
         self.create_action("front-view", self.front_view)
         self.create_action("right-view", self.right_view)
+        self.create_action("back-view", self.back_view)
+        self.create_action("left-view", self.left_view)
         self.create_action("top-view", self.top_view)
         self.create_action("isometric-view", self.isometric_view)
 
@@ -157,6 +168,8 @@ class F3DViewer(Gtk.GLArea):
         self.prev_scale = 1
 
         self.distance = 0
+        self.width = 1
+        self.height = 1
 
         self._orthographic = False
 
@@ -277,6 +290,16 @@ class F3DViewer(Gtk.GLArea):
         self.get_distance()
         self.queue_render()
 
+    def back_view(self, *args):
+        apply_view(self.camera, "back", self.settings["scene.up_direction"])
+        self.get_distance()
+        self.queue_render()
+
+    def left_view(self, *args):
+        apply_view(self.camera, "left", self.settings["scene.up_direction"])
+        self.get_distance()
+        self.queue_render()
+
     def top_view(self, *args):
         apply_view(self.camera, "top", self.settings["scene.up_direction"])
         self.get_distance()
@@ -343,6 +366,67 @@ class F3DViewer(Gtk.GLArea):
             return []
         return list(self.scene.get_animation_names())
 
+    def get_animation_keyframes(self) -> list[float]:
+        """Keyframe times for the current animation selection (F3D 3.5+)."""
+        if not self.scene:
+            return []
+        getter = getattr(self.scene, "get_animation_keyframes", None)
+        if not callable(getter):
+            return []
+        try:
+            return [float(t) for t in getter()]
+        except Exception:
+            return []
+
+    def _clear_force_reader(self) -> None:
+        """Unset optional ``scene.force_reader`` (Python lacks options.reset)."""
+        if not self.engine:
+            return
+        opts = self.engine.options
+        if "scene.force_reader" not in opts:
+            return
+        reset = getattr(opts, "reset", None) or getattr(opts, "remove_value", None)
+        if callable(reset):
+            try:
+                reset("scene.force_reader")
+                return
+            except Exception:
+                pass
+        kept = {key: opts[key] for key in list(opts.keys()) if key != "scene.force_reader"}
+        fresh = f3d.Options()
+        for key, value in kept.items():
+            try:
+                fresh[key] = value
+            except Exception:
+                pass
+        self.engine.options = fresh
+        if self.settings:
+            try:
+                self.engine.options.update(self.settings)
+            except Exception:
+                pass
+
+    def _add_scene_buffer(self, data: bytes, *, reader: str = "GLB") -> None:
+        """
+        Load geometry from an in-memory buffer (F3D ``scene.add(bytes)``).
+
+        VTK builds older than 9.6.20260128 need ``scene.force_reader``.
+        """
+        if not self.scene or not self.engine:
+            raise RuntimeError("Viewer engine is not ready")
+
+        try:
+            self.scene.add(data)
+            return
+        except Exception:
+            pass
+
+        self.engine.options["scene.force_reader"] = reader
+        try:
+            self.scene.add(data)
+        finally:
+            self._clear_force_reader()
+
     def render_image(self):
         self.get_context().make_current()
         img = self.window.render_to_image()
@@ -365,11 +449,31 @@ class F3DViewer(Gtk.GLArea):
             return prepared_path, None
         return self._prepare_filepath(filepath)
 
-    def load_file(self, filepath, prepared_path=None):
-        if self.settings.get("render.hdri.ambient"):
-            f3d_options = {"render.hdri.ambient": False}
-            self.engine.options.update(f3d_options)
+    def _release_prepared_path(self) -> None:
+        previous = self._prepared_path
+        self._prepared_path = None
+        if previous and previous != self._loaded_filepath:
+            release_prepared(previous)
 
+    def release_resources(self) -> None:
+        """Drop retained prepare-cache temps (tab close / shutdown)."""
+        self._release_prepared_path()
+        self._loaded_filepath = None
+
+    def load_file(self, filepath, prepared_path=None):
+        hdri_ambient = bool(self.settings.get("render.hdri.ambient"))
+        if hdri_ambient and self.engine:
+            self.engine.options.update({"render.hdri.ambient": False})
+
+        # prepare_glb_for_load retains cache temps; drop duplicate if we already hold it.
+        if (
+            prepared_path
+            and prepared_path == self._prepared_path
+            and prepared_path != filepath
+        ):
+            release_prepared(prepared_path)
+
+        previous_prepared = self._prepared_path
         self.scene.clear()
         self._hidden_part_indices = set()
 
@@ -377,6 +481,8 @@ class F3DViewer(Gtk.GLArea):
         if load_path is None:
             self._loaded_filepath = None
             self._prepared_path = None
+            if previous_prepared and previous_prepared != filepath:
+                release_prepared(previous_prepared)
             return False
 
         try:
@@ -385,12 +491,18 @@ class F3DViewer(Gtk.GLArea):
             self.logger.error(f"Error while loading file: {e}")
             self._loaded_filepath = None
             self._prepared_path = None
+            if previous_prepared and previous_prepared != load_path:
+                release_prepared(previous_prepared)
+            if load_path != filepath and load_path != previous_prepared:
+                release_prepared(load_path)
             return False
         finally:
             cleanup_decompressed(meshopt_temp)
 
         self._loaded_filepath = filepath
         self._prepared_path = load_path
+        if previous_prepared and previous_prepared != load_path:
+            release_prepared(previous_prepared)
         self.notify("lower-time-range")
         self.notify("upper-time-range")
         self.queue_render()
@@ -398,9 +510,8 @@ class F3DViewer(Gtk.GLArea):
         return True
 
     def add_file(self, filepath, prepared_path=None):
-        if self.settings.get("render.hdri.ambient"):
-            f3d_options = {"render.hdri.ambient": False}
-            self.engine.options.update(f3d_options)
+        if self.settings.get("render.hdri.ambient") and self.engine:
+            self.engine.options.update({"render.hdri.ambient": False})
 
         load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
         if load_path is None:
@@ -410,12 +521,17 @@ class F3DViewer(Gtk.GLArea):
             self.scene.add(load_path)
         except Exception as e:
             self.logger.error(f"Error while loading file: {e}")
+            if load_path != filepath:
+                release_prepared(load_path)
             return False
         finally:
             cleanup_decompressed(meshopt_temp)
 
+        previous_prepared = self._prepared_path
         self._loaded_filepath = filepath
         self._prepared_path = load_path
+        if previous_prepared and previous_prepared != load_path:
+            release_prepared(previous_prepared)
         self.notify("lower-time-range")
         self.notify("upper-time-range")
 
@@ -439,6 +555,22 @@ class F3DViewer(Gtk.GLArea):
     def get_hidden_part_indices(self) -> set[int]:
         return set(self._hidden_part_indices)
 
+    def get_effective_hidden_part_indices(self) -> set[int]:
+        """Hidden set expanded so descendants of a hidden ancestor stay hidden."""
+        explicit = set(self._hidden_part_indices)
+        if not explicit:
+            return explicit
+        path = self._prepared_path or self._loaded_filepath
+        if not path:
+            return explicit
+        gltf = _load_gltf(path, already_prepared=bool(self._prepared_path))
+        if not gltf:
+            return explicit
+        nodes = gltf.get("nodes") or []
+        if not isinstance(nodes, list):
+            return explicit
+        return _effective_hidden(nodes, explicit)
+
     def get_prepared_path(self) -> str | None:
         """Path currently prepared for F3D (may equal the source file)."""
         return self._prepared_path or self._loaded_filepath
@@ -448,20 +580,23 @@ class F3DViewer(Gtk.GLArea):
         if not self._loaded_filepath:
             return False
 
+        previous_hidden = set(self._hidden_part_indices)
         if visible:
             self._hidden_part_indices.discard(int(node_index))
         else:
             self._hidden_part_indices.add(int(node_index))
 
-        return self._reload_with_part_visibility()
+        if not self._reload_with_part_visibility():
+            self._hidden_part_indices = previous_hidden
+            return False
+        return True
 
     def _reload_with_part_visibility(self) -> bool:
         """
         Reimport scene with hidden meshes stripped from GLB JSON.
 
-        F3D Scene has no per-actor visibility API (GLTF stream add unsupported),
-        so clear+add remains required. We reuse the already-prepared GLB to avoid
-        a second meshopt/quantization decode.
+        Native per-actor hide needs F3D ``ui.scene_hierarchy`` (MODULE_UI).
+        Meanwhile clear+add with an in-memory filtered GLB avoids temp files.
         """
         filepath = self._loaded_filepath
         prepared = self._prepared_path
@@ -479,13 +614,16 @@ class F3DViewer(Gtk.GLArea):
         was_playing = self._playing
         self.playing = False
 
-        if self.settings.get("render.hdri.ambient"):
+        hdri_ambient = bool(self.settings.get("render.hdri.ambient"))
+        if hdri_ambient and self.engine:
             self.engine.options.update({"render.hdri.ambient": False})
 
-        parts_temp = None
+        restore_path = prepared or filepath
+        load_buffer: bytes | None = None
+        load_path: str | None = None
         try:
             if self._hidden_part_indices:
-                load_path, parts_temp = write_glb_hiding_nodes(
+                load_buffer = build_glb_hiding_nodes_bytes(
                     filepath,
                     self._hidden_part_indices,
                     prepared_path=prepared,
@@ -495,18 +633,29 @@ class F3DViewer(Gtk.GLArea):
                 if prepared:
                     load_path = prepared
                 else:
-                    load_path, parts_temp = self._prepare_filepath(filepath)
+                    load_path, prep_temp = self._prepare_filepath(filepath)
                     if load_path is None:
                         return False
                     self._prepared_path = load_path
+                    restore_path = load_path
 
+            # Build filtered GLB before clearing so a failure keeps the scene.
             self.scene.clear()
-            self.scene.add(load_path)
+            try:
+                if load_buffer is not None:
+                    self._add_scene_buffer(load_buffer)
+                else:
+                    self.scene.add(load_path)
+            except Exception:
+                # Best-effort restore of the previous full scene.
+                try:
+                    self.scene.add(restore_path)
+                except Exception:
+                    pass
+                raise
         except Exception as e:
             self.logger.error(f"Error while updating part visibility: {e}")
             return False
-        finally:
-            cleanup_parts_temp(parts_temp)
 
         self.notify("lower-time-range")
         self.notify("upper-time-range")
@@ -530,13 +679,9 @@ class F3DViewer(Gtk.GLArea):
         return True
 
     def done(self):
-        if self.settings["render.hdri.ambient"]:
-            f3d_options = {"render.hdri.ambient": True}
-            self.engine.options.update(f3d_options)
+        if self.settings.get("render.hdri.ambient") and self.engine:
+            self.engine.options.update({"render.hdri.ambient": True})
             self.queue_render()
-
-        # f3d_options = {"model.scivis.cells": False, "model.scivis.enable": True}
-        # self.engine.options.update(f3d_options)
 
         self.reset_to_bounds()
         return GLib.SOURCE_REMOVE
@@ -546,8 +691,11 @@ class F3DViewer(Gtk.GLArea):
         self.height = height
 
     def on_render(self, area, ctx):
+        if self.window is None or not hasattr(self, "width") or not hasattr(self, "height"):
+            return False
         self.window.size = self.width, self.height
         self.window.render()
+        return True
 
     def get_camera_to_focal_distance(self):
         up = up_dirs_vector[self.settings["scene.up_direction"]]
@@ -573,7 +721,7 @@ class F3DViewer(Gtk.GLArea):
         return self.distance / 10
 
     def get_distance(self):
-        self.distance = p_dist(self.camera.position, (0, 0, 0))
+        self.distance = p_dist(self.camera.position, self.camera.focal_point)
 
     def pan(self, x, y, z):
         val = self.distance / 40

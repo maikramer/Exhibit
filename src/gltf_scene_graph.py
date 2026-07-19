@@ -21,11 +21,12 @@ from typing import Any
 
 from .meshopt_decompress import (
     MeshoptError,
+    _glb_bytes,
     _read_glb,
     _read_glb_json,
-    _write_glb,
     cleanup_decompressed,
     prepare_glb_for_load,
+    release_prepared,
 )
 
 
@@ -244,30 +245,29 @@ def _effective_hidden(nodes: list[dict[str, Any]], hidden: set[int]) -> set[int]
     return result
 
 
-def write_glb_hiding_nodes(
+def _filter_glb_hiding_nodes(
     source_path: str,
     hidden_node_indices: set[int],
     *,
     prepared_path: str | None = None,
-) -> tuple[str, str | None]:
+) -> tuple[dict[str, Any], bytes]:
     """
-    Write a temporary GLB with ``mesh`` removed from hidden nodes.
+    Build filtered glTF + BIN with ``mesh`` removed from hidden nodes.
 
     When ``prepared_path`` is given, that file is used as-is (no meshopt
-    prepare). Returns ``(load_path, temp_path)``. ``temp_path`` must be cleaned
-    up by the caller.
+    prepare). Caller must not mutate the returned structures after use.
     """
     if not is_glb(source_path) and not (prepared_path and is_glb(prepared_path)):
         raise MeshoptError("Object visibility filtering supports .glb only")
 
-    temps: list[str] = []
     prepare_temp = None
+    retained_prepare = None
     if prepared_path:
         prepared = prepared_path
     else:
         prepared, prepare_temp = prepare_glb_for_load(source_path)
-        if prepare_temp:
-            temps.append(prepare_temp)
+        if prepare_temp is None and prepared != source_path:
+            retained_prepare = prepared
 
     try:
         gltf, bin_chunk = _read_glb(prepared)
@@ -284,26 +284,58 @@ def write_glb_hiding_nodes(
             if index in effective and isinstance(node, dict):
                 node.pop("mesh", None)
 
-        fd, filtered_path = tempfile.mkstemp(prefix="exhibit-parts-", suffix=".glb")
-        os.close(fd)
-        temps.append(filtered_path)
-        _write_glb(filtered_path, gltf, bin_chunk)
-
-        # Caller cleans a single temp; if we created both, delete prepare temp now
-        # and return only the filtered path.
-        if prepare_temp and prepare_temp != filtered_path:
+        return gltf, bin_chunk
+    finally:
+        if prepare_temp:
             cleanup_decompressed(prepare_temp)
-            temps = [filtered_path]
+        if retained_prepare:
+            release_prepared(retained_prepare)
 
-        return filtered_path, filtered_path
+
+def build_glb_hiding_nodes_bytes(
+    source_path: str,
+    hidden_node_indices: set[int],
+    *,
+    prepared_path: str | None = None,
+) -> bytes:
+    """Return an in-memory GLB with hidden node meshes stripped."""
+    gltf, bin_chunk = _filter_glb_hiding_nodes(
+        source_path,
+        hidden_node_indices,
+        prepared_path=prepared_path,
+    )
+    return _glb_bytes(gltf, bin_chunk)
+
+
+def write_glb_hiding_nodes(
+    source_path: str,
+    hidden_node_indices: set[int],
+    *,
+    prepared_path: str | None = None,
+) -> tuple[str, str | None]:
+    """
+    Write a temporary GLB with ``mesh`` removed from hidden nodes.
+
+    When ``prepared_path`` is given, that file is used as-is (no meshopt
+    prepare). Returns ``(load_path, temp_path)``. ``temp_path`` must be cleaned
+    up by the caller.
+    """
+    data = build_glb_hiding_nodes_bytes(
+        source_path,
+        hidden_node_indices,
+        prepared_path=prepared_path,
+    )
+    fd, filtered_path = tempfile.mkstemp(prefix="exhibit-parts-", suffix=".glb")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(data)
     except Exception:
-        for path in temps:
-            if path and os.path.basename(path).startswith("exhibit-"):
-                try:
-                    os.unlink(path)
-                except OSError:
-                    pass
+        try:
+            os.unlink(filtered_path)
+        except OSError:
+            pass
         raise
+    return filtered_path, filtered_path
 
 
 def cleanup_parts_temp(path: str | None) -> None:
@@ -311,8 +343,8 @@ def cleanup_parts_temp(path: str | None) -> None:
     if not path:
         return
     try:
-        base = os.path.basename(path)
-        if base.startswith("exhibit-parts-") or base.startswith("exhibit-meshopt-"):
+        # Only parts temps — never touch prepare-cache meshopt files.
+        if os.path.basename(path).startswith("exhibit-parts-"):
             os.unlink(path)
     except OSError:
         pass
