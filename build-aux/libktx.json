@@ -1,0 +1,23 @@
+{
+    "name": "libktx",
+    "buildsystem": "cmake-ninja",
+    "builddir": true,
+    "config-opts": [
+        "-DCMAKE_BUILD_TYPE=Release",
+        "-DBUILD_SHARED_LIBS=ON",
+        "-DKTX_FEATURE_TOOLS=OFF",
+        "-DKTX_FEATURE_TESTS=OFF",
+        "-DKTX_FEATURE_DOC=OFF",
+        "-DKTX_FEATURE_JNI=OFF",
+        "-DKTX_FEATURE_PY=OFF",
+        "-DKTX_FEATURE_VK_UPLOAD=OFF",
+        "-DKTX_FEATURE_GL_UPLOAD=OFF"
+    ],
+    "sources": [
+        {
+            "type": "archive",
+            "url": "https://github.com/KhronosGroup/KTX-Software/archive/refs/tags/v4.4.2.tar.gz",
+            "sha256": "9412cb45045a503005acd47d98f9e8b47154634a50b4df21e17a1dfa8971d323"
+        }
+    ]
+}

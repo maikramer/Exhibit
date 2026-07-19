@@ -10,7 +10,11 @@
         "--socket=fallback-x11",
         "--device=dri",
         "--filesystem=home",
-        "--filesystem=/tmp"
+        "--filesystem=/tmp",
+        "--filesystem=/media",
+        "--filesystem=xdg-config/gtk-3.0:ro",
+        "--filesystem=xdg-config/gtk-4.0:ro",
+        "--talk-name=org.freedesktop.portal.Desktop"
     ],
     "cleanup" : [
         "/include",
@@ -43,6 +47,8 @@
                 }
             ]
         },
+        "libktx.json",
+
         {
             "name" : "exhibit",
             "buildsystem" : "meson",
