@@ -7,8 +7,8 @@
     "sources": [
         {
             "type": "file",
-            "url": "https://files.pythonhosted.org/packages/59/d5/1bdd7c9662d5e9078e25ba0eb69bdb122859295746d40ab8dfef3a7b4d42/Wand-0.6.13-py2.py3-none-any.whl",
-            "sha256": "e5dda0ac2204a40c29ef5c4cb310770c95d3d05c37b1379e69c94ea79d7d19c0"
+            "url": "https://files.pythonhosted.org/packages/fb/11/764bee6e793c01d6ce7b99f4872f9fd5ef89904b172cb9d8a0a1dae02f21/wand-0.7.2-py3-none-any.whl",
+            "sha256": "7db97c5e51862fdd5e58866dbf34e2dcae295245511147367690a3e17f459984"
         }
     ],
     "modules": [
@@ -20,8 +20,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/ImageMagick/ImageMagick6/archive/refs/tags/6.9.12-96.tar.gz",
-                    "sha256": "624c43a8f0c579e5d5946f3dfd57027a5a3b0ae6d46a363777a6972a3335f563"
+                    "url": "https://github.com/ImageMagick/ImageMagick6/archive/refs/tags/6.9.13-52.tar.gz",
+                    "sha256": "a94e2e98bedc9a866acba575b2d4ef37c6b4de90224a049c7e328ea0c6a203e8"
                 }
             ]
         }

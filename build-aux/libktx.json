@@ -11,7 +11,9 @@
         "-DKTX_FEATURE_JNI=OFF",
         "-DKTX_FEATURE_PY=OFF",
         "-DKTX_FEATURE_VK_UPLOAD=OFF",
-        "-DKTX_FEATURE_GL_UPLOAD=OFF"
+        "-DKTX_FEATURE_GL_UPLOAD=OFF",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+        "-DCMAKE_INSTALL_LIBDIR=lib"
     ],
     "sources": [
         {

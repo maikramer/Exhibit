@@ -6,10 +6,13 @@
         "-DCMAKE_INSTALL_PREFIX=/app",
         "-DCMAKE_PREFIX_PATH=/app",
         "-DCMAKE_BUILD_TYPE=Release",
+        "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+        "-DCMAKE_INSTALL_LIBDIR=lib",
         "-DF3D_BUILD_APPLICATION=ON",
         "-DF3D_MODULE_UI=OFF",
         "-DF3D_MODULE_RAYTRACING=OFF",
         "-DF3D_MODULE_EXR=ON",
+        "-DF3D_MODULE_WEBP=ON",
         "-DF3D_BINDINGS_PYTHON=ON",
         "-DF3D_BINDINGS_JAVA=OFF",
         "-DF3D_BINDINGS_C=OFF",
@@ -28,7 +31,8 @@
         {
             "type": "git",
             "url": "https://github.com/f3d-app/f3d",
-            "commit": "302c6f00695666ca090389ab8ed212283213faa9",
+            "tag": "v3.5.0",
+            "commit": "bcfa8d525cec9a08d4a6f40799cf2472c011e35d",
             "disable-lfs": true
         }
     ],
@@ -38,11 +42,18 @@
             "name": "Eigen3",
             "buildsystem": "cmake-ninja",
             "builddir": true,
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib",
+                "-DEIGEN_BUILD_DOC=OFF",
+                "-DBUILD_TESTING=OFF"
+            ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.bz2",
-                    "sha256": "b4c198460eba6f28d34894e3a5710998818515104d6e74e5cc331ce31e46e626"
+                    "url": "https://gitlab.com/libeigen/eigen/-/archive/3.4.1/eigen-3.4.1.tar.bz2",
+                    "sha256": "8bb7280b7551bf06418d11a9671fdf998cb927830cf21589b394382d26779821"
                 }
             ],
             "cleanup": [
@@ -55,14 +66,14 @@
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://archives.boost.io/release/1.83.0/source/boost_1_83_0.tar.gz",
-                    "sha256": "c0685b68dd44cc46574cce86c4e17c0f611b15e195be9848dfd0769a0a207628"
+                    "url": "https://archives.boost.io/release/1.91.0/source/boost_1_91_0.tar.gz",
+                    "sha256": "5734305f40a76c30f951c9abd409a45a2a19fb546efe4162119250bbe4d3a463"
                 }
             ],
             "build-commands": [
-                "./bootstrap.sh --prefix=/app --with-libraries=iostreams,filesystem,system,date_time,regex,program_options,python",
+                "./bootstrap.sh --prefix=/app --with-libraries=iostreams,filesystem,date_time,regex,program_options,python",
                 "./b2 headers",
-                "./b2 -j$FLATPAK_BUILDER_N_JOBS install variant=release cxxstd=17 --layout=system"
+                "./b2 -j$FLATPAK_BUILDER_N_JOBS install variant=release cxxstd=17 define=BOOST_NO_AUTO_PTR --layout=system"
             ]
         },
         {
@@ -73,13 +84,14 @@
                 "-DTBB_TEST=OFF",
                 "-DTBB_EXAMPLES=OFF",
                 "-DCMAKE_BUILD_TYPE=Release",
-                "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/oneapi-src/oneTBB/archive/v2021.9.0.tar.gz",
-                    "sha256": "1ce48f34dada7837f510735ff1172f6e2c261b09460e3bf773b49791d247d24e"
+                    "url": "https://github.com/oneapi-src/oneTBB/archive/refs/tags/v2022.3.0.tar.gz",
+                    "sha256": "01598a46c1162c27253a0de0236f520fd8ee8166e9ebb84a4243574f88e6e50a"
                 }
             ]
         },
@@ -90,7 +102,9 @@
             "config-opts": [
                 "-DCMAKE_BUILD_TYPE=Release",
                 "-DBUILD_TESTING=OFF",
-                "-DBUILD_SHARED_LIBS=ON"
+                "-DBUILD_SHARED_LIBS=ON",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
@@ -101,13 +115,36 @@
             ]
         },
         {
+            "name": "libaec",
+            "buildsystem": "cmake-ninja",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DBUILD_SHARED_LIBS=ON",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/MathisRosenhauer/libaec/archive/refs/tags/v1.1.7.tar.gz",
+                    "sha256": "26661a569a7def45a2e97fbbd09e0dc5bbb2f8ab1b41250c19e795559eec6fb2"
+                }
+            ]
+        },
+        {
             "name": "hdf5",
             "buildsystem": "cmake-ninja",
             "builddir": true,
             "config-opts": [
                 "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_PREFIX_PATH=/app",
                 "-DBUILD_TESTING=OFF",
-                "-DHDF5_BUILD_EXAMPLES=OFF"
+                "-DHDF5_BUILD_EXAMPLES=OFF",
+                "-DHDF5_ENABLE_SZIP_SUPPORT=ON",
+                "-DHDF5_ENABLE_SZIP_ENCODING=ON",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
@@ -123,7 +160,10 @@
             "builddir": true,
             "config-opts": [
                 "-DCMAKE_INSTALL_PREFIX=/app",
+                "-DCMAKE_PREFIX_PATH=/app",
                 "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib",
                 "-DBUILD_SHARED_LIBS=ON",
                 "-DVTK_LEGACY_REMOVE=ON",
                 "-DVTK_VERSIONED_INSTALL=OFF",
@@ -165,8 +205,16 @@
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://www.vtk.org/files/release/9.5/VTK-9.5.2.tar.gz",
-                    "sha256": "cee64b98d270ff7302daf1ef13458dff5d5ac1ecb45d47723835f7f7d562c989"
+                    "url": "https://www.vtk.org/files/release/9.6/VTK-9.6.2.tar.gz",
+                    "sha256": "aed12cec12a9609179bf66329070266627ca64244a10856a452b2a17ffb04a1d"
+                },
+                {
+                    "type": "patch",
+                    "path": "patches/vtk-cmake-policies-0174-0177.patch"
+                },
+                {
+                    "type": "patch",
+                    "path": "patches/vtk-vtktiff-cmake-policy-3.10.patch"
                 }
             ]
         },
@@ -175,7 +223,9 @@
             "buildsystem": "cmake-ninja",
             "builddir": true,
             "config-opts": [
-                "-DBUILD_SHARED_LIBS=ON"
+                "-DBUILD_SHARED_LIBS=ON",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
@@ -191,35 +241,46 @@
             "builddir": true,
             "config-opts": [
                 "-DPYBIND11_FINDPYTHON=ON",
-                "-DPYBIND11_TEST=OFF"
+                "-DPYBIND11_TEST=OFF",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/pybind/pybind11/archive/refs/tags/v3.0.1.tar.gz",
-                    "sha256": "741633da746b7c738bb71f1854f957b9da660bcd2dce68d71949037f0969d0ca"
+                    "url": "https://github.com/pybind/pybind11/archive/refs/tags/v3.0.4.tar.gz",
+                    "sha256": "74b6a2c2b4573a400cafb6ecbf60c98df300cd3d0041296b913d02b2cbbb2676"
                 }
             ]
         },
         {
             "name": "libdeflate",
             "buildsystem": "cmake-ninja",
+            "config-opts": [
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
+            ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/ebiggers/libdeflate/releases/download/v1.20/libdeflate-1.20.tar.gz",
-                    "sha256": "c52cf0239fd644d71c9e88613dd7431a5306ebee1280c5791c71ca264869250a"
+                    "url": "https://github.com/ebiggers/libdeflate/releases/download/v1.25/libdeflate-1.25.tar.gz",
+                    "sha256": "fed5cd22f00f30cc4c2e5329f94e2b8a901df9fa45ee255cb70e2b0b42344477"
                 }
             ]
         },
         {
             "name": "openexr",
             "buildsystem": "cmake-ninja",
+            "config-opts": [
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib",
+                "-DCMAKE_PREFIX_PATH=/app"
+            ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.2.4.tar.gz",
-                    "sha256": "81e6518f2c4656fdeaf18a018f135e96a96e7f66dbe1c1f05860dd94772176cc"
+                    "url": "https://github.com/AcademySoftwareFoundation/openexr/archive/refs/tags/v3.4.13.tar.gz",
+                    "sha256": "1ed0cee48ac8c77da235c8ca8ab85d031d43cd790eda36af87fed4cf316cf2df"
                 }
             ]
         },
@@ -236,13 +297,14 @@
                 "-DBUILD_MODULE_Visualization=OFF",
                 "-DBUILD_DOC_Overview=OFF",
                 "-DCMAKE_CXX_FLAGS=-fpermissive",
-                "-DCMAKE_POLICY_VERSION_MINIMUM=3.5"
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
                     "type": "git",
                     "url": "https://github.com/Open-Cascade-SAS/OCCT.git",
-                    "tag": "V7_8_1"
+                    "tag": "V7_9_3"
                 }
             ]
         },
@@ -251,13 +313,15 @@
             "buildsystem": "cmake-ninja",
             "config-opts": [
                 "-DASSIMP_BUILD_ASSIMP_TOOLS:BOOL=NO",
-                "-DASSIMP_BUILD_TESTS:BOOL=NO"
+                "-DASSIMP_BUILD_TESTS:BOOL=NO",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/assimp/assimp/archive/refs/tags/v6.0.2.tar.gz",
-                    "sha256": "d1822d9a19c9205d6e8bc533bf897174ddb360ce504680f294170cc1d6319751"
+                    "url": "https://github.com/assimp/assimp/archive/refs/tags/v6.0.5.tar.gz",
+                    "sha256": "edf3749559c2b7d1f758ffb66fc5bec62186221e623b7f2e8969f17ee46ecb6f"
                 }
             ]
         },
@@ -266,24 +330,32 @@
             "buildsystem": "cmake-ninja",
             "config-opts": [
                 "-DUSE_TESTS:BOOL=OFF",
-                "-DUSE_HDF5:BOOL=ON"
+                "-DUSE_HDF5:BOOL=ON",
+                "-DCMAKE_PREFIX_PATH=/app",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/alembic/alembic/archive/refs/tags/1.8.9.tar.gz",
-                    "sha256": "8c59c10813feee917d262c71af77d6fa3db1acaf7c5fecfd4104167077403955"
+                    "url": "https://github.com/alembic/alembic/archive/refs/tags/1.8.12.tar.gz",
+                    "sha256": "b6d916c40446e8c502c84273092ab3d98f3f7f6094f8a2b8203d23e2f1d2a4a0"
                 }
             ]
         },
         {
             "name": "OpenSubdiv",
             "buildsystem": "cmake-ninja",
+            "config-opts": [
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib",
+                "-DCMAKE_LIBDIR_BASE=lib"
+            ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/PixarAnimationStudios/OpenSubdiv/archive/refs/tags/v3_6_0.tar.gz",
-                    "sha256": "bebfd61ab6657a4f4ff27845fb66a167d00395783bfbd253254d87447ed1d879"
+                    "url": "https://github.com/PixarAnimationStudios/OpenSubdiv/archive/refs/tags/v3_7_0.tar.gz",
+                    "sha256": "f843eb49daf20264007d807cbc64516a1fed9cdb1149aaf84ff47691d97491f9"
                 }
             ]
         },
@@ -303,14 +375,42 @@
                 "-DPXR_BUILD_USD_TOOLS:BOOL=OFF",
                 "-DPXR_INSTALL_LOCATION:PATH=../lib/usd",
                 "-DCMAKE_BUILD_TYPE=Release",
-                "-DTBB_INCLUDE_DIRS=/app/include",
-                "-DTBB_LIBRARIES=/app/lib/libtbb.so"
+                "-DCMAKE_PREFIX_PATH=/app",
+                "-DCMAKE_POLICY_VERSION_MINIMUM=3.10",
+                "-DCMAKE_INSTALL_LIBDIR=lib"
             ],
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://github.com/PixarAnimationStudios/OpenUSD/archive/refs/tags/v25.05.01.tar.gz",
-                    "sha256": "f424e8db26e063a1b005423ee52142e75c38185bbd4b8126ef64173e906dd50f"
+                    "url": "https://github.com/PixarAnimationStudios/OpenUSD/archive/refs/tags/v25.11.tar.gz",
+                    "sha256": "c37c633b5037a4552f61574670ecca8836229b78326bd62622f3422671188667"
+                }
+            ]
+        },
+        {
+            "name": "libwebp",
+            "buildsystem": "cmake-ninja",
+            "builddir": true,
+            "config-opts": [
+                "-DCMAKE_BUILD_TYPE=Release",
+                "-DCMAKE_INSTALL_LIBDIR=lib",
+                "-DBUILD_SHARED_LIBS=ON",
+                "-DWEBP_BUILD_ANIM_UTILS=OFF",
+                "-DWEBP_BUILD_CWEBP=OFF",
+                "-DWEBP_BUILD_DWEBP=OFF",
+                "-DWEBP_BUILD_GIF2WEBP=OFF",
+                "-DWEBP_BUILD_IMG2WEBP=OFF",
+                "-DWEBP_BUILD_VWEBP=OFF",
+                "-DWEBP_BUILD_WEBPINFO=OFF",
+                "-DWEBP_BUILD_LIBWEBPMUX=OFF",
+                "-DWEBP_BUILD_WEBPMUX=OFF",
+                "-DWEBP_BUILD_EXTRAS=OFF"
+            ],
+            "sources": [
+                {
+                    "type": "archive",
+                    "url": "https://github.com/webmproject/libwebp/archive/refs/tags/v1.6.0.tar.gz",
+                    "sha256": "93a852c2b3efafee3723efd4636de855b46f9fe1efddd607e1f42f60fc8f2136"
                 }
             ]
         }
