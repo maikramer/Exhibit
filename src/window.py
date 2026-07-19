@@ -680,7 +680,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         )
 
     def on_window_is_active(self, *args):
-        if not self.get_is_active():
+        if not self.get_property("is-active"):
             return
         self._prompt_reload_if_modified(self._active_tab())
 
@@ -1651,10 +1651,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         kwargs["_skip_auto_best"] = bool(new_tab)
         self._update_tab_bar_visibility()
 
-        # Same loading UI for first open and extra tabs.
+        # Keep 3d_page mapped so the tab GLArea can realize — F3D
+        # create_external needs a current Gtk GL context. Full-page
+        # startup loading unmaps the viewer and makes init impossible.
         self.loading_label.set_label(_("Loading {}").format(basename))
-        self.startup_stack.set_visible_child_name("loading_page")
-        self.stack.set_visible_child_name("startup_page")
+        self.stack.set_visible_child_name("3d_page")
 
         tab.stats_overlay_label.set_visible(False)
         self.block_reload = True
@@ -1692,7 +1693,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     def _start_warm_load(self, tab: ViewerTab, kwargs: dict):
         """Overlap GLB prepare (worker) with F3D engine create (main)."""
         filepath = kwargs.get("filepath")
-        holder: dict = {}
+        holder: dict = {
+            "ready": False,
+            "cancelled": False,
+            "finished": False,
+        }
 
         def prepare_worker():
             try:
@@ -1706,11 +1711,71 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             except Exception as exc:
                 holder["err"] = exc
                 holder["path"] = filepath
-            GLib.idle_add(self._warm_prepare_finished, tab, kwargs, holder)
+            holder["ready"] = True
+
+        # Map the target tab so its GLArea can realize during prepare.
+        self.stack.set_visible_child_name("3d_page")
+        page = self._tab_page(tab)
+        if page is not None and self.tab_view.get_selected_page() != page:
+            self._switching_tab = True
+            self.tab_view.set_selected_page(page)
+            self._switching_tab = False
 
         threading.Thread(target=prepare_worker, daemon=True).start()
-        # Pay for the new tab's engine while prepare runs.
-        tab.viewer.initialize()
+        # Single poller: wait for realize + prepare, then load once.
+        GLib.timeout_add(16, self._warm_load_tick, tab, kwargs, holder)
+
+    def _warm_load_tick(self, tab: ViewerTab, kwargs: dict, holder: dict):
+        """Advance warm load when prepare and GL context are both ready."""
+        if holder.get("cancelled") or holder.get("finished"):
+            return GLib.SOURCE_REMOVE
+
+        viewer = tab.viewer
+        try:
+            if viewer.engine is None:
+                if not viewer.get_realized():
+                    # First open still shows startup loading; flip to 3d so
+                    # the GLArea can map, then keep polling for realize.
+                    if self.stack.get_visible_child_name() != "3d_page":
+                        self.stack.set_visible_child_name("3d_page")
+                    return GLib.SOURCE_CONTINUE
+                viewer.initialize()
+        except Exception as exc:
+            holder["cancelled"] = True
+            self.logger.error(f"F3D init failed: {exc}")
+            path = kwargs.get("filepath")
+            if holder.get("ready") and "ok" in holder:
+                _resolved, load_path, meshopt_temp = holder["ok"]
+                cleanup_decompressed(meshopt_temp)
+                if load_path != _resolved:
+                    release_prepared(load_path)
+            self.on_file_not_opened(path, tab)
+            return GLib.SOURCE_REMOVE
+
+        if not holder.get("ready"):
+            return GLib.SOURCE_CONTINUE
+
+        if "err" in holder:
+            holder["finished"] = True
+            err = holder["err"]
+            path = holder.get("path") or kwargs.get("filepath")
+            self.logger.error(f"Warm prepare failed: {err}")
+            self.on_file_not_opened(path, tab)
+            return GLib.SOURCE_REMOVE
+
+        holder["finished"] = True
+        try:
+            self._warm_prepare_finished(tab, kwargs, holder)
+        except Exception as exc:
+            self.logger.error(f"Warm load failed: {exc}")
+            path = kwargs.get("filepath")
+            if "ok" in holder:
+                _resolved, load_path, meshopt_temp = holder["ok"]
+                cleanup_decompressed(meshopt_temp)
+                if load_path != _resolved:
+                    release_prepared(load_path)
+            self.on_file_not_opened(path, tab)
+        return GLib.SOURCE_REMOVE
 
     def _warm_prepare_finished(self, tab: ViewerTab, kwargs: dict, holder: dict):
         if "err" in holder:

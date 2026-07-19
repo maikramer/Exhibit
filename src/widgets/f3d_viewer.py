@@ -17,6 +17,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import ctypes
 import gi
 
 gi.require_version("Gtk", "4.0")
@@ -43,6 +44,21 @@ from ..gltf_scene_graph import (
     build_scene_tree,
     list_mesh_parts,
 )
+
+
+def _gl_get_proc_address(lib_name: str, symbol: str):
+    """Return a ``get_proc_address`` callable for F3D ``create_external``."""
+    lib = ctypes.CDLL(lib_name)
+    fn = getattr(lib, symbol)
+    fn.restype = ctypes.c_void_p
+    fn.argtypes = [ctypes.c_char_p]
+
+    def get_proc_address(name):
+        if isinstance(name, str):
+            name = name.encode("ascii")
+        return fn(name)
+
+    return get_proc_address
 
 # Back-compat alias used across pan/tilt helpers.
 up_dirs_vector = UP_DIRS
@@ -191,22 +207,61 @@ class F3DViewer(Gtk.GLArea):
             self.logger.debug("F3D viewer already initialized; reusing engine")
             return
 
+        if not self.get_realized():
+            raise RuntimeError("GLArea not realized yet")
+
+        # F3D create_external needs the Gtk.GLArea context current.
+        self.make_current()
+        gl_error = self.get_error()
+        if gl_error is not None:
+            raise RuntimeError(f"GLArea context error: {gl_error}")
+
         backends_list = f3d.Engine.get_rendering_backend_list()
         self.logger.info(f"Available F3D backends: {backends_list}")
 
+        errors: list[str] = []
+        # F3D 3.5+: create_external(get_proc_address). create_external_egl()
+        # often fails inside Flatpak ("Cannot find EGL library") even when
+        # libEGL.so.1 is present — bind via eglGetProcAddress instead.
+        factories: list[tuple[str, object]] = []
         if GLib.getenv("WAYLAND_DISPLAY"):
-            self.logger.info("Initializing F3D with EGL")
-            self.engine = f3d.Engine.create_external_egl()
-        elif GLib.getenv("DISPLAY"):
-            self.logger.info("Initializing F3D with GLX")
-            self.engine = f3d.Engine.create_external_glx()
-        else:
-            self.logger.info("Initializing F3D with automatic")
-            self.engine = f3d.Engine.create(True)
+            try:
+                gpa = _gl_get_proc_address("libEGL.so.1", "eglGetProcAddress")
+                factories.append(
+                    ("external+eglGetProcAddress", lambda g=gpa: f3d.Engine.create_external(g))
+                )
+            except OSError as exc:
+                errors.append(f"eglGetProcAddress setup: {exc}")
+            factories.append(("external_egl", f3d.Engine.create_external_egl))
+        if GLib.getenv("DISPLAY"):
+            for symbol in ("glXGetProcAddressARB", "glXGetProcAddress"):
+                try:
+                    gpa = _gl_get_proc_address("libGL.so.1", symbol)
+                    factories.append(
+                        (
+                            f"external+{symbol}",
+                            lambda g=gpa: f3d.Engine.create_external(g),
+                        )
+                    )
+                    break
+                except (OSError, AttributeError) as exc:
+                    errors.append(f"{symbol} setup: {exc}")
+            factories.append(("external_glx", f3d.Engine.create_external_glx))
+
+        for label, factory in factories:
+            try:
+                self.logger.info(f"Initializing F3D with {label}")
+                self.engine = factory()
+                if self.engine is not None:
+                    break
+            except Exception as exc:
+                errors.append(f"{label}: {exc}")
+                self.engine = None
 
         if not self.engine:
-            self.logger.critical("Failed to initialize F3D with any available backend")
-            return
+            detail = "; ".join(errors) if errors else "no backend succeeded"
+            self.logger.critical(f"Failed to initialize F3D: {detail}")
+            raise RuntimeError(f"Failed to initialize F3D: {detail}")
 
         self.scene = self.engine.scene
         self.window = self.engine.window
@@ -219,11 +274,15 @@ class F3DViewer(Gtk.GLArea):
 
     @GObject.Property(type=float)
     def upper_time_range(self):
+        if self.scene is None:
+            return 0.0
         _lower, upper = self.scene.animation_time_range()
         return upper
 
     @GObject.Property(type=float)
     def lower_time_range(self):
+        if self.scene is None:
+            return 0.0
         lower, _upper = self.scene.animation_time_range()
         return lower
 
@@ -234,6 +293,8 @@ class F3DViewer(Gtk.GLArea):
     @animation_time.setter
     def animation_time(self, value):
         self._animation_time = value
+        if self.scene is None:
+            return
         self.scene.load_animation_time(self._animation_time)
         self.queue_render()
 
@@ -768,14 +829,20 @@ class F3DViewer(Gtk.GLArea):
         self.queue_render()
 
     def set_view_up(self, direction):
+        if self.camera is None:
+            return
         self.camera.view_up = direction
         self.queue_render()
 
     def set_camera_state(self, state):
+        if self.camera is None:
+            return
         self.camera.state = state
         self.queue_render()
 
     def get_camera_state(self):
+        if self.camera is None:
+            return None
         return self.camera.state
 
     @Gtk.Template.Callback("on_scroll")
