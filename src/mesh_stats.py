@@ -512,10 +512,13 @@ def _stats_from_gltf(
                         faces += max(idx_count - 2, 0)
                     else:  # fan
                         faces += max(idx_count - 2, 0)
+                    # Exact unique-edge sets are O(faces) memory/CPU — skip
+                    # for dense meshes (voxel intermediates, scans, …).
                     if (
                         edges_exact
                         and bin_chunk is not None
                         and mode == _MODE_TRIANGLES
+                        and idx_count <= 750_000
                     ):
                         indices = _read_indices(gltf, bin_chunk, int(indices_idx))
                         if indices is None:
