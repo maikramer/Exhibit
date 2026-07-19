@@ -36,6 +36,11 @@ locale.textdomain('exhibit')
 gettext.install('exhibit', localedir)
 
 if __name__ == '__main__':
+    # Headless multi-angle render: skip Gtk/GResource (AI / agent pipelines).
+    if len(sys.argv) > 1 and sys.argv[1] == 'render':
+        from exhibit import cli_render
+        sys.exit(cli_render.main(sys.argv[2:]))
+
     import gi
 
     from gi.repository import Gio

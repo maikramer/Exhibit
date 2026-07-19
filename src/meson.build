@@ -24,9 +24,13 @@ exhibit_sources = [
   'main.py',
   'window.py',
   'vector_math.py',
+  'camera_views.py',
+  'cli_render.py',
+  'mesh_stats.py',
   'logger_lib.py',
   'settings_manager.py',
   'meshopt_decompress.py',
+  'ktx2_transcode.py',
   'gltf_scene_graph.py',
 ]
 
