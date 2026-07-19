@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <interface>
   <requires lib="gtk" version="4.0"/>
-  <requires lib="Adw" version="1.0"/>
   <requires lib="Gdk" version="1.0"/>
   <template class="F3DViewer" parent="GtkGLArea">
     <property name="has-depth-buffer">true</property>
@@ -95,7 +94,7 @@
       </object>
     </child>
     <style>
-      <class name="f3dviewer"/>
+      <class name="f3d-render"/>
     </style>
     <child>
       <object class="GtkGestureDrag">

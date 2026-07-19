@@ -20,14 +20,25 @@
 import sys
 import os
 import webbrowser
+
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+
+from gi.repository import Gtk, Gdk, Gio, Adw, GLib
+
+GLib.setenv("GDK_DEBUG", "gl-prefer-gl", True)
+
 import f3d
 
-from gi.repository import Gtk, Gio, Adw, GLib
 from .window import Viewer3dWindow
+from . import logger_lib
 
 from gettext import gettext as _
 
-from . import logger_lib
+_STYLE_RESOURCE = "/io/github/nokse22/Exhibit/style.css"
+_STYLE_DARK_RESOURCE = "/io/github/nokse22/Exhibit/style-dark.css"
 
 
 class Viewer3dApplication(Adw.Application):
@@ -45,6 +56,10 @@ class Viewer3dApplication(Adw.Application):
 
         self.lib_info = f3d.Engine.get_lib_info()
         self.backends = f3d.Engine.get_rendering_backend_list()
+
+        self._css_provider = None
+        self._dark_css_provider = None
+        self._css_loaded = False
 
         self.create_action("quit", lambda *_: self.quit(), ["<primary>q"])
         self.create_action("about", self.on_about_action)
@@ -90,11 +105,67 @@ class Viewer3dApplication(Adw.Application):
         self.update_theme()
         self.add_action(theme_action)
 
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        self._load_css()
+
+    def _load_css(self):
+        if self._css_loaded:
+            return
+
+        display = Gdk.Display.get_default()
+        if display is None:
+            return
+
+        self._css_provider = Gtk.CssProvider()
+        self._css_provider.load_from_resource(_STYLE_RESOURCE)
+        Gtk.StyleContext.add_provider_for_display(
+            display,
+            self._css_provider,
+            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
+        )
+
+        self._dark_css_provider = Gtk.CssProvider()
+        self._dark_css_provider.load_from_resource(_STYLE_DARK_RESOURCE)
+
+        style_manager = Adw.StyleManager.get_default()
+        style_manager.connect("notify::dark", self._on_dark_changed)
+        self._on_dark_changed(style_manager)
+        self._css_loaded = True
+
+    def _on_dark_changed(self, style_manager, *_args):
+        display = Gdk.Display.get_default()
+        if display is None or self._dark_css_provider is None:
+            return
+
+        if style_manager.get_dark():
+            Gtk.StyleContext.add_provider_for_display(
+                display,
+                self._dark_css_provider,
+                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
+            )
+        else:
+            Gtk.StyleContext.remove_provider_for_display(
+                display, self._dark_css_provider
+            )
+
     def do_open(self, files, n_files, hint):
-        for file in files:
-            file_path = file.get_path()
-            win = Viewer3dWindow(application=self, startup_filepath=file_path)
+        win = self.props.active_window
+        if win is None:
+            first = files[0].get_path() if n_files else None
+            win = Viewer3dWindow(application=self, startup_filepath=first)
             win.present()
+            # Remaining files open as extra tabs.
+            for i in range(1, n_files):
+                path = files[i].get_path()
+                if path:
+                    win.load_file(filepath=path)
+            return
+        win.present()
+        for i in range(n_files):
+            path = files[i].get_path()
+            if path:
+                win.load_file(filepath=path)
 
     def show_image_external(self, _action, image_path: GLib.Variant, *args):
         try:
@@ -162,7 +233,8 @@ class Viewer3dApplication(Adw.Application):
         self.update_theme()
 
     def update_theme(self):
-        manager = Adw.StyleManager().get_default()
+        # DEFAULT = follow OS (portal): Ubuntu prefer-dark + accent (Yaru orange).
+        manager = Adw.StyleManager.get_default()
         match self.saved_settings.get_string("theme"):
             case "follow":
                 manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
@@ -195,5 +267,10 @@ class Viewer3dApplication(Adw.Application):
 
 def main(version):
     """The application's entry point."""
+    if len(sys.argv) > 1 and sys.argv[1] == "render":
+        from . import cli_render
+
+        return cli_render.main(sys.argv[2:])
+
     app = Viewer3dApplication()
     return app.run(sys.argv)

@@ -17,11 +17,16 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import gi
+
+gi.require_version("Gtk", "4.0")
+
 from gi.repository import Gtk, Gdk, GLib, Gio, GObject
 
 import f3d
 
-from ..vector_math import p_dist, v_abs, v_norm, v_add, v_sub, v_mul, v_dot_p
+from ..camera_views import UP_DIRS, apply_view
+from ..vector_math import p_dist, v_abs, v_add, v_sub, v_mul, v_dot_p
 from .. import logger_lib
 from ..meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
 from ..gltf_scene_graph import (
@@ -33,14 +38,8 @@ from ..gltf_scene_graph import (
     write_glb_hiding_nodes,
 )
 
-up_dirs_vector = {
-    "-X": (-1.0, 0.0, 0.0),
-    "+X": (1.0, 0.0, 0.0),
-    "-Y": (0.0, -1.0, 0.0),
-    "+Y": (0.0, 1.0, 0.0),
-    "-Z": (0.0, 0.0, -1.0),
-    "+Z": (0.0, 0.0, 1.0),
-}
+# Back-compat alias used across pan/tilt helpers.
+up_dirs_vector = UP_DIRS
 
 
 @Gtk.Template(resource_path="/io/github/nokse22/Exhibit/ui/f3d_viewer.ui")
@@ -97,7 +96,8 @@ class F3DViewer(Gtk.GLArea):
         "animation-index": "scene.animation.indices",
     }
 
-    def __init__(self, *args):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.logger = logger_lib.logger
 
         self.engine = None
@@ -158,7 +158,6 @@ class F3DViewer(Gtk.GLArea):
 
         self.distance = 0
 
-        self.is_showed = False
         self._orthographic = False
 
         self._animation_time = 0
@@ -171,8 +170,8 @@ class F3DViewer(Gtk.GLArea):
         self._suppress_render = False
 
         self.set_allowed_apis(Gdk.GLAPI.GL)
-
-        self.initialize()
+        # Lazy engine: create on first load so extra tabs paint their
+        # loading cover before paying for a new F3D/EGL context.
 
     def initialize(self):
         if self.engine is not None:
@@ -269,41 +268,22 @@ class F3DViewer(Gtk.GLArea):
         self.queue_render()
 
     def front_view(self, *args):
-        up_v = up_dirs_vector[self.settings["scene.up_direction"]]
-        vector = v_mul(tuple([up_v[2], up_v[0], up_v[1]]), 1000)
-        self.camera.position = v_add(self.camera.focal_point, vector)
-        self.camera.view_up = up_dirs_vector[self.settings["scene.up_direction"]]
-        self.camera.reset_to_bounds()
+        apply_view(self.camera, "front", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
 
     def right_view(self, *args):
-        up_v = up_dirs_vector[self.settings["scene.up_direction"]]
-        vector = v_mul(tuple([up_v[1], up_v[2], up_v[0]]), 1000)
-        self.camera.position = v_add(self.camera.focal_point, vector)
-        self.camera.view_up = up_dirs_vector[self.settings["scene.up_direction"]]
-        self.camera.reset_to_bounds()
+        apply_view(self.camera, "right", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
 
     def top_view(self, *args):
-        up_v = up_dirs_vector[self.settings["scene.up_direction"]]
-        vector = v_mul(up_v, 1000)
-        self.camera.position = v_add(self.camera.focal_point, vector)
-        vector = v_mul(tuple([up_v[1], up_v[2], up_v[0]]), 1000)
-        self.camera.view_up = vector
-        self.camera.reset_to_bounds()
+        apply_view(self.camera, "top", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
 
     def isometric_view(self, *args):
-        up_v = up_dirs_vector[self.settings["scene.up_direction"]]
-        vector = v_add(
-            tuple([up_v[2], up_v[0], up_v[1]]), tuple([up_v[1], up_v[2], up_v[0]])
-        )
-        self.camera.position = v_mul(v_norm(v_add(vector, up_v)), 1000)
-        self.camera.view_up = up_dirs_vector[self.settings["scene.up_direction"]]
-        self.camera.reset_to_bounds()
+        apply_view(self.camera, "isometric", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
 
@@ -564,18 +544,6 @@ class F3DViewer(Gtk.GLArea):
     def on_resize(self, gl_area, width, height):
         self.width = width
         self.height = height
-
-    def on_show(self, *args):
-        self.is_showed = True
-        self.logger.debug("F3D Viewer has been showed")
-
-        def _set_hdri_ambient_true():
-            f3d_options = {"render.hdri.ambient": True}
-            self.engine.options.update(f3d_options)
-            self.queue_render()
-
-        if self.settings["render.hdri.ambient"]:
-            GLib.timeout_add(100, _set_hdri_ambient_true)
 
     def on_render(self, area, ctx):
         self.window.size = self.width, self.height

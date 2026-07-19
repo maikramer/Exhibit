@@ -1,23 +1,54 @@
-:root {
-  --btn-color: black;
-}
+/* Overlay + viewport only. Surfaces/accent come from Adwaita / OS (Yaru). */
 
-.fix-render {
+.f3d-render {
   background-color: black;
 }
 
-.suggested-picture {
-  border-radius: 6px;
+file-row {
+  border-radius: 12px;
 }
 
-flowbox flowboxchild {
-  padding: 0px;
+.icon-dropshadow {
+  -gtk-icon-shadow: 0 1px 2px alpha(black, 0.35);
+}
+
+.exhibit-cta {
+  min-width: 148px;
+}
+
+.exhibit-tab-bar {
+  background-color: var(--window-bg-color);
+  border-bottom: 1px solid alpha(var(--border-color), 0.55);
+  padding: 0 4px;
+}
+
+/* Floating chrome over the GL viewport ------------------------------------ */
+
+.preview-headerbar {
+  background: transparent;
+  box-shadow: none;
+}
+
+.preview-headerbar > windowhandle > box {
+  margin: 6px 8px 0 8px;
+}
+
+.preview-headerbar > windowhandle > box > box.start {
+  margin-right: 6px;
+}
+
+.viewer-chrome {
+  padding: 2px;
+  border-radius: 9999px;
+  background-color: alpha(var(--window-bg-color), 0.72);
+  border: 1px solid alpha(var(--border-color), 0.7);
 }
 
 .overlay-button {
-  background-color: alpha(var(--view-bg-color), 0.6);
+  background-color: alpha(var(--window-bg-color), 0.92);
+  border: 1px solid alpha(var(--border-color), 0.8);
   border-radius: 9999px;
-  transition: background-color 200ms ease-in-out;
+  box-shadow: 0 1px 2px alpha(black, 0.12);
 }
 
 .overlay-button button {
@@ -25,31 +56,77 @@ flowbox flowboxchild {
 }
 
 .overlay-button:hover {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.06);
+  background-color: alpha(var(--view-fg-color), 0.08);
 }
 
 .overlay-button:active {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.14);
+  background-color: alpha(var(--view-fg-color), 0.12);
 }
 
+/* Match OS selection: accent wash when toggled (sidebar open) */
 .overlay-button:checked {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.08);
+  background-color: alpha(var(--accent-bg-color), 0.28);
+  border-color: alpha(var(--accent-color), 0.45);
+  color: var(--accent-color);
 }
 
 .overlay-button:checked:hover {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.1);
+  background-color: alpha(var(--accent-bg-color), 0.36);
 }
 
-.main-view windowcontrols image{
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.06);
+.main-view windowcontrols image {
+  background-color: alpha(var(--window-bg-color), 0.92);
+  border: 1px solid alpha(var(--border-color), 0.8);
+  box-shadow: 0 1px 2px alpha(black, 0.12);
 }
 
 .main-view windowcontrols image:hover {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.1);
+  background-color: alpha(var(--view-fg-color), 0.08);
 }
 
 .main-view windowcontrols image:active {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.15);
+  background-color: alpha(var(--view-fg-color), 0.12);
+}
+
+/* Stats HUD --------------------------------------------------------------- */
+
+.stats-overlay {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: alpha(var(--window-bg-color), 0.9);
+  border: 1px solid alpha(var(--border-color), 0.75);
+  color: var(--view-fg-color);
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.4;
+  box-shadow: 0 4px 18px alpha(black, 0.2);
+}
+
+/* Object tree ------------------------------------------------------------- */
+
+.object-tree-popover contents {
+  border-radius: 14px;
+}
+
+.object-tree-view > row {
+  border-radius: 8px;
+  padding: 3px 6px;
+  margin: 1px 2px;
+}
+
+.object-tree-structural {
+  opacity: 0.68;
+}
+
+/* Misc -------------------------------------------------------------------- */
+
+.suggested-picture {
+  border-radius: 8px;
+}
+
+flowbox flowboxchild {
+  padding: 0px;
 }
 
 .drop-target-remove-border {
@@ -58,12 +135,10 @@ flowbox flowboxchild {
 
 .overlay-status {
   color: var(--accent-color);
-  background-color: color-mix(in srgb, var(--accent-bg-color) 20%, transparent);
-  /* Same color for border as for icon and label */
-  /* Probably due to a GTK bug, this currently does not give the exact same color */
-  border: 2px dashed color-mix(in srgb, currentColor var(--dim-opacity), transparent);
-  border-radius: 2px;
-  margin: 12px;
+  background-color: alpha(var(--accent-bg-color), 0.16);
+  border: 2px dashed alpha(var(--accent-color), 0.45);
+  border-radius: 10px;
+  margin: 16px;
 }
 
 .overlay-status label {
@@ -74,34 +149,3 @@ flowbox flowboxchild {
   opacity: 1;
   color: var(--accent-color);
 }
-
-.object-tree-popover contents {
-  background-color: alpha(var(--view-bg-color), 0.82);
-  border: 1px solid alpha(var(--border-color), 0.4);
-  border-radius: 12px;
-  padding: 0;
-}
-
-.object-tree-panel {
-  background-color: transparent;
-}
-
-.object-tree-view {
-  background: transparent;
-}
-
-.object-tree-view > row {
-  background: transparent;
-  border-radius: 6px;
-  padding: 2px 4px;
-}
-
-.object-tree-view > row:hover {
-  background-color: alpha(var(--view-fg-color), 0.08);
-}
-
-.object-tree-structural {
-  opacity: 0.72;
-}
-
-

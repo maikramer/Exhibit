@@ -2,8 +2,8 @@
 <!-- Created with Cambalache 0.90.2 -->
 <interface>
   <!-- interface-name t.ui -->
-  <requires lib="gtk" version="4.12"/>
-  <requires lib="libadwaita" version="1.0"/>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="Adw" version="1.0"/>
   <template class="FileRow" parent="AdwPreferencesRow">
     <property name="css-name">file-row</property>
     <child>

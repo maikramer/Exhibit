@@ -22,18 +22,26 @@ import json
 import re
 import threading
 
+import gi
+
+gi.require_version("Gtk", "4.0")
+gi.require_version("Adw", "1")
+
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
-from .widgets import F3DViewer, FileRow
+from .widgets import FileRow, ViewerTab
 from wand.image import Image
 
 from . import logger_lib
 from .settings_manager import WindowSettings
 from .meshopt_decompress import MeshoptError, cleanup_decompressed, prepare_glb_for_load
 from .gltf_scene_graph import SceneTreeNode, glb_has_skins, tree_has_mesh
+from .mesh_stats import MeshStats, collect_mesh_stats, format_overlay_text
 
 import f3d
 
 from gettext import gettext as _
+
+_HELP_OVERLAY_RESOURCE = "/io/github/nokse22/Exhibit/gtk/help-overlay.ui"
 
 
 class ObjectTreeItem(GObject.Object):
@@ -120,11 +128,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     split_view = Gtk.Template.Child()
 
-    f3d_viewer = Gtk.Template.Child()
-
     title_widget = Gtk.Template.Child()
     stack = Gtk.Template.Child()
     toolbar_view = Gtk.Template.Child()
+    tab_view = Gtk.Template.Child()
+    tab_bar = Gtk.Template.Child()
 
     view_drop_target = Gtk.Template.Child()
     loading_drop_target = Gtk.Template.Child()
@@ -174,6 +182,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     model_opacity_spin = Gtk.Template.Child()
 
     armature_switch = Gtk.Template.Child()
+    stats_overlay_switch = Gtk.Template.Child()
 
     model_color_row = Gtk.Template.Child()
     model_scivis_component_combo = Gtk.Template.Child()
@@ -205,8 +214,6 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     height = 600
     distance = 0
 
-    file_name = ""
-    filepath = ""
     no_file_loaded = True
 
     _cached_time_stamp = 0
@@ -219,10 +226,20 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         # Flags
         self.applying_breakpoint = False
         self.block_reload = True
+        self._anim_bindings = []
+        self._playing_handler_id = 0
+        self._switching_tab = False
+        self._mesh_stats = None
+        self._armature_xray_restore = None
+        self.filepath = ""
+        self.file_name = ""
 
         # Settings
         self.window_settings = WindowSettings()
         self.saved_settings = Gio.Settings.new('io.github.nokse22.Exhibit')
+
+        builder = Gtk.Builder.new_from_resource(_HELP_OVERLAY_RESOURCE)
+        self.set_help_overlay(builder.get_object("help_overlay"))
 
         # Defining all the actions
         self.save_as_action = self.create_action(
@@ -297,7 +314,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.hdri_file_row.window = self
 
         for filename in list_files(self.hdri_path):
-            name, _ = os.path.splitext(filename)
+            name, _ext = os.path.splitext(filename)
 
             thumbnail = self.hdri_thumbnails_path + name + ".jpeg"
             filepath = self.hdri_path + filename
@@ -308,10 +325,16 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             except Exception:
                 self.logger.warning(f"Couldn't open HDRI file {filepath}, skipping")
 
-        if self.window_settings.get_setting("orthographic").value:
-            self.f3d_viewer.orthographic = self.window_settings.get_setting("orthographic").value
+        # First empty viewer tab (bindings + settings target).
+        self._add_viewer_tab(title=_("Untitled"), select=True)
+        self.tab_view.connect(
+            "notify::selected-page", self.on_tab_selected_page)
 
-        self.style_manager = Adw.StyleManager().get_default()
+        if self.window_settings.get_setting("orthographic").value:
+            self.f3d_viewer.orthographic = (
+                self.window_settings.get_setting("orthographic").value)
+
+        self.style_manager = Adw.StyleManager.get_default()
         self.style_manager.connect(
             "notify::dark", self.update_background_color)
 
@@ -319,7 +342,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         # Setting up the save settings dialog
         def _on_factory_setup(_factory, list_item):
-            label = Gtk.Label(xalign=0, ellipsize=3)
+            label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
             list_item.set_child(label)
 
         def _on_factory_bind(_factory, list_item, what):
@@ -371,7 +394,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             (self.automatic_settings_switch, "auto-best"),
             (self.automatic_reload_switch, "auto-reload"),
             (self.point_up_switch, "point-up"),
-            (self.armature_switch, "armature-enable")
+            (self.armature_switch, "armature-enable"),
+            (self.stats_overlay_switch, "stats-overlay"),
         ]
 
         for switch, name in switches:
@@ -438,16 +462,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.window_settings.set_setting(
             "auto-best", self.saved_settings.get_boolean("auto-best"))
 
-        self.animation_time_adj.bind_property(
-            "lower", self.f3d_viewer, "lower-time-range", 1)
-        self.animation_time_adj.bind_property(
-            "upper", self.f3d_viewer, "upper-time-range", 1)
-        self.animation_time_adj.bind_property(
-            "value", self.f3d_viewer, "animation-time", 3)
-
         self.play_button.connect("clicked", self.on_play_button_clicked)
-
-        self.f3d_viewer.connect("notify::playing", self.on_playing_changed)
+        self._bind_animation_controls(self.f3d_viewer)
 
         self._block_animation_combo = False
         self.animation_combo.connect(
@@ -458,22 +474,208 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self._object_tree_check_handlers: dict[int, int] = {}
         self._setup_object_tree_view()
 
-        # Saved opacity / line width while armature X-ray mode is active.
-        self._armature_xray_restore: dict[str, float] | None = None
-
         self.block_reload = True
 
         # Sync the UI with the settings (batched → one viewer options update)
         self.window_settings.sync_all_settings()
-        self.f3d_viewer.update_options(self.window_settings.get_view_settings())
+        self._update_all_viewers_options(self.window_settings.get_view_settings())
 
         self.block_reload = False
+        self._update_tab_bar_visibility()
 
         if startup_filepath:
             self.logger.info(f"startup file detected: {startup_filepath}")
             self.load_file(filepath=startup_filepath)
 
         self.logger.info("Started")
+
+    # ---- Multi-document tabs ---------------------------------------------
+
+    @property
+    def f3d_viewer(self):
+        tab = self._active_tab()
+        if tab is None:
+            raise RuntimeError("No viewer tab available")
+        return tab.viewer
+
+    @property
+    def stats_overlay_label(self):
+        tab = self._active_tab()
+        if tab is None:
+            raise RuntimeError("No viewer tab available")
+        return tab.stats_overlay_label
+
+    def _active_tab(self) -> ViewerTab | None:
+        page = self.tab_view.get_selected_page()
+        if page is None:
+            return None
+        child = page.get_child()
+        return child if isinstance(child, ViewerTab) else None
+
+    def _tab_page(self, tab: ViewerTab):
+        return self.tab_view.get_page(tab)
+
+    def _iter_tabs(self):
+        for i in range(self.tab_view.get_n_pages()):
+            child = self.tab_view.get_nth_page(i).get_child()
+            if isinstance(child, ViewerTab):
+                yield child
+
+    def _update_all_viewers_options(self, options, queue_render=True):
+        for tab in self._iter_tabs():
+            tab.viewer.update_options(options, queue_render=queue_render)
+
+    def _update_tab_bar_visibility(self) -> bool:
+        # Only after 2+ models are ready — during 2nd open: no bar, full-bleed
+        # loading cover on the new tab (feels like a single-file transition).
+        loaded = sum(1 for t in self._iter_tabs() if t.loaded)
+        want_bar = loaded > 1
+        was_bar = self.tab_bar.get_visible()
+        self.tab_bar.set_visible(want_bar)
+        self.toolbar_view.set_extend_content_to_top_edge(not want_bar)
+        chrome_changed = was_bar != want_bar
+        if chrome_changed:
+            GLib.timeout_add(100, self._reframe_after_chrome_change)
+        return chrome_changed
+
+    def _reframe_after_chrome_change(self):
+        """Re-fit cameras after tab bar steals/returns vertical space."""
+        for tab in self._iter_tabs():
+            if not tab.loaded:
+                continue
+            viewer = tab.viewer
+            if viewer.camera is None:
+                continue
+            try:
+                viewer.reset_to_bounds()
+            except Exception as exc:
+                self.logger.debug(f"reframe skipped: {exc}")
+        return GLib.SOURCE_REMOVE
+
+    def _configure_tab_page(self, page, tab: ViewerTab):
+        title = tab.file_name or _("Untitled")
+        page.set_title(title)
+        page.set_icon(Gio.ThemedIcon.new("image-x-generic-symbolic"))
+        tooltip = tab.filepath or title
+        if hasattr(page, "set_tooltip"):
+            page.set_tooltip(tooltip)
+        else:
+            tab.set_tooltip_text(tooltip)
+
+    def _add_viewer_tab(self, title: str = "", select: bool = True) -> ViewerTab:
+        tab = ViewerTab()
+        if title:
+            tab.file_name = title
+        page = self.tab_view.append(tab)
+        self._configure_tab_page(page, tab)
+        tab.viewer.update_options(self.window_settings.get_view_settings())
+        if select:
+            self.tab_view.set_selected_page(page)
+            self._bind_animation_controls(tab.viewer)
+        self._update_tab_bar_visibility()
+        return tab
+
+    def _bind_animation_controls(self, viewer):
+        for binding in self._anim_bindings:
+            binding.unbind()
+        flags_range = GObject.BindingFlags.BIDIRECTIONAL
+        flags_value = (
+            GObject.BindingFlags.BIDIRECTIONAL
+            | GObject.BindingFlags.SYNC_CREATE)
+        self._anim_bindings = [
+            self.animation_time_adj.bind_property(
+                "lower", viewer, "lower-time-range", flags_range),
+            self.animation_time_adj.bind_property(
+                "upper", viewer, "upper-time-range", flags_range),
+            self.animation_time_adj.bind_property(
+                "value", viewer, "animation-time", flags_value),
+        ]
+        if self._playing_handler_id:
+            # Disconnect from previous viewer if still alive.
+            try:
+                for tab in self._iter_tabs():
+                    if tab.viewer.handler_is_connected(self._playing_handler_id):
+                        tab.viewer.disconnect(self._playing_handler_id)
+                        break
+            except Exception:
+                pass
+        self._playing_handler_id = viewer.connect(
+            "notify::playing", self.on_playing_changed)
+        self.on_playing_changed()
+
+    def _sync_window_from_tab(self, tab: ViewerTab | None):
+        if tab is None:
+            self.filepath = ""
+            self.file_name = ""
+            self._mesh_stats = None
+            return
+        self.filepath = tab.filepath
+        self.file_name = tab.file_name
+        self._mesh_stats = tab.mesh_stats
+        self._armature_xray_restore = tab.armature_xray_restore
+        if tab.loaded:
+            self.set_title(_("Exhibit - {}").format(tab.file_name or _("Untitled")))
+            self.title_widget.set_subtitle(tab.file_name)
+        else:
+            self.set_title(_("Exhibit"))
+            self.title_widget.set_subtitle(_("Asset preview"))
+
+    def on_tab_selected_page(self, *args):
+        if self._switching_tab:
+            return
+        tab = self._active_tab()
+        if tab is None:
+            return
+        self._switching_tab = True
+        try:
+            self._bind_animation_controls(tab.viewer)
+            self._sync_window_from_tab(tab)
+            if tab.loaded:
+                self.no_file_loaded = False
+                self.refresh_animation_combo()
+                self.refresh_object_tree()
+                if self.window_settings.get_setting("stats-overlay").value:
+                    self._apply_stats_overlay(True)
+                else:
+                    tab.stats_overlay_label.set_visible(False)
+                self.update_time_stamp()
+                if self.window_settings.get_setting("auto-reload").value:
+                    self.change_checker.run()
+                tab.viewer.grab_focus()
+                # Ensure GL picks up the visible allocation after a switch.
+                GLib.idle_add(tab.viewer.queue_render)
+            self._update_tab_bar_visibility()
+        finally:
+            self._switching_tab = False
+
+    @Gtk.Template.Callback("on_tab_close_page")
+    def on_tab_close_page(self, tab_view, page):
+        tab = page.get_child()
+        self.tab_view.close_page_finish(page, True)
+        if isinstance(tab, ViewerTab):
+            try:
+                tab.viewer.set_auto_render(False)
+            except Exception:
+                pass
+        if self.tab_view.get_n_pages() == 0:
+            self.no_file_loaded = True
+            self.filepath = ""
+            self.file_name = ""
+            self._mesh_stats = None
+            self.change_checker.stop()
+            self.set_title(_("Exhibit"))
+            self.title_widget.set_subtitle(_("Asset preview"))
+            self.stack.set_visible_child_name("startup_page")
+            self.startup_stack.set_visible_child_name("welcome_page")
+            self._switching_tab = True
+            try:
+                self._add_viewer_tab(select=True)
+            finally:
+                self._switching_tab = False
+        else:
+            self.on_tab_selected_page()
+        self._update_tab_bar_visibility()
+        return Gdk.EVENT_STOP
 
     def setup_configurations(self):
         self.configurations = Gio.resources_lookup_data(
@@ -761,9 +963,6 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     def on_switch_toggled(self, switch, active, name):
         self.window_settings.set_setting(name, switch.get_active())
 
-    def on_expander_toggled(self, expander, enabled, name):
-        self.window_settings.set_setting(name, expander.get_enable_expansion())
-
     def on_spin_changed(self, spin, value, name):
         val = float(round(spin.get_value(), 2))
         self.window_settings.set_setting(name, val)
@@ -806,7 +1005,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self.load_file(
                 filepath=self.filepath,
                 override=True,
-                preserve_orientation=pres_or)
+                preserve_orientation=pres_or,
+                new_tab=False)
 
     def update_background_color(self, *args):
         self.logger.info(
@@ -815,13 +1015,13 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             options = {
                 "bg-color": self.window_settings.get_setting("bg-color").value,
             }
-            self.f3d_viewer.update_options(options)
+            self._update_all_viewers_options(options)
             return
         if self.style_manager.get_dark():
             options = {"bg-color": [0.117, 0.117, 0.117]}
         else:
             options = {"bg-color": [1.0, 1.0, 1.0]}
-        self.f3d_viewer.update_options(options)
+        self._update_all_viewers_options(options)
 
     # Functions to set the settings
 
@@ -831,13 +1031,77 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self._apply_armature_mode(bool(setting.value))
             self.check_for_options_change()
             return
+        if setting.name == "stats-overlay":
+            self._apply_stats_overlay(bool(setting.value))
+            self.check_for_options_change()
+            return
 
         options = {setting.name: setting.value}
-        self.f3d_viewer.update_options(options)
+        self._update_all_viewers_options(options)
         self.check_for_options_change()
 
         if setting.name == "up":
             self.reload_file()
+
+    def _refresh_mesh_stats(self) -> None:
+        tab = self._active_tab()
+        if tab is None:
+            self._mesh_stats = None
+            return
+        path = tab.viewer.get_prepared_path() or tab.filepath
+        if not path or not os.path.isfile(path):
+            self._mesh_stats = None
+            tab.mesh_stats = None
+            return
+        prepared = bool(tab.viewer.get_prepared_path())
+        try:
+            stats = collect_mesh_stats(path, already_prepared=prepared)
+        except Exception as exc:
+            self.logger.error(f"Failed to collect mesh stats: {exc}")
+            stats = None
+        self._mesh_stats = stats
+        tab.mesh_stats = stats
+
+    def _apply_stats_overlay(self, enabled: bool) -> None:
+        """Show/hide the Gtk stats overlay; refresh counts when enabling."""
+        if enabled:
+            if self._mesh_stats is None:
+                self._refresh_mesh_stats()
+            if self._mesh_stats is not None:
+                self.stats_overlay_label.set_label(
+                    format_overlay_text(self._mesh_stats)
+                )
+            else:
+                self.stats_overlay_label.set_label(_("No stats available"))
+            self.stats_overlay_label.set_visible(True)
+            # Also drive F3D's native metadata + our text via filename_info.
+            info = (
+                format_overlay_text(self._mesh_stats)
+                if self._mesh_stats is not None
+                else ""
+            )
+            if self.f3d_viewer.engine:
+                self.f3d_viewer.engine.options.update(
+                    {
+                        "ui.metadata": True,
+                        "ui.filename": True,
+                        "ui.filename_info": info,
+                        "ui.backdrop.opacity": 0.55,
+                    }
+                )
+                self.f3d_viewer.queue_render()
+            return
+
+        self.stats_overlay_label.set_visible(False)
+        if self.f3d_viewer.engine:
+            self.f3d_viewer.engine.options.update(
+                {
+                    "ui.metadata": False,
+                    "ui.filename": False,
+                    "ui.filename_info": "",
+                }
+            )
+            self.f3d_viewer.queue_render()
 
     def _apply_armature_mode(self, enabled: bool):
         """
@@ -1005,16 +1269,18 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         # Batch view emits so presets do one update_options + one queue_render
         self.window_settings.begin_view_batch()
-        self.f3d_viewer.begin_options_batch()
+        for tab in self._iter_tabs():
+            tab.viewer.begin_options_batch()
         try:
             for key, value in options.items():
                 self.window_settings.set_setting(key, value)
-            self.f3d_viewer.update_options(options, queue_render=False)
+            self._update_all_viewers_options(options, queue_render=False)
             for key, value in self.configurations[name]["other-settings"].items():
                 self.window_settings.set_setting(key, value)
         finally:
             self.window_settings.end_view_batch()
-            self.f3d_viewer.end_options_batch()
+            for tab in self._iter_tabs():
+                tab.viewer.end_options_batch()
 
     def check_for_options_change(self):
         if self.block_reload:
@@ -1098,70 +1364,206 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             title=_("Open File"),
             filters=filter_list)
 
-        dialog.open(self, None, self.on_open_file_response)
+        dialog.open_multiple(self, None, self.on_open_files_response)
 
-    def on_open_file_response(self, dialog, response):
+    def on_open_files_response(self, dialog, response):
         try:
-            file = dialog.open_finish(response)
+            files = dialog.open_multiple_finish(response)
         except Exception as e:
             self.logger.error(f"Exception Opening file: {e}")
             return
 
-        if file:
-            filepath = file.get_path()
+        if not files:
+            return
+        for i in range(files.get_n_items()):
+            file = files.get_item(i)
+            filepath = file.get_path() if file else None
             if not filepath:
                 self.logger.error("Opened file has no local path")
-                self.on_file_not_opened(file.get_basename() or _("Unknown"))
-                return
+                self.on_file_not_opened(
+                    file.get_basename() if file else _("Unknown"))
+                continue
             self.logger.info("open file response")
             self.load_file(filepath=filepath)
 
     def load_file(self, **kwargs):
+        filepath = kwargs.get("filepath")
+        basename = os.path.basename(filepath or "Nothing")
+        replace = kwargs.get("override") or kwargs.get("preserve_orientation")
+        new_tab = kwargs.get("new_tab")
+        if new_tab is None:
+            # First document reuses the empty tab; later opens get a new tab.
+            new_tab = (not replace) and (not self.no_file_loaded)
+
+        if new_tab:
+            # Prepare tab in background; same startup loading_page as first open.
+            tab = self._add_viewer_tab(title=basename, select=False)
+            page = self._tab_page(tab)
+            if page is not None:
+                page.set_loading(True)
+                page.set_title(basename)
+        else:
+            tab = self._active_tab()
+            if tab is None:
+                tab = self._add_viewer_tab(title=basename, select=True)
+            page = self._tab_page(tab)
+            if page is not None:
+                page.set_title(basename)
+                page.set_loading(True)
+
+        kwargs["_tab"] = tab
+        # Extra tabs inherit current preset — skip auto-best churn.
+        kwargs["_skip_auto_best"] = bool(new_tab)
+        warm = not self.no_file_loaded
+        self._update_tab_bar_visibility()
+
+        # Same loading UI for first open and extra tabs.
+        self.loading_label.set_label(_("Loading {}").format(basename))
         self.startup_stack.set_visible_child_name("loading_page")
         self.stack.set_visible_child_name("startup_page")
-        self.loading_label.set_label(
-            _("Loading {}").format(
-                os.path.basename(kwargs.get("filepath", "Nothing"))))
-        self.block_reload = True
-        # Reuse existing F3D engine; initialize() is a no-op after first create.
-        self.f3d_viewer.initialize()
 
-        def _start_load(*_args):
-            threading.Thread(
-                target=self._load_file, kwargs=kwargs, daemon=True
-            ).start()
+        tab.stats_overlay_label.set_visible(False)
+        self.block_reload = True
+
+        if warm:
+            # App already up: prepare GLB on a worker while F3D engine inits
+            # on the main thread, then scene.add on main (GL-safe + overlap).
+            self._start_warm_load(tab, kwargs)
+        else:
+            tab.viewer.initialize()
+
+            def _start_load(*_args):
+                threading.Thread(
+                    target=self._load_file, kwargs=kwargs, daemon=True
+                ).start()
+                return GLib.SOURCE_REMOVE
+
+            GLib.timeout_add(100, _start_load)
+
+    @staticmethod
+    def _resolve_readable_path(filepath: str) -> str | None:
+        """Return a path the sandbox can read (follow home→/media symlinks)."""
+        if not filepath:
+            return None
+        candidates = [filepath]
+        try:
+            real = os.path.realpath(filepath)
+            if real and real not in candidates:
+                candidates.append(real)
+        except OSError:
+            pass
+        for path in candidates:
+            try:
+                if os.path.isfile(path) and os.access(path, os.R_OK):
+                    return path
+            except OSError:
+                continue
+        return None
+
+    def _start_warm_load(self, tab: ViewerTab, kwargs: dict):
+        """Overlap GLB prepare (worker) with F3D engine create (main)."""
+        filepath = kwargs.get("filepath")
+        holder: dict = {}
+
+        def prepare_worker():
+            try:
+                if not filepath:
+                    raise ValueError("missing filepath")
+                resolved = self._resolve_readable_path(filepath)
+                if resolved is None:
+                    raise FileNotFoundError(filepath)
+                load_path, meshopt_temp = prepare_glb_for_load(resolved)
+                holder["ok"] = (resolved, load_path, meshopt_temp)
+            except Exception as exc:
+                holder["err"] = exc
+                holder["path"] = filepath
+            GLib.idle_add(self._warm_prepare_finished, tab, kwargs, holder)
+
+        threading.Thread(target=prepare_worker, daemon=True).start()
+        # Pay for the new tab's engine while prepare runs.
+        tab.viewer.initialize()
+
+    def _warm_prepare_finished(self, tab: ViewerTab, kwargs: dict, holder: dict):
+        if "err" in holder:
+            err = holder["err"]
+            path = holder.get("path") or kwargs.get("filepath")
+            self.logger.error(f"Warm prepare failed: {err}")
+            self.on_file_not_opened(path, tab)
             return GLib.SOURCE_REMOVE
 
-        GLib.timeout_add(100, _start_load)
+        filepath, load_path, meshopt_temp = holder["ok"]
+        viewer = tab.viewer
+        if viewer.engine is None:
+            viewer.initialize()
+
+        self.change_checker.stop()
+        try:
+            if not viewer.supports(load_path):
+                self.on_file_not_opened(filepath, tab)
+                return GLib.SOURCE_REMOVE
+            if not viewer.load_file(filepath, prepared_path=load_path):
+                self.on_file_not_opened(filepath, tab)
+                return GLib.SOURCE_REMOVE
+        except Exception as exc:
+            self.logger.error(f"Error while loading into viewer: {exc}")
+            self.on_file_not_opened(filepath, tab)
+            return GLib.SOURCE_REMOVE
+        finally:
+            cleanup_decompressed(meshopt_temp)
+
+        tab.filepath = filepath
+        tab.file_name = os.path.basename(filepath)
+        self.on_file_opened(tab)
+        return GLib.SOURCE_REMOVE
 
     def _load_file(self, **kwargs):
         filepath = kwargs.get("filepath", None)
         override = kwargs.get("override", False)
         preserve_orientation = kwargs.get("preserve_orientation", False)
         add_file = kwargs.get("add_file", False)
+        skip_auto_best = kwargs.get("_skip_auto_best", False)
+        tab = kwargs.get("_tab") or self._active_tab()
+        if tab is None:
+            GLib.idle_add(self.on_file_not_opened, _("Unknown"), None)
+            return
 
+        viewer = tab.viewer
+        camera_state = None
         if preserve_orientation:
-            camera_state = self.f3d_viewer.get_camera_state()
+            camera_state = viewer.get_camera_state()
 
         if filepath is None:
-            filepath = self.filepath
+            filepath = tab.filepath or self.filepath
 
         if filepath == "" or filepath is None:
-            GLib.idle_add(self.on_file_not_opened, _("Unknown"))
+            GLib.idle_add(self.on_file_not_opened, _("Unknown"), tab)
             return
 
-        if not os.path.isfile(filepath):
-            self.logger.error(f"File is not readable in sandbox: {filepath}")
-            GLib.idle_add(self.on_file_not_opened, filepath)
+        resolved = self._resolve_readable_path(filepath)
+        if resolved is None:
+            try:
+                real = os.path.realpath(filepath)
+            except OSError:
+                real = filepath
+            self.logger.error(
+                "File is not readable in sandbox: "
+                f"{filepath} (realpath={real})"
+            )
+            GLib.idle_add(self.on_file_not_opened, filepath, tab)
             return
+        if resolved != filepath:
+            self.logger.info(
+                f"Resolved sandbox path via realpath: {filepath} -> {resolved}"
+            )
+            filepath = resolved
 
-        self.logger.debug(
-            f"load file: {filepath}")
+        self.logger.debug(f"load file: {filepath}")
 
         self.change_checker.stop()
 
-        if (self.window_settings.get_setting("auto-best").value
-                and not override) and not add_file:
+        if (not skip_auto_best
+                and self.window_settings.get_setting("auto-best").value
+                and not override and not add_file):
             self.logger.debug("choosing best settings")
             settings = "general"
             for key, value in self.configurations.items():
@@ -1171,7 +1573,9 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                 if re.search(pattern, filepath):
                     settings = key
             self.logger.debug(f"best settings is {settings}")
-            self.change_setting_state(GLib.Variant("s", settings))
+            # Settings UI must run on the main loop.
+            GLib.idle_add(
+                self.change_setting_state, GLib.Variant("s", settings))
 
         load_path = filepath
         meshopt_temp = None
@@ -1180,81 +1584,125 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             load_path, meshopt_temp = prepare_glb_for_load(filepath)
         except MeshoptError as e:
             self.logger.error(f"Error while decompressing meshopt GLB: {e}")
-            GLib.idle_add(self.on_file_not_opened, filepath)
+            GLib.idle_add(self.on_file_not_opened, filepath, tab)
             return
         except Exception as e:
             self.logger.error(f"Error while preparing file: {e}")
-            GLib.idle_add(self.on_file_not_opened, filepath)
+            GLib.idle_add(self.on_file_not_opened, filepath, tab)
             return
 
         try:
-            if self.f3d_viewer.supports(load_path):
+            if viewer.supports(load_path):
                 if add_file:
-                    if not self.f3d_viewer.add_file(
-                        filepath, prepared_path=load_path
-                    ):
-                        GLib.idle_add(self.on_file_not_opened, filepath)
+                    if not viewer.add_file(filepath, prepared_path=load_path):
+                        GLib.idle_add(self.on_file_not_opened, filepath, tab)
                         return
                 else:
-                    if not self.f3d_viewer.load_file(
-                        filepath, prepared_path=load_path
-                    ):
-                        GLib.idle_add(self.on_file_not_opened, filepath)
+                    if not viewer.load_file(filepath, prepared_path=load_path):
+                        GLib.idle_add(self.on_file_not_opened, filepath, tab)
                         return
             else:
-                GLib.idle_add(self.on_file_not_opened, filepath)
+                GLib.idle_add(self.on_file_not_opened, filepath, tab)
                 return
         except Exception as e:
             self.logger.error(f"Error while loading into viewer: {e}")
-            GLib.idle_add(self.on_file_not_opened, filepath)
+            GLib.idle_add(self.on_file_not_opened, filepath, tab)
             return
         finally:
             # Cached prepared files are not deleted here.
             cleanup_decompressed(meshopt_temp)
 
-        if preserve_orientation:
-            self.f3d_viewer.set_camera_state(camera_state)
+        if preserve_orientation and camera_state is not None:
+            viewer.set_camera_state(camera_state)
 
-        self.filepath = filepath
-        GLib.idle_add(self.on_file_opened)
+        tab.filepath = filepath
+        tab.file_name = os.path.basename(filepath)
+        GLib.idle_add(self.on_file_opened, tab)
 
-    def on_file_opened(self):
+    def on_file_opened(self, tab=None):
         self.logger.debug("on file opened")
+        tab = tab or self._active_tab()
+        if tab is None:
+            self.block_reload = False
+            return GLib.SOURCE_REMOVE
+
+        page = self._tab_page(tab)
+        if page is not None:
+            page.set_loading(False)
+
+        self.filepath = tab.filepath
+        self.file_name = tab.file_name
+        tab.loaded = True
+        if page is not None:
+            self._configure_tab_page(page, tab)
+
+        # Reveal the ready tab (may have been prepared off-screen).
+        if page is not None and self.tab_view.get_selected_page() != page:
+            self._switching_tab = True
+            self.tab_view.set_selected_page(page)
+            self._switching_tab = False
+        self._bind_animation_controls(tab.viewer)
+
+        self.no_file_loaded = False
+        # Reveal tab bar only once the 2nd+ model is ready.
+        chrome_changed = self._update_tab_bar_visibility()
 
         self.update_time_stamp()
         if self.window_settings.get_setting("auto-reload").value:
             self.change_checker.run()
 
-        self.file_name = os.path.basename(self.filepath)
-
         self.set_title(_("Exhibit - {}").format(self.file_name))
         self.title_widget.set_subtitle(self.file_name)
         self.stack.set_visible_child_name("3d_page")
-        self.f3d_viewer.grab_focus()
-
-        self.no_file_loaded = False
+        tab.viewer.grab_focus()
 
         self.update_background_color()
 
-        self.refresh_animation_combo()
-        self.refresh_object_tree()
-
         self.block_reload = False
-        GLib.timeout_add(100, self.f3d_viewer.done)
+        # Paint model first; sidebar extras can wait one idle tick.
+        GLib.idle_add(self._post_open_sidebar_refresh)
+
+        # Fit sooner when chrome already stable (3rd+ tab).
+        GLib.timeout_add(120 if chrome_changed else 30, tab.viewer.done)
         return GLib.SOURCE_REMOVE
 
-    def on_file_not_opened(self, filepath):
-        self.logger.debug("on file not opened")
+    def _post_open_sidebar_refresh(self):
+        self.refresh_animation_combo()
+        self.refresh_object_tree()
+        self._refresh_mesh_stats()
+        if self.window_settings.get_setting("stats-overlay").value:
+            self._apply_stats_overlay(True)
+        return GLib.SOURCE_REMOVE
 
-        self.set_title(_("Exhibit"))
+    def on_file_not_opened(self, filepath, tab=None):
+        self.logger.debug("on file not opened")
+        tab = tab or self._active_tab()
+        if tab is not None:
+            page = self._tab_page(tab)
+            if page is not None:
+                page.set_loading(False)
+            # Close a failed newly-created empty tab when other files remain.
+            if not tab.loaded and self.tab_view.get_n_pages() > 1:
+                if page is not None:
+                    self.tab_view.close_page(page)
+            else:
+                tab.clear_overlays()
+                tab.mesh_stats = None
+
         if self.no_file_loaded:
+            self.set_title(_("Exhibit"))
             self.stack.set_visible_child_name("startup_page")
             self.startup_stack.set_visible_child_name("error_page")
         else:
-            self.send_toast(_("Can't open") + " " + os.path.basename(str(filepath)))
+            # Return to the viewer; toast explains the failed open.
+            self.stack.set_visible_child_name("3d_page")
+            name = os.path.basename(str(filepath)) if filepath else _("Unknown")
+            self.send_toast(_("Can't open {}").format(name))
 
         self.update_background_color()
         self.refresh_object_tree()
+        self._mesh_stats = None
+        self._update_tab_bar_visibility()
 
         self.block_reload = False
         return GLib.SOURCE_REMOVE
@@ -1303,7 +1751,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     def orthographic_state_changed(self, action, state):
         action.set_state(state)
         self.window_settings.set_setting("orthographic", state.get_boolean())
-        self.f3d_viewer.update_options({"orthographic": state.get_boolean()})
+        self._update_all_viewers_options(
+            {"orthographic": state.get_boolean()})
 
     def on_orthographic_changed(self, setting, *args):
         self.orthographic_action.set_state(
@@ -1401,7 +1850,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         options = {
             "hdri-file": "",
             "hdri-skybox": False}
-        self.f3d_viewer.update_options(options)
+        self._update_all_viewers_options(options)
         self.check_for_options_change()
 
     def load_hdri(self, filepath):
@@ -1412,7 +1861,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         options = {
             "hdri-file": filepath,
             "hdri-skybox": True}
-        self.f3d_viewer.update_options(options)
+        self._update_all_viewers_options(options)
         self.check_for_options_change()
 
     def create_action(self, name, callback):
@@ -1423,7 +1872,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     def generate_thumbnail(self, hdri_file_path, width=300, height=200):
         base_name = os.path.basename(hdri_file_path)
-        name, _ = os.path.splitext(base_name)
+        name, _ext = os.path.splitext(base_name)
 
         thumbnail_name = f"{name}.jpeg"
         thumbnail_filepath = os.path.join(
