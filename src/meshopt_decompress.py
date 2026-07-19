@@ -9,7 +9,7 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-"""Prepare GLBs for F3D/VTK by expanding meshopt + KHR_mesh_quantization."""
+"""Prepare GLBs for F3D/VTK (meshopt, quantization, KTX2/BasisU)."""
 
 from __future__ import annotations
 
@@ -335,6 +335,24 @@ def needs_meshopt_decompress(path: str) -> bool:
     except (OSError, MeshoptError):
         return False
     return _gltf_has_meshopt(gltf) or _gltf_has_quantization(gltf)
+
+
+def needs_glb_prepare(path: str) -> bool:
+    """Return True if path needs any pre-F3D GLB rewrite."""
+    if not path or not str(path).lower().endswith(".glb"):
+        return False
+    try:
+        gltf = _read_glb_json(path)
+    except (OSError, MeshoptError):
+        return False
+
+    from .ktx2_transcode import gltf_needs_ktx2_transcode
+
+    return (
+        _gltf_has_meshopt(gltf)
+        or _gltf_has_quantization(gltf)
+        or gltf_needs_ktx2_transcode(gltf)
+    )
 
 
 def _buffer_payloads(gltf: dict[str, Any], bin_chunk: bytes) -> list[bytes | None]:
@@ -698,14 +716,17 @@ def _dequant_mesh_quantization(gltf: dict[str, Any], bin_chunk: bytes) -> bytes:
 
 def decompress_glb(path: str) -> str:
     """
-    Return a path to a GLB without meshopt compression / mesh quantization.
+    Return a path to a GLB prepared for F3D/VTK.
 
-    If preparation is unnecessary, returns ``path``. Otherwise writes a
+    Expands meshopt / mesh quantization and transcodes KTX2 / BasisU textures
+    to PNG. If preparation is unnecessary, returns ``path``. Otherwise writes a
     temporary ``.glb`` and returns that path. Prefer ``prepare_glb_for_load``,
     which caches prepared temps.
     """
-    if not needs_meshopt_decompress(path):
+    if not needs_glb_prepare(path):
         return path
+
+    from .ktx2_transcode import gltf_needs_ktx2_transcode, transcode_ktx2_in_gltf
 
     gltf, bin_chunk = _read_glb(path)
     changed = False
@@ -716,6 +737,10 @@ def decompress_glb(path: str) -> str:
 
     if _gltf_has_quantization(gltf):
         bin_chunk = _dequant_mesh_quantization(gltf, bin_chunk)
+        changed = True
+
+    if gltf_needs_ktx2_transcode(gltf):
+        bin_chunk = transcode_ktx2_in_gltf(gltf, bin_chunk)
         changed = True
 
     if not changed:
@@ -752,10 +777,11 @@ def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
     """
     Prepare a path for F3D.
 
-    Returns ``(load_path, temp_path)``. Prepared meshopt temps are owned by an
-    internal cache keyed by ``(realpath, mtime, size)``; ``temp_path`` is then
-    ``None`` and callers must not delete ``load_path``. Legacy callers that
-    still receive a ``temp_path`` should call ``cleanup_decompressed``.
+    Returns ``(load_path, temp_path)``. Prepared temps (meshopt / KTX2) are
+    owned by an internal cache keyed by ``(realpath, mtime, size)``;
+    ``temp_path`` is then ``None`` and callers must not delete ``load_path``.
+    Legacy callers that still receive a ``temp_path`` should call
+    ``cleanup_decompressed``.
     """
     if not path or not str(path).lower().endswith(".glb"):
         return path, None
@@ -769,7 +795,7 @@ def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
     if cached is not None:
         return cached, None
 
-    if not needs_meshopt_decompress(path):
+    if not needs_glb_prepare(path):
         return path, None
 
     load_path = decompress_glb(path)
