@@ -128,6 +128,7 @@ class WindowSettings(Gio.ListStore):
         "model-roughness": 0.3,
         "model-opacity": 1.0,
         "armature-enable": False,
+        "stats-overlay": False,
         "scivis-component": -1,
         "cells": True,
         "scivis-enabled": False,
