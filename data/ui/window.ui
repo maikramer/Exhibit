@@ -750,7 +750,7 @@
                                           <object class="AdwSwitchRow" id="automatic_reload_switch">
                                             <property name="hexpand">True</property>
                                             <property name="title" translatable="yes">Reload On Change</property>
-                                            <property name="subtitle" translatable="yes">Check for file change</property>
+                                            <property name="subtitle" translatable="yes">Auto-reload the active tab when the file changes; other tabs show (modified) and ask</property>
                                           </object>
                                         </child>
                                       </object>

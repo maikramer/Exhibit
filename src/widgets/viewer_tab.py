@@ -17,6 +17,12 @@ class ViewerTab(Gtk.Overlay):
         self.mesh_stats = None
         self.armature_xray_restore = None
         self.loaded = False
+        # Disk mtime of the version currently shown in the viewer.
+        self.loaded_mtime = 0.0
+        # Last disk mtime we already reacted to (mark / prompt / reload).
+        self.seen_disk_mtime = 0.0
+        self.externally_modified = False
+        self._reload_dialog_open = False
 
         self.viewer = F3DViewer()
         self.viewer.add_css_class("f3d-render")
@@ -39,3 +45,9 @@ class ViewerTab(Gtk.Overlay):
     def clear_overlays(self) -> None:
         self.stats_overlay_label.set_visible(False)
         self.stats_overlay_label.set_label("")
+
+    def tab_title(self, modified_label: str = "modified", untitled: str = "Untitled") -> str:
+        name = self.file_name or untitled
+        if self.externally_modified:
+            return f"{name} ({modified_label})"
+        return name

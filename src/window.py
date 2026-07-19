@@ -216,8 +216,6 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     no_file_loaded = True
 
-    _cached_time_stamp = 0
-
     def __init__(self, application=None, startup_filepath=None):
         super().__init__(application=application)
 
@@ -233,6 +231,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self._armature_xray_restore = None
         self.filepath = ""
         self.file_name = ""
+        self._cached_time_stamp = 0.0
 
         # Settings
         self.window_settings = WindowSettings()
@@ -483,6 +482,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.block_reload = False
         self._update_tab_bar_visibility()
 
+        self.connect("notify::is-active", self.on_window_is_active)
+
         if startup_filepath:
             self.logger.info(f"startup file detected: {startup_filepath}")
             self.load_file(filepath=startup_filepath)
@@ -553,14 +554,109 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         return GLib.SOURCE_REMOVE
 
     def _configure_tab_page(self, page, tab: ViewerTab):
-        title = tab.file_name or _("Untitled")
+        title = tab.tab_title(_("modified"), _("Untitled"))
         page.set_title(title)
         page.set_icon(Gio.ThemedIcon.new("image-x-generic-symbolic"))
-        tooltip = tab.filepath or title
+        tooltip = tab.filepath or tab.file_name or title
+        if tab.externally_modified and tab.filepath:
+            tooltip = _("{path} — changed on disk").format(path=tab.filepath)
         if hasattr(page, "set_tooltip"):
             page.set_tooltip(tooltip)
         else:
             tab.set_tooltip_text(tooltip)
+
+    def _refresh_tab_title(self, tab: ViewerTab | None):
+        if tab is None:
+            return
+        page = self._tab_page(tab)
+        if page is not None:
+            self._configure_tab_page(page, tab)
+
+    @staticmethod
+    def _file_mtime(path: str) -> float | None:
+        if not path:
+            return None
+        try:
+            return os.stat(path).st_mtime
+        except OSError:
+            return None
+
+    def _mark_tab_externally_modified(self, tab: ViewerTab, disk_mtime: float):
+        tab.externally_modified = True
+        tab.seen_disk_mtime = disk_mtime
+        self._refresh_tab_title(tab)
+        self.logger.info(
+            f"External change: {tab.file_name or tab.filepath}")
+
+    def _clear_tab_modified(self, tab: ViewerTab, disk_mtime: float | None = None):
+        tab.externally_modified = False
+        if disk_mtime is not None:
+            tab.loaded_mtime = disk_mtime
+            tab.seen_disk_mtime = disk_mtime
+        self._refresh_tab_title(tab)
+
+    def _prompt_reload_if_modified(self, tab: ViewerTab | None):
+        if tab is None or not tab.externally_modified or not tab.filepath:
+            return
+        if tab._reload_dialog_open or self.block_reload:
+            return
+        if self.stack.get_visible_child_name() != "3d_page":
+            return
+
+        tab._reload_dialog_open = True
+        name = tab.file_name or os.path.basename(tab.filepath)
+
+        dialog = Adw.AlertDialog(
+            heading=_("File changed on disk"),
+            body=_("“{name}” was modified outside Exhibit. Reload the new version?").format(
+                name=name
+            ),
+        )
+        dialog.add_response("keep", _("Keep current"))
+        dialog.add_response("reload", _("Reload"))
+        dialog.set_response_appearance("reload", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("reload")
+        dialog.set_close_response("keep")
+
+        def on_response(_dialog, response):
+            tab._reload_dialog_open = False
+            if response == "reload":
+                self._reload_tab(tab, preserve_orientation=True)
+            else:
+                # Acknowledge disk version so we don't re-prompt until next change.
+                mtime = self._file_mtime(tab.filepath)
+                if mtime is not None:
+                    self._clear_tab_modified(tab, mtime)
+                else:
+                    self._clear_tab_modified(tab, tab.loaded_mtime)
+
+        dialog.connect("response", on_response)
+        dialog.present(self)
+        return GLib.SOURCE_REMOVE
+
+    def _reload_tab(self, tab: ViewerTab, preserve_orientation: bool = True):
+        if not tab.filepath:
+            return
+        if self._active_tab() is not tab:
+            page = self._tab_page(tab)
+            if page is not None:
+                self._switching_tab = True
+                self.tab_view.set_selected_page(page)
+                self._switching_tab = False
+                self._bind_animation_controls(tab.viewer)
+                self._sync_window_from_tab(tab)
+        self.load_file(
+            filepath=tab.filepath,
+            override=True,
+            preserve_orientation=preserve_orientation,
+            new_tab=False,
+            _tab=tab,
+        )
+
+    def on_window_is_active(self, *args):
+        if not self.get_is_active():
+            return
+        self._prompt_reload_if_modified(self._active_tab())
 
     def _add_viewer_tab(self, title: str = "", select: bool = True) -> ViewerTab:
         tab = ViewerTab()
@@ -614,8 +710,9 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self._mesh_stats = tab.mesh_stats
         self._armature_xray_restore = tab.armature_xray_restore
         if tab.loaded:
-            self.set_title(_("Exhibit - {}").format(tab.file_name or _("Untitled")))
-            self.title_widget.set_subtitle(tab.file_name)
+            label = tab.tab_title(_("modified"), _("Untitled"))
+            self.set_title(_("Exhibit - {}").format(label))
+            self.title_widget.set_subtitle(label)
         else:
             self.set_title(_("Exhibit"))
             self.title_widget.set_subtitle(_("Asset preview"))
@@ -639,11 +736,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                 else:
                     tab.stats_overlay_label.set_visible(False)
                 self.update_time_stamp()
-                if self.window_settings.get_setting("auto-reload").value:
-                    self.change_checker.run()
+                self.change_checker.run()
                 tab.viewer.grab_focus()
                 # Ensure GL picks up the visible allocation after a switch.
                 GLib.idle_add(tab.viewer.queue_render)
+                GLib.idle_add(self._prompt_reload_if_modified, tab)
             self._update_tab_bar_visibility()
         finally:
             self._switching_tab = False
@@ -1000,13 +1097,21 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     #   an action like reloading.
 
     def reload_file(self, pres_or=False):
-        if not self.block_reload:
-            self.logger.info("Reloading file")
-            self.load_file(
-                filepath=self.filepath,
-                override=True,
-                preserve_orientation=pres_or,
-                new_tab=False)
+        if self.block_reload:
+            return
+        tab = self._active_tab()
+        path = (tab.filepath if tab else "") or self.filepath
+        if not path:
+            self.logger.warning("reload_file: no filepath on active tab")
+            return
+        self.logger.info(f"Reloading file: {path}")
+        self.load_file(
+            filepath=path,
+            override=True,
+            preserve_orientation=pres_or,
+            new_tab=False,
+            _tab=tab,
+        )
 
     def update_background_color(self, *args):
         self.logger.info(
@@ -1183,10 +1288,10 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             else:
                 self.f3d_viewer.always_point_up = False
         elif setting.name == "auto-reload":
-            if setting.value:
+            # Watcher always runs while documents are open; this flag only
+            # controls silent reload of the active tab vs (modified) + prompt.
+            if any(t.loaded for t in self._iter_tabs()):
                 self.change_checker.run()
-            else:
-                self.change_checker.stop()
 
         self.check_for_options_change()
 
@@ -1310,27 +1415,57 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                     return
 
     def periodic_check_for_file_change(self):
-        if self.filepath == "":
-            return True
+        """Watch every loaded tab for external edits; never title a tab Nothing."""
+        active = self._active_tab()
+        auto = self.window_settings.get_setting("auto-reload").value
 
-        changed = self.update_time_stamp()
-        if changed:
-            self.logger.debug("file changed")
-            self.load_file(preserve_orientation=True, override=True)
+        for tab in self._iter_tabs():
+            if not tab.loaded or not tab.filepath:
+                continue
+            disk_mtime = self._file_mtime(tab.filepath)
+            if disk_mtime is None:
+                continue
+            if not tab.loaded_mtime:
+                # First stamp after open — baseline, not a user edit.
+                tab.loaded_mtime = disk_mtime
+                tab.seen_disk_mtime = disk_mtime
+                continue
+            if disk_mtime <= tab.loaded_mtime:
+                continue
+            if disk_mtime <= tab.seen_disk_mtime:
+                continue
 
-        if self.window_settings.get_setting("auto-reload").value:
-            return True
-        return False
+            tab.seen_disk_mtime = disk_mtime
+            if auto and tab is active:
+                self.logger.debug(f"auto-reload {tab.filepath}")
+                self._reload_tab(tab, preserve_orientation=True)
+            else:
+                self._mark_tab_externally_modified(tab, disk_mtime)
+                if tab is active:
+                    GLib.idle_add(self._prompt_reload_if_modified, tab)
+
+        if active and active.filepath:
+            mtime = self._file_mtime(active.filepath)
+            if mtime is not None:
+                self._cached_time_stamp = mtime
+
+        # Keep polling while any document is open (mark/prompt even if
+        # auto-reload is off).
+        return any(t.loaded and t.filepath for t in self._iter_tabs())
 
     def update_time_stamp(self):
-        try:
-            stamp = os.stat(self.filepath).st_mtime
-            if stamp != self._cached_time_stamp:
-                self._cached_time_stamp = stamp
-                return True
+        """Baseline active tab mtime after a successful load (no change event)."""
+        tab = self._active_tab()
+        path = (tab.filepath if tab else "") or self.filepath
+        mtime = self._file_mtime(path)
+        if mtime is None:
             return False
-        except Exception:
-            return False
+        self._cached_time_stamp = mtime
+        if tab is not None:
+            tab.loaded_mtime = mtime
+            if tab.externally_modified:
+                self._clear_tab_modified(tab, mtime)
+        return False
 
     def change_setting_state(self, state):
         self.logger.debug(f"Requested changing settings to {state}")
@@ -1387,8 +1522,23 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self.load_file(filepath=filepath)
 
     def load_file(self, **kwargs):
+        tab_hint = kwargs.get("_tab")
         filepath = kwargs.get("filepath")
-        basename = os.path.basename(filepath or "Nothing")
+        if not filepath and isinstance(tab_hint, ViewerTab):
+            filepath = tab_hint.filepath
+        if not filepath:
+            filepath = self.filepath
+        kwargs["filepath"] = filepath
+
+        if filepath:
+            basename = os.path.basename(filepath)
+        elif isinstance(tab_hint, ViewerTab) and tab_hint.file_name:
+            basename = tab_hint.file_name
+        elif self.file_name:
+            basename = self.file_name
+        else:
+            basename = _("Untitled")
+
         replace = kwargs.get("override") or kwargs.get("preserve_orientation")
         new_tab = kwargs.get("new_tab")
         if new_tab is None:
@@ -1403,13 +1553,15 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                 page.set_loading(True)
                 page.set_title(basename)
         else:
-            tab = self._active_tab()
+            tab = tab_hint if isinstance(tab_hint, ViewerTab) else self._active_tab()
             if tab is None:
                 tab = self._add_viewer_tab(title=basename, select=True)
+            if not tab.file_name:
+                tab.file_name = basename
             page = self._tab_page(tab)
             if page is not None:
-                page.set_title(basename)
                 page.set_loading(True)
+                self._refresh_tab_title(tab)
 
         kwargs["_tab"] = tab
         # Extra tabs inherit current preset — skip auto-best churn.
@@ -1633,6 +1785,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.filepath = tab.filepath
         self.file_name = tab.file_name
         tab.loaded = True
+        mtime = self._file_mtime(tab.filepath)
+        if mtime is not None:
+            tab.loaded_mtime = mtime
+            tab.seen_disk_mtime = mtime
+        tab.externally_modified = False
         if page is not None:
             self._configure_tab_page(page, tab)
 
@@ -1648,8 +1805,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         chrome_changed = self._update_tab_bar_visibility()
 
         self.update_time_stamp()
-        if self.window_settings.get_setting("auto-reload").value:
-            self.change_checker.run()
+        self.change_checker.run()
 
         self.set_title(_("Exhibit - {}").format(self.file_name))
         self.title_widget.set_subtitle(self.file_name)
