@@ -35,6 +35,7 @@ from . import logger_lib
 from .settings_manager import WindowSettings
 from .meshopt_decompress import (
     cleanup_decompressed,
+    clear_prepare_cache,
     prepare_glb_for_load,
     release_prepared,
 )
@@ -697,9 +698,33 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self._update_tab_bar_visibility()
         return tab
 
-    def _bind_animation_controls(self, viewer):
+    def _unbind_animation_controls(self, viewer=None) -> None:
+        """Drop scrubber bindings / playing handler (optionally for one viewer)."""
         for binding in self._anim_bindings:
-            binding.unbind()
+            try:
+                binding.unbind()
+            except Exception:
+                pass
+        self._anim_bindings = []
+        handler_id = self._playing_handler_id
+        self._playing_handler_id = 0
+        if not handler_id:
+            return
+        viewers = [viewer] if viewer is not None else [
+            tab.viewer for tab in self._iter_tabs()
+        ]
+        for candidate in viewers:
+            if candidate is None:
+                continue
+            try:
+                if candidate.handler_is_connected(handler_id):
+                    candidate.disconnect(handler_id)
+                    return
+            except Exception:
+                pass
+
+    def _bind_animation_controls(self, viewer):
+        self._unbind_animation_controls()
         flags_range = GObject.BindingFlags.BIDIRECTIONAL
         flags_value = (
             GObject.BindingFlags.BIDIRECTIONAL
@@ -712,15 +737,6 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self.animation_time_adj.bind_property(
                 "value", viewer, "animation-time", flags_value),
         ]
-        if self._playing_handler_id:
-            # Disconnect from previous viewer if still alive.
-            try:
-                for tab in self._iter_tabs():
-                    if tab.viewer.handler_is_connected(self._playing_handler_id):
-                        tab.viewer.disconnect(self._playing_handler_id)
-                        break
-            except Exception:
-                pass
         self._playing_handler_id = viewer.connect(
             "notify::playing", self.on_playing_changed)
         self.on_playing_changed()
@@ -772,35 +788,71 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         finally:
             self._switching_tab = False
 
+    def _release_warm_holder_temps(self, holder: dict) -> None:
+        """Drop prepare temps owned by a cancelled/abandoned warm-load holder."""
+        if not holder or holder.get("_temps_released"):
+            return
+        if not holder.get("ready") or "ok" not in holder:
+            return
+        holder["_temps_released"] = True
+        _resolved, load_path, meshopt_temp = holder["ok"]
+        cleanup_decompressed(meshopt_temp)
+        if load_path != _resolved:
+            release_prepared(load_path)
+
+    def _cancel_warm_load(self, tab: ViewerTab) -> None:
+        """Abort in-flight warm load for a tab and free retained prepare temps."""
+        holder = getattr(tab, "_warm_load_holder", None)
+        tab._warm_load_holder = None
+        if not holder or holder.get("finished"):
+            return
+        holder["cancelled"] = True
+        self._release_warm_holder_temps(holder)
+
     @Gtk.Template.Callback("on_tab_close_page")
     def on_tab_close_page(self, tab_view, page):
         tab = page.get_child()
-        self.tab_view.close_page_finish(page, True)
-        if isinstance(tab, ViewerTab):
-            try:
-                tab.viewer.set_auto_render(False)
-            except Exception:
-                pass
-            try:
-                tab.viewer.release_resources()
-            except Exception:
-                pass
-        if self.tab_view.get_n_pages() == 0:
-            self.no_file_loaded = True
-            self.filepath = ""
-            self.file_name = ""
-            self._mesh_stats = None
-            self.change_checker.stop()
-            self.set_title(_("Exhibit"))
-            self.title_widget.set_subtitle(_("Asset preview"))
-            self.stack.set_visible_child_name("startup_page")
-            self.startup_stack.set_visible_child_name("welcome_page")
-            self._switching_tab = True
-            try:
+        closing_viewer = tab.viewer if isinstance(tab, ViewerTab) else None
+        was_selected = self.tab_view.get_selected_page() == page
+
+        # Block notify::selected-page re-entrancy while pages reshuffle.
+        self._switching_tab = True
+        created_empty = False
+        try:
+            if was_selected:
+                self._unbind_animation_controls(closing_viewer)
+
+            self.tab_view.close_page_finish(page, True)
+            if isinstance(tab, ViewerTab):
+                self._cancel_warm_load(tab)
+                try:
+                    tab.viewer.release_resources()
+                except Exception:
+                    pass
+                tab.mesh_stats = None
+                tab.loaded = False
+                try:
+                    tab.clear_overlays()
+                except Exception:
+                    pass
+
+            if self.tab_view.get_n_pages() == 0:
+                self.no_file_loaded = True
+                self.filepath = ""
+                self.file_name = ""
+                self._mesh_stats = None
+                self.change_checker.stop()
+                self.set_title(_("Exhibit"))
+                self.title_widget.set_subtitle(_("Asset preview"))
+                self.stack.set_visible_child_name("startup_page")
+                self.startup_stack.set_visible_child_name("welcome_page")
                 self._add_viewer_tab(select=True)
-            finally:
-                self._switching_tab = False
-        else:
+                created_empty = True
+        finally:
+            self._switching_tab = False
+
+        # Empty-tab path already bound via _add_viewer_tab(select=True).
+        if was_selected and not created_empty and self.tab_view.get_n_pages() > 0:
             self.on_tab_selected_page()
         self._update_tab_bar_visibility()
         return Gdk.EVENT_STOP
@@ -1692,12 +1744,17 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     def _start_warm_load(self, tab: ViewerTab, kwargs: dict):
         """Overlap GLB prepare (worker) with F3D engine create (main)."""
+        # Replace any prior in-flight prepare for this tab.
+        self._cancel_warm_load(tab)
+
         filepath = kwargs.get("filepath")
         holder: dict = {
             "ready": False,
             "cancelled": False,
             "finished": False,
+            "_temps_released": False,
         }
+        tab._warm_load_holder = holder
 
         def prepare_worker():
             try:
@@ -1712,6 +1769,10 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                 holder["err"] = exc
                 holder["path"] = filepath
             holder["ready"] = True
+            # Tab may have closed while prepare ran — free temps here because
+            # the GLib tick will only see cancelled and exit.
+            if holder.get("cancelled"):
+                self._release_warm_holder_temps(holder)
 
         # Map the target tab so its GLArea can realize during prepare.
         self.stack.set_visible_child_name("3d_page")
@@ -1727,7 +1788,12 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     def _warm_load_tick(self, tab: ViewerTab, kwargs: dict, holder: dict):
         """Advance warm load when prepare and GL context are both ready."""
-        if holder.get("cancelled") or holder.get("finished"):
+        if holder.get("cancelled"):
+            self._release_warm_holder_temps(holder)
+            if tab._warm_load_holder is holder:
+                tab._warm_load_holder = None
+            return GLib.SOURCE_REMOVE
+        if holder.get("finished"):
             return GLib.SOURCE_REMOVE
 
         viewer = tab.viewer
@@ -1744,11 +1810,9 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             holder["cancelled"] = True
             self.logger.error(f"F3D init failed: {exc}")
             path = kwargs.get("filepath")
-            if holder.get("ready") and "ok" in holder:
-                _resolved, load_path, meshopt_temp = holder["ok"]
-                cleanup_decompressed(meshopt_temp)
-                if load_path != _resolved:
-                    release_prepared(load_path)
+            self._release_warm_holder_temps(holder)
+            if tab._warm_load_holder is holder:
+                tab._warm_load_holder = None
             self.on_file_not_opened(path, tab)
             return GLib.SOURCE_REMOVE
 
@@ -1757,6 +1821,8 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         if "err" in holder:
             holder["finished"] = True
+            if tab._warm_load_holder is holder:
+                tab._warm_load_holder = None
             err = holder["err"]
             path = holder.get("path") or kwargs.get("filepath")
             self.logger.error(f"Warm prepare failed: {err}")
@@ -1764,20 +1830,24 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             return GLib.SOURCE_REMOVE
 
         holder["finished"] = True
+        if tab._warm_load_holder is holder:
+            tab._warm_load_holder = None
         try:
             self._warm_prepare_finished(tab, kwargs, holder)
         except Exception as exc:
             self.logger.error(f"Warm load failed: {exc}")
             path = kwargs.get("filepath")
-            if "ok" in holder:
-                _resolved, load_path, meshopt_temp = holder["ok"]
-                cleanup_decompressed(meshopt_temp)
-                if load_path != _resolved:
-                    release_prepared(load_path)
+            self._release_warm_holder_temps(holder)
             self.on_file_not_opened(path, tab)
         return GLib.SOURCE_REMOVE
 
     def _warm_prepare_finished(self, tab: ViewerTab, kwargs: dict, holder: dict):
+        if holder.get("cancelled"):
+            self._release_warm_holder_temps(holder)
+            return GLib.SOURCE_REMOVE
+        if holder.get("_temps_released"):
+            return GLib.SOURCE_REMOVE
+
         if "err" in holder:
             err = holder["err"]
             path = holder.get("path") or kwargs.get("filepath")
@@ -1813,7 +1883,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
             self.change_setting_state(GLib.Variant("s", settings))
 
         try:
+            if holder.get("cancelled"):
+                self._release_warm_holder_temps(holder)
+                return GLib.SOURCE_REMOVE
             if not viewer.supports(load_path):
+                holder["_temps_released"] = True
                 if load_path != filepath:
                     release_prepared(load_path)
                 self.on_file_not_opened(filepath, tab)
@@ -1822,12 +1896,16 @@ class Viewer3dWindow(Adw.ApplicationWindow):
                 ok = viewer.add_file(filepath, prepared_path=load_path)
             else:
                 ok = viewer.load_file(filepath, prepared_path=load_path)
+            # Success: viewer owns prepared path. Failure: viewer already
+            # released (or never retained). Either way, cancel must not
+            # release_prepared again.
+            holder["_temps_released"] = True
             if not ok:
-                # Viewer releases retained prepare temps on load failure.
                 self.on_file_not_opened(filepath, tab)
                 return GLib.SOURCE_REMOVE
         except Exception as exc:
             self.logger.error(f"Error while loading into viewer: {exc}")
+            holder["_temps_released"] = True
             if load_path != filepath:
                 release_prepared(load_path)
             self.on_file_not_opened(filepath, tab)
@@ -2121,6 +2199,24 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     @Gtk.Template.Callback("on_close_request")
     def on_close_request(self, window):
         self.logger.debug("window closed, saving settings")
+        self.change_checker.stop()
+        for tab in list(self._iter_tabs()):
+            self._cancel_warm_load(tab)
+            try:
+                tab.viewer.release_resources()
+            except Exception:
+                pass
+        # Global prepare cache is shared across windows — only flush when
+        # this is the last Viewer3dWindow still alive.
+        app = self.get_application()
+        sibling_windows = 0
+        if app is not None:
+            sibling_windows = sum(
+                1 for w in app.get_windows()
+                if w is not self and isinstance(w, Viewer3dWindow)
+            )
+        if sibling_windows == 0:
+            clear_prepare_cache()
         self.saved_settings.set_int(
             "startup-width", window.get_width())
         self.saved_settings.set_int(

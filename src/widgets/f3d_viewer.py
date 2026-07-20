@@ -193,6 +193,7 @@ class F3DViewer(Gtk.GLArea):
         self._playing = False
         self._animation_tick_ms = 16
         self._animation_tick_dt = 0.016
+        self._animation_source_id = 0
         self._loaded_filepath = None
         self._prepared_path = None
         self._hidden_part_indices: set[int] = set()
@@ -312,16 +313,34 @@ class F3DViewer(Gtk.GLArea):
                 self.animation_time = self.lower_time_range
             self.set_auto_render(True)
             if not was_playing:
-                GLib.timeout_add(self._animation_tick_ms, self._advance_animation)
+                self._animation_source_id = GLib.timeout_add(
+                    self._animation_tick_ms, self._advance_animation)
         else:
+            self._stop_animation_timer()
             self.set_auto_render(False)
-            self.queue_render()
+            if self.engine is not None:
+                self.queue_render()
+
+    def _stop_animation_timer(self) -> None:
+        source_id = self._animation_source_id
+        self._animation_source_id = 0
+        if source_id:
+            try:
+                GLib.source_remove(source_id)
+            except Exception:
+                pass
 
     def _advance_animation(self):
+        if not self._playing or self.scene is None:
+            self._animation_source_id = 0
+            return GLib.SOURCE_REMOVE
         self.animation_time = self.animation_time + self._animation_tick_dt
         if self.animation_time >= self.upper_time_range:
+            # Clear id before setter so source_remove is not called mid-callback.
+            self._animation_source_id = 0
             self.playing = False
-        return self._playing
+            return GLib.SOURCE_REMOVE
+        return GLib.SOURCE_CONTINUE
 
     @GObject.Property(type=bool, default=False)
     def orthographic(self):
@@ -517,9 +536,38 @@ class F3DViewer(Gtk.GLArea):
             release_prepared(previous)
 
     def release_resources(self) -> None:
-        """Drop retained prepare-cache temps (tab close / shutdown)."""
+        """Stop timers, clear scene, drop engine + prepare temps (tab close)."""
+        self._playing = False
+        self._stop_animation_timer()
+        try:
+            self.set_auto_render(False)
+        except Exception:
+            pass
+
+        # Make GL current so VTK/F3D can free GPU-side resources.
+        try:
+            if self.get_realized():
+                self.make_current()
+        except Exception:
+            pass
+
+        if self.scene is not None:
+            try:
+                self.scene.clear()
+            except Exception:
+                pass
+
         self._release_prepared_path()
         self._loaded_filepath = None
+        self._hidden_part_indices = set()
+
+        # Drop native F3D/VTK refs so GPU/RAM can be reclaimed.
+        engine = self.engine
+        self.camera = None
+        self.window = None
+        self.scene = None
+        self.engine = None
+        del engine
 
     def load_file(self, filepath, prepared_path=None):
         hdri_ambient = bool(self.settings.get("render.hdri.ambient"))

@@ -23,6 +23,8 @@ class ViewerTab(Gtk.Overlay):
         self.seen_disk_mtime = 0.0
         self.externally_modified = False
         self._reload_dialog_open = False
+        # In-flight warm load holder (cancelled on tab close / replace load).
+        self._warm_load_holder = None
 
         self.viewer = F3DViewer()
         self.viewer.add_css_class("f3d-render")
