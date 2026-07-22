@@ -145,7 +145,8 @@ class WindowSettings(Gio.ListStore):
         "bg-color": (1.0, 1.0, 1.0),
         "up": "+Y",
         "orthographic": False,
-        "animation-index": 0,
+        # None = no clip (bind / rest pose). -1 = all. 0+ = clip index.
+        "animation-index": None,
         "animation-time": 0.0,
         # There is no UI for the following ones
         # "texture-matcap": "",

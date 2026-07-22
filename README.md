@@ -55,7 +55,8 @@ Only self-contained `.glb` (embedded BIN chunk) is supported for these rewrites 
 
 ### 2. Animation clips by name
 
-- Sidebar → Scene → **Active animation** is an `AdwComboRow` fed by F3D `get_animation_names` (plus an **All animations** entry).
+- Sidebar → Scene → **Active animation** is an `AdwComboRow` fed by F3D `get_animation_names` (plus **None** and **All animations**).
+- Default is **None** (empty `scene.animation.indices`) so the mesh stays in bind/rest pose until a clip is selected.
 - Changing the clip updates `scene.animation.indices` and scrubber bounds **in place** — no full reload.
 
 ### 3. Object tree (multipart visibility)

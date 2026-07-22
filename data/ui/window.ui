@@ -534,7 +534,7 @@
                                         <child>
                                           <object class="AdwComboRow" id="animation_combo">
                                             <property name="title" translatable="yes">Active animation</property>
-                                            <property name="subtitle" translatable="yes">Clip name from the glTF file</property>
+                                            <property name="subtitle" translatable="yes">None keeps bind pose; pick a clip to scrub or play</property>
                                             <property name="model">
                                               <object class="GtkStringList" id="animation_list"/>
                                             </property>

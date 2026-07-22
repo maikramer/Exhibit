@@ -278,6 +278,8 @@ class F3DViewer(Gtk.GLArea):
         if self.scene is None:
             return 0.0
         _lower, upper = self.scene.animation_time_range()
+        if upper != upper or abs(upper) == float("inf"):  # NaN or ±inf
+            return 0.0
         return upper
 
     @GObject.Property(type=float)
@@ -285,6 +287,8 @@ class F3DViewer(Gtk.GLArea):
         if self.scene is None:
             return 0.0
         lower, _upper = self.scene.animation_time_range()
+        if lower != lower or abs(lower) == float("inf"):
+            return 0.0
         return lower
 
     @GObject.Property(type=float)
@@ -404,7 +408,13 @@ class F3DViewer(Gtk.GLArea):
             self._sprites_type = value if value else "sphere"
             sprite_type = self._sprites_type if self._sprite_enabled else "none"
             return "model.point_sprites.type", sprite_type
-        if key == "animation-index" and not isinstance(value, (list, tuple)):
+        if key == "animation-index":
+            # F3D: empty indices = no animation. Python bindings reject []
+            # but accept "" which clears the vector.
+            if value is None:
+                return self.keys[key], ""
+            if isinstance(value, (list, tuple)):
+                return self.keys[key], value if value else ""
             return self.keys[key], [int(value)]
         return self.keys[key], value
 
@@ -700,7 +710,16 @@ class F3DViewer(Gtk.GLArea):
             return False
         return True
 
-    def _reload_with_part_visibility(self) -> bool:
+    def reset_to_bind_pose(self) -> bool:
+        """
+        Reimport with empty ``scene.animation.indices``.
+
+        Clearing indices alone leaves the last skin pose; F3D only restores
+        bind/rest pose when the file is loaded with no clip enabled.
+        """
+        return self._reload_with_part_visibility(restore_animation_time=False)
+
+    def _reload_with_part_visibility(self, *, restore_animation_time: bool = True) -> bool:
         """
         Reimport scene with hidden meshes stripped from GLB JSON.
 
@@ -726,6 +745,13 @@ class F3DViewer(Gtk.GLArea):
         hdri_ambient = bool(self.settings.get("render.hdri.ambient"))
         if hdri_ambient and self.engine:
             self.engine.options.update({"render.hdri.ambient": False})
+
+        # Options (incl. empty animation indices) must be current before add.
+        if self.engine and self.settings:
+            try:
+                self.engine.options.update(self.settings)
+            except Exception:
+                pass
 
         restore_path = prepared or filepath
         load_buffer: bytes | None = None
@@ -769,11 +795,12 @@ class F3DViewer(Gtk.GLArea):
         self.notify("lower-time-range")
         self.notify("upper-time-range")
 
-        lower = self.lower_time_range
-        upper = self.upper_time_range
-        if anim_time < lower or anim_time > upper:
-            anim_time = lower
-        self.animation_time = anim_time
+        if restore_animation_time:
+            lower = self.lower_time_range
+            upper = self.upper_time_range
+            if anim_time < lower or anim_time > upper:
+                anim_time = lower
+            self.animation_time = anim_time
 
         if camera_state is not None:
             try:
@@ -781,7 +808,7 @@ class F3DViewer(Gtk.GLArea):
             except Exception:
                 pass
 
-        if was_playing:
+        if was_playing and restore_animation_time:
             self.playing = True
 
         self.queue_render()

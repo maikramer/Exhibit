@@ -98,12 +98,21 @@ msgid "Donate with Github"
 msgstr "Doar com GitHub"
 
 #: src/window.py:621
+msgid "None"
+msgstr "Nenhuma"
+
 msgid "All animations"
 msgstr "Todas as Animações"
 
 #: src/window.py:627
 msgid "Animation {}"
 msgstr "Animação {}"
+
+msgid "None keeps bind pose; pick a clip to scrub or play"
+msgstr "Nenhuma mantém a pose bind; escolha um clip para scrub ou play"
+
+msgid "Couldn't reset animation pose"
+msgstr "Não foi possível resetar a pose da animação"
 
 #: src/window.py:770
 msgid "Couldn't update object visibility"
