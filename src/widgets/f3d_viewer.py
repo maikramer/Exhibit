@@ -920,14 +920,109 @@ class F3DViewer(Gtk.GLArea):
             return None
         return self.camera.state
 
+    def _pointer_modifiers(self, controller):
+        """Return (shift, ctrl) from the current event, if any."""
+        try:
+            state = controller.get_current_event_state()
+        except Exception:
+            return False, False
+        shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
+        ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
+        return shift, ctrl
+
+    def _scroll_is_touchpad(self, controller):
+        """True when scroll comes from a touchpad/surface (not a mouse wheel)."""
+        get_unit = getattr(controller, "get_unit", None)
+        if get_unit is not None:
+            try:
+                if get_unit() == Gdk.ScrollUnit.SURFACE:
+                    return True
+            except Exception:
+                pass
+        # Fallback when ScrollUnit is unavailable or misreported.
+        try:
+            event = controller.get_current_event()
+            device = event.get_device() if event is not None else None
+            if device is not None and device.get_source() == Gdk.InputSource.TOUCHPAD:
+                return True
+        except Exception:
+            pass
+        return False
+
+    def _nav_mode(self, *, shift, ctrl, touchpad):
+        """
+        Blender-like viewport navigation.
+
+        Middle-mouse / touchpad two-finger:
+          none  → orbit (touchpad) or zoom (mouse wheel)
+          Shift → pan
+          Ctrl  → zoom
+        """
+        if shift:
+            return "pan"
+        if ctrl:
+            return "zoom"
+        return "orbit" if touchpad else "zoom"
+
+    def _apply_orbit_delta(self, azimuth_deg, elevation_deg):
+        dist, direction = self.get_camera_to_focal_distance()
+        if not self.always_point_up:
+            self.camera.elevation(elevation_deg)
+            self.camera.azimuth(azimuth_deg)
+            return
+        if (
+            dist > self.get_gimble_limit()
+            or (dist < self.get_gimble_limit())
+            and (direction == 1 and elevation_deg < 0)
+            or (dist < self.get_gimble_limit() and direction == -1 and elevation_deg > 0)
+        ):
+            self.camera.elevation(elevation_deg)
+        self.camera.azimuth(azimuth_deg)
+
+    def _apply_pan_delta(self, dx, dy):
+        scale = 0.0000001 * self.width + 0.001 * self.distance
+        self.camera.pan(dx * scale, dy * scale, 0)
+
+    def _apply_zoom_delta(self, dy):
+        factor = 1 - 0.1 * dy
+        if self.settings.get("scene.camera.orthographic"):
+            self.camera.zoom(factor)
+        else:
+            self.camera.dolly(factor)
+        self.get_distance()
+
+    def _finalize_camera_nav(self):
+        if self.always_point_up:
+            up = up_dirs_vector[self.settings["scene.up_direction"]]
+            self.camera.view_up = up
+        self.queue_render()
+
     @Gtk.Template.Callback("on_scroll")
     def on_scroll(self, gesture, dx, dy):
-        if self.settings["scene.camera.orthographic"]:
-            self.camera.zoom(1 - 0.1 * dy)
+        if self.camera is None:
+            return False
+
+        shift, ctrl = self._pointer_modifiers(gesture)
+        touchpad = self._scroll_is_touchpad(gesture)
+        mode = self._nav_mode(shift=shift, ctrl=ctrl, touchpad=touchpad)
+
+        # SURFACE deltas are pixel-like; WHEEL notches are ~±1.
+        if mode == "pan":
+            if touchpad:
+                self._apply_pan_delta(-dx, dy)
+            else:
+                self._apply_pan_delta(-dx * 40.0, dy * 40.0)
+        elif mode == "orbit":
+            # Two-finger swipe ≈ Blender middle-mouse orbit.
+            if touchpad:
+                self._apply_orbit_delta(-dx * 0.5, dy * 0.5)
+            else:
+                self._apply_orbit_delta(-dx * 8.0, dy * 8.0)
         else:
-            self.camera.dolly(1 - 0.1 * dy)
-        self.get_distance()
-        self.queue_render()
+            self._apply_zoom_delta(dy * 0.05 if touchpad else dy)
+
+        self._finalize_camera_nav()
+        return True
 
     @Gtk.Template.Callback("on_zoom_scale_changed")
     def on_zoom_scale_changed(self, zoom_gesture, scale):
@@ -938,37 +1033,31 @@ class F3DViewer(Gtk.GLArea):
 
     @Gtk.Template.Callback("on_drag_update")
     def on_drag_update(self, gesture, x_offset, y_offset):
-        if gesture.get_current_button() == 1:
-            dist, direction = self.get_camera_to_focal_distance()
-            y = -(self.drag_prev_offset[1] - y_offset) * 0.5
-            x = (self.drag_prev_offset[0] - x_offset) * 0.5
-            if not self.always_point_up:
-                self.camera.elevation(y)
-                self.camera.azimuth(x)
+        if self.camera is None:
+            return
+
+        dx = self.drag_prev_offset[0] - x_offset
+        dy = self.drag_prev_offset[1] - y_offset
+        button = gesture.get_current_button()
+        shift, ctrl = self._pointer_modifiers(gesture)
+
+        if button == 1:
+            # LMB: Blender MMB mapping (orbit / Shift+pan / Ctrl+zoom).
+            mode = self._nav_mode(shift=shift, ctrl=ctrl, touchpad=True)
+            if mode == "pan":
+                self._apply_pan_delta(dx, -dy)
+            elif mode == "zoom":
+                self._apply_zoom_delta(dy * 0.05)
             else:
-                if (
-                    dist > self.get_gimble_limit()
-                    or (dist < self.get_gimble_limit())
-                    and (direction == 1 and y < 0)
-                    or (dist < self.get_gimble_limit() and direction == -1 and y > 0)
-                ):
-                    self.camera.elevation(y)
-                self.camera.azimuth(x)
-        elif gesture.get_current_button() == 2:
-            self.camera.pan(
-                (self.drag_prev_offset[0] - x_offset)
-                * (0.0000001 * self.width + 0.001 * self.distance),
-                -(self.drag_prev_offset[1] - y_offset)
-                * (0.0000001 * self.height + 0.001 * self.distance),
-                0,
-            )
+                self._apply_orbit_delta(dx * 0.5, -dy * 0.5)
+        elif button == 2:
+            # Keep plain MMB as pan; Ctrl+MMB zooms like Blender.
+            if ctrl and not shift:
+                self._apply_zoom_delta(dy * 0.05)
+            else:
+                self._apply_pan_delta(dx, -dy)
 
-        if self.always_point_up:
-            up = up_dirs_vector[self.settings["scene.up_direction"]]
-            self.camera.view_up = up
-
-        self.queue_render()
-
+        self._finalize_camera_nav()
         self.drag_prev_offset = (x_offset, y_offset)
 
     @Gtk.Template.Callback("on_drag_end")
