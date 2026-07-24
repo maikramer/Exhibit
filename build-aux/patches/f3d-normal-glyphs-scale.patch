@@ -1,0 +1,125 @@
+From: Exhibit <exhibit@local>
+Date: Thu, 23 Jul 2026 21:50:00 -0300
+Subject: [PATCH] Normal glyphs scale option + world-space sizing
+
+--- a/library/options.json	2026-07-23 21:53:12.697314076 -0300
++++ b/library/options.json	2026-07-23 21:53:12.698560148 -0300
+@@ -422,6 +422,16 @@
+       "enable": {
+         "type": "bool",
+         "default_value": "false"
++      },
++      "scale": {
++        "type": "ratio",
++        "default_value": "1.0",
++        "domain": {
++          "style": "range",
++          "min": "0.0",
++          "max": "10.0",
++          "increment": "0.1"
++        }
+       }
+     },
+     "volume": {
+
+--- a/application/F3DOptionsTools.h	2026-07-23 21:53:12.708768275 -0300
++++ b/application/F3DOptionsTools.h	2026-07-23 21:53:12.709959014 -0300
+@@ -97,6 +97,7 @@
+   { "font-color", "ui.font_color" },
+   { "backdrop-opacity", "ui.backdrop.opacity" },
+   { "normal-glyphs", "model.normal_glyphs.enable" },
++  { "normal-glyphs-scale", "model.normal_glyphs.scale" },
+   { "point-sprites-size", "model.point_sprites.size" },
+   { "point-sprites-absolute-size", "model.point_sprites.absolute_size" },
+   { "point-size", "render.point_size" },
+
+--- a/library/src/window_impl.cxx	2026-07-23 21:53:12.719485059 -0300
++++ b/library/src/window_impl.cxx	2026-07-23 21:53:12.720549577 -0300
+@@ -408,6 +408,7 @@
+   renderer->SetPendingUpDirection(opt.scene.up_direction);
+ 
+   renderer->SetUseNormalGlyphs(opt.model.normal_glyphs.enable);
++  renderer->SetNormalGlyphScaleMultiplier(opt.model.normal_glyphs.scale);
+ 
+   // XXX: model.point_sprites.type only has an effect on geometry scene
+   // but we set it here for practical reasons
+
+--- a/vtkext/private/module/vtkF3DRenderer.h	2026-07-23 21:53:12.730066169 -0300
++++ b/vtkext/private/module/vtkF3DRenderer.h	2026-07-23 21:53:12.731206065 -0300
+@@ -351,6 +351,11 @@
+   void SetUseNormalGlyphs(bool use);
+ 
+   /**
++   * Multiplier applied to automatic normal glyph sizing.
++   */
++  void SetNormalGlyphScaleMultiplier(double multiplier);
++
++  /**
+    * Set the visibility of the point sprites actor.
+    * It will only be shown if raytracing and volume are not enabled
+    */
+@@ -841,6 +846,7 @@
+ 
+   bool ScalarBarVisible = false;
+   bool UseNormalGlyphs = false;
++  double NormalGlyphScaleMultiplier = 1.0;
+   bool UsePointSprites = false;
+   bool UseVolume = false;
+   bool UseInverseOpacityFunction = false;
+
+--- a/vtkext/private/module/vtkF3DRenderer.cxx	2026-07-23 21:53:12.741588887 -0300
++++ b/vtkext/private/module/vtkF3DRenderer.cxx	2026-07-23 21:53:12.742869676 -0300
+@@ -2918,23 +2918,23 @@
+ //----------------------------------------------------------------------------
+ void vtkF3DRenderer::UpdateNormalGlyphsScale()
+ {
+-  constexpr double normalGlyphScaleMultiplier = 0.15;
+-
+-  const auto getScale = [](vtkCamera* camera)
++  // World-space sizing from geometry bounds so zoom keeps arrows proportional
++  // to the mesh (screen-space FOV sizing turns dense assets into a porcupine).
++  double diag = 1.0;
++  if (this->Importer)
+   {
+-    if (camera->GetParallelProjection())
+-    {
+-      return camera->GetParallelScale();
+-    }
+-    else
++    const vtkBoundingBox& bbox = this->Importer->GetGeometryBoundingBox();
++    if (bbox.IsValid())
+     {
+-      const double angle = vtkMath::RadiansFromDegrees(camera->GetViewAngle());
+-      const double distance = camera->GetDistance();
+-      return distance * std::tan(0.5 * angle);
++      diag = bbox.GetDiagonalLength();
++      if (diag < 1e-12)
++      {
++        diag = 1.0;
++      }
+     }
+-  };
+-
+-  const double scaleFactor = getScale(this->GetActiveCamera()) * normalGlyphScaleMultiplier;
++  }
++  // ~0.45% of model diagonal; user multiplier (model.normal_glyphs.scale) on top.
++  const double scaleFactor = diag * 0.0045 * this->NormalGlyphScaleMultiplier;
+ 
+   for (const auto& normalGlyph : this->Importer->GetNormalGlyphsActorsAndMappers())
+   {
+@@ -2954,6 +2954,15 @@
+ }
+ 
+ // ---------------------------------------------------------------------------
++void vtkF3DRenderer::SetNormalGlyphScaleMultiplier(double multiplier)
++{
++  if (this->NormalGlyphScaleMultiplier != multiplier)
++  {
++    this->NormalGlyphScaleMultiplier = multiplier;
++  }
++}
++
++//----------------------------------------------------------------------------
+ void vtkF3DRenderer::SetUseNormalGlyphs(bool use)
+ {
+   if (this->UseNormalGlyphs != use)

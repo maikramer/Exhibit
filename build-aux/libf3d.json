@@ -34,6 +34,14 @@
             "tag": "v3.5.0",
             "commit": "bcfa8d525cec9a08d4a6f40799cf2472c011e35d",
             "disable-lfs": true
+        },
+        {
+            "type": "patch",
+            "path": "patches/f3d-linearize-display-depth.patch"
+        },
+        {
+            "type": "patch",
+            "path": "patches/f3d-normal-glyphs-scale.patch"
         }
     ],
     "modules": [

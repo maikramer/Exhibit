@@ -24,5 +24,85 @@
 	  <key name="startup-sidebar-show" type="b">
       <default>true</default>
     </key>
+	  <key name="recent-files" type="as">
+      <default>[]</default>
+      <summary>Recent model files</summary>
+      <description>Absolute paths of recently opened 3D models.</description>
+    </key>
+	  <key name="session-files" type="as">
+      <default>[]</default>
+      <summary>Last session model files</summary>
+      <description>Absolute paths of models open in the last closed window session.</description>
+    </key>
+	  <key name="restore-session" type="b">
+      <default>true</default>
+      <summary>Restore last session</summary>
+      <description>When enabled, reopen the last session’s model tabs on startup (unless a file is passed on the command line).</description>
+    </key>
+	  <key name="split-compare-sash-ratio" type="d">
+      <default>0.62</default>
+      <summary>Split Compare sash ratio</summary>
+      <description>Fraction of window width used by the primary tab view when Split Compare is enabled (0.45–0.80).</description>
+    </key>
+	  <key name="split-compare-enabled" type="b">
+      <default>false</default>
+      <summary>Split Compare enabled</summary>
+      <description>Remember whether Split Compare was on, and reopen it after startup when models are available.</description>
+    </key>
+	  <key name="split-compare-pinned" type="b">
+      <default>false</default>
+      <summary>Split Compare pin enabled</summary>
+      <description>Whether the secondary Split Compare model was pinned.</description>
+    </key>
+	  <key name="split-compare-pin-path" type="s">
+      <default>''</default>
+      <summary>Split Compare pinned file</summary>
+      <description>Absolute path of the pinned secondary model. Cleared automatically if the file is missing on restore.</description>
+    </key>
+	  <key name="nav-invert-x" type="b">
+      <default>false</default>
+      <summary>Invert navigation X</summary>
+      <description>Flip horizontal orbit/pan deltas.</description>
+    </key>
+	  <key name="nav-invert-y" type="b">
+      <default>false</default>
+      <summary>Invert navigation Y</summary>
+      <description>Flip vertical orbit/pan/zoom-drag deltas.</description>
+    </key>
+	  <key name="nav-zoom-to-cursor" type="b">
+      <default>true</default>
+      <summary>Zoom to cursor</summary>
+      <description>Zoom toward the point under the pointer instead of the view center.</description>
+    </key>
+	  <key name="nav-orbit-around-cursor" type="b">
+      <default>false</default>
+      <summary>Orbit around cursor</summary>
+      <description>Orbit around the point under the pointer on the focal plane. Off keeps the classic view-center orbit. Hold Alt to temporarily toggle.</description>
+    </key>
+	  <key name="nav-touchpad-orbit" type="b">
+      <default>true</default>
+      <summary>Touchpad two-finger orbit</summary>
+      <description>When enabled, touchpad two-finger scroll orbits; otherwise it zooms like a mouse wheel.</description>
+    </key>
+	  <key name="nav-mmb-click-pivot" type="b">
+      <default>true</default>
+      <summary>Middle-click sets orbit pivot</summary>
+      <description>A middle-mouse click without drag recenters the orbit target under the cursor.</description>
+    </key>
+	  <key name="nav-orbit-sensitivity" type="d">
+      <default>1.0</default>
+      <summary>Orbit sensitivity</summary>
+      <description>Multiplier for orbit pointer deltas (0.25–4.0).</description>
+    </key>
+	  <key name="nav-zoom-sensitivity" type="d">
+      <default>1.0</default>
+      <summary>Zoom sensitivity</summary>
+      <description>Multiplier for zoom pointer/scroll deltas (0.25–4.0).</description>
+    </key>
+	  <key name="nav-pan-sensitivity" type="d">
+      <default>1.0</default>
+      <summary>Pan sensitivity</summary>
+      <description>Multiplier for pan pointer/scroll deltas (0.25–4.0).</description>
+    </key>
 	</schema>
 </schemalist>

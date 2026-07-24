@@ -22,6 +22,20 @@
                 <property name="accelerator">&lt;Primary&gt;q</property>
               </object>
             </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes" context="shortcut window">Open</property>
+                <property name="action-name">win.open-new</property>
+                <property name="accelerator">&lt;Primary&gt;o</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Open Folder</property>
+                <property name="action-name">win.open-folder</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;o</property>
+              </object>
+            </child>
           </object>
         </child>
 
@@ -56,6 +70,37 @@
               <object class="GtkShortcutsShortcut">
                 <property name="title" translatable="yes">Toggle Orthographic</property>
                 <property name="accelerator">&lt;Primary&gt;5</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Sync Cameras Across Tabs</property>
+                <property name="action-name">win.sync-cameras</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;c</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Split Compare (Experimental)</property>
+                <property name="action-name">win.split-compare</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;d</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Swap Active ↔ Pinned</property>
+                <property name="action-name">win.split-compare-swap</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;x</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Pin secondary model (Split Compare checkbox)</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Split Compare and pin reopen silently on next launch</property>
               </object>
             </child>
           </object>

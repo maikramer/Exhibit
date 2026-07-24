@@ -1,0 +1,59 @@
+From: Exhibit <exhibit@local>
+Date: Thu, 23 Jul 2026 21:50:00 -0300
+Subject: [PATCH] Linearize display-depth for readable contrast
+
+--- a/vtkext/private/module/vtkF3DDisplayDepthRenderPass.cxx	2026-07-23 21:53:12.686058918 -0300
++++ b/vtkext/private/module/vtkF3DDisplayDepthRenderPass.cxx	2026-07-23 21:53:12.687314501 -0300
+@@ -15,6 +15,8 @@
+ #include <vtkShaderProgram.h>
+ #include <vtkTextureObject.h>
+ 
++#include <vtkCamera.h>
++
+ vtkStandardNewMacro(vtkF3DDisplayDepthRenderPass);
+ 
+ //------------------------------------------------------------------------------
+@@ -53,17 +55,26 @@
+       "uniform sampler2D texDepth;\n"
+       "uniform bool useColorMap;\n"
+       "uniform sampler1D colorMapTexture;\n"
++      "uniform float cameraNear;\n"
++      "uniform float cameraFar;\n"
+       "//VTK::FSQ::Decl");
+ 
++    // Linearize nonlinear GL depth into [0,1] across the clipping range so
++    // distant/small meshes are not washed out to white.
+     vtkShaderProgram::Substitute(depthDisplayingFS, "//VTK::FSQ::Impl",
+       "float depth = texture(texDepth, texCoord).r;\n"
++      "float zNdc = depth * 2.0 - 1.0;\n"
++      "float linear = (2.0 * cameraNear * cameraFar) /\n"
++      "  (cameraFar + cameraNear - zNdc * (cameraFar - cameraNear));\n"
++      "float t = clamp((linear - cameraNear) / max(cameraFar - cameraNear, 1e-6), 0.0, 1.0);\n"
++      "t = 1.0 - t;\n" // near = bright
+       "if (useColorMap)\n"
+       "{\n"
+-      "  vec4 colorMapped = texture(colorMapTexture, depth);\n"
++      "  vec4 colorMapped = texture(colorMapTexture, t);\n"
+       "  gl_FragData[0] = vec4(colorMapped.rgb, 1.0);\n"
+       "  return;\n"
+       "}\n"
+-      "gl_FragData[0] = vec4(vec3(depth), 1.0);\n"
++      "gl_FragData[0] = vec4(vec3(t), 1.0);\n"
+       "//VTK::FSQ::Impl");
+     this->QuadHelper =
+       std::make_shared<vtkOpenGLQuadHelper>(renWin, nullptr, depthDisplayingFS.c_str(), nullptr);
+@@ -85,6 +96,14 @@
+   this->QuadHelper->Program->SetUniformi(
+     "colorMapTexture", this->ColorMapTexture->GetTextureUnit());
+ 
++  double clippingRange[2] = { 0.1, 1000.0 };
++  if (vtkCamera* camera = renderer->GetActiveCamera())
++  {
++    camera->GetClippingRange(clippingRange);
++  }
++  this->QuadHelper->Program->SetUniformf("cameraNear", static_cast<float>(clippingRange[0]));
++  this->QuadHelper->Program->SetUniformf("cameraFar", static_cast<float>(clippingRange[1]));
++
+   ostate->vtkglEnable(GL_DEPTH_TEST);
+   ostate->vtkglDepthFunc(GL_LEQUAL);
+   ostate->vtkglClear(GL_DEPTH_BUFFER_BIT);

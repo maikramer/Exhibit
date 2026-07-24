@@ -7,5 +7,5 @@ MimeType=application/gml+xml;application/prs.wavefront-obj;application/vnd.3ds;a
 Terminal=false
 Type=Application
 Categories=GTK;Graphics;Science;3DGraphics;Viewer;GNOME;
-Keywords=fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;pbr;rendering;3d-model;3d-viewer;
+Keywords=fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;glb;pbr;rendering;3d-model;3d-viewer;tabs;gamedev;meshopt;ktx2;turntable;split;compare;split-compare;
 StartupNotify=true
