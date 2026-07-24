@@ -34,6 +34,7 @@ import f3d
 
 from .window import Viewer3dWindow
 from . import logger_lib
+from .about_info import FORK_ISSUES, FORK_REPO, UPSTREAM_REPO, about_comments
 
 from gettext import gettext as _
 
@@ -102,7 +103,9 @@ class Viewer3dApplication(Adw.Application):
             GLib.VariantType.new("s"),
             GLib.Variant("s", self.saved_settings.get_string("theme")),
         )
+        # Menu radio items use change-state; code paths may use activate.
         theme_action.connect("activate", self.on_theme_setting_changed)
+        theme_action.connect("change-state", self.on_theme_setting_changed)
         self.update_theme()
         self.add_action(theme_action)
 
@@ -190,18 +193,23 @@ class Viewer3dApplication(Adw.Application):
             application_icon="io.github.nokse22.Exhibit",
             developer_name="Nokse",
             version="1.6.0",
-            website="https://github.com/Nokse22/Exhibit",
-            issue_url="https://github.com/Nokse22/Exhibit/issues",
-            developers=["Nokse"],
+            website=UPSTREAM_REPO,
+            issue_url=FORK_ISSUES,
+            developers=["Nokse", "maikramer"],
             license_type="GTK_LICENSE_GPL_3_0",
             copyright="© 2024-2025 Nokse",
             artists=["Jakub Steiner https://jimmac.eu"],
+            comments=about_comments(),
         )
 
         about.add_link(_("Checkout F3D"), "https://f3d.app")
-
+        about.add_link(_("This fork on GitHub"), FORK_REPO)
         about.add_link(_("Donate with Ko-Fi"), "https://ko-fi.com/nokse22")
         about.add_link(_("Donate with Github"), "https://github.com/sponsors/Nokse22")
+        about.add_acknowledgement_section(
+            _("Upstream"),
+            ["Nokse22/Exhibit — original app"],
+        )
 
         about.set_debug_info(
             f"GDK_DEBUG: {GLib.getenv('GDK_DEBUG')}\n"
@@ -232,6 +240,10 @@ class Viewer3dApplication(Adw.Application):
         action.set_state(state)
         self.saved_settings.set_string("theme", state.get_string())
         self.update_theme()
+        for win in self.get_windows():
+            sync = getattr(win, "_sync_theme_toggle_button", None)
+            if callable(sync):
+                sync()
 
     def update_theme(self):
         # DEFAULT = follow OS (portal): Ubuntu prefer-dark + accent (Yaru orange).

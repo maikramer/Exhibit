@@ -26,24 +26,24 @@ from gi.repository import Gtk, Gdk, GLib, Gio, GObject
 
 import f3d
 
+from ..camera_nav import (
+    NAV_SETTING_DEFAULTS,
+    axis_delta,
+    clamp_dolly_factor,
+    clamp_scroll_delta,
+    clamp_sensitivity,
+    depth_distance,
+    dolly_to_cursor,
+    gtk_to_display,
+    is_sane_pivot,
+    orbit_rig_around_pivot,
+    pan_scale_for_distance,
+    pivot_camera_to_point,
+)
 from ..camera_views import UP_DIRS, apply_view
 from ..vector_math import p_dist, v_abs, v_add, v_sub, v_mul, v_dot_p
 from .. import logger_lib
-from ..meshopt_decompress import (
-    MeshoptError,
-    cleanup_decompressed,
-    prepare_glb_for_load,
-    release_prepared,
-)
-from ..gltf_scene_graph import (
-    ScenePart,
-    SceneTreeNode,
-    _effective_hidden,
-    _load_gltf,
-    build_glb_hiding_nodes_bytes,
-    build_scene_tree,
-    list_mesh_parts,
-)
+from .f3d_viewer_load import F3DLoadMixin
 
 
 def _gl_get_proc_address(lib_name: str, symbol: str):
@@ -65,7 +65,7 @@ up_dirs_vector = UP_DIRS
 
 
 @Gtk.Template(resource_path="/io/github/nokse22/Exhibit/ui/f3d_viewer.ui")
-class F3DViewer(Gtk.GLArea):
+class F3DViewer(F3DLoadMixin, Gtk.GLArea):
     __gtype_name__ = "F3DViewer"
 
     keys = {
@@ -102,6 +102,7 @@ class F3DViewer(Gtk.GLArea):
         "armature-enable": "render.armature.enable",
         "checkerboard-enable": "model.checkerboard.enable",
         "normal-glyphs": "model.normal_glyphs.enable",
+        "normal-glyphs-scale": "model.normal_glyphs.scale",
         "display-depth": "render.effect.display_depth",
         # The following settings don't have an UI
         "texture-matcap": "model.matcap.texture",
@@ -117,7 +118,8 @@ class F3DViewer(Gtk.GLArea):
         "grid-unit": "render.grid.unit",
         "grid-subdivisions": "render.grid.subdivisions",
         "grid-color": "render.grid.color",
-        "scalar": "model.scivis.array_name",  # rename to scivis-name
+        "scalar": "model.scivis.array_name",
+        "scalar-bar": "ui.scalar_bar",
         "animation-index": "scene.animation.indices",
     }
 
@@ -139,6 +141,8 @@ class F3DViewer(Gtk.GLArea):
 
         self.action_group = Gio.SimpleActionGroup()
         self.insert_action_group("f3dviewer", self.action_group)
+        # Optional: window sets this to sync peer-tab cameras (compare mode).
+        self.camera_changed_cb = None
 
         self.create_action(
             "toggle-orthographic",
@@ -178,8 +182,33 @@ class F3DViewer(Gtk.GLArea):
         self.prev_pan_offset = 0
         self.drag_prev_offset = (0, 0)
         self.drag_start_angle = 0
+        self._pointer_xy = (0.0, 0.0)
+        self._drag_start_xy = (0.0, 0.0)
+        self._drag_mode = "orbit"
+        self._drag_button = 0
+        self._drag_moved = False
+        # Pivot mode captured at drag-begin (Alt toggles prefs for that gesture).
+        self._drag_orbit_around_cursor = False
+        self._drag_zoom_to_cursor = True
+        self._drag_use_cursor_depth = True
+        # Pixels of movement before a press counts as a drag (not a click).
+        self._click_drag_threshold = 4.0
 
         self.always_point_up = True
+        # Navigation prefs (wired from WindowSettings / gschema).
+        self.nav_invert_x = bool(NAV_SETTING_DEFAULTS["nav-invert-x"])
+        self.nav_invert_y = bool(NAV_SETTING_DEFAULTS["nav-invert-y"])
+        self.nav_zoom_to_cursor = bool(NAV_SETTING_DEFAULTS["nav-zoom-to-cursor"])
+        self.nav_orbit_around_cursor = bool(
+            NAV_SETTING_DEFAULTS["nav-orbit-around-cursor"]
+        )
+        self.nav_touchpad_orbit = bool(NAV_SETTING_DEFAULTS["nav-touchpad-orbit"])
+        self.nav_mmb_click_pivot = bool(NAV_SETTING_DEFAULTS["nav-mmb-click-pivot"])
+        self.nav_orbit_sensitivity = float(
+            NAV_SETTING_DEFAULTS["nav-orbit-sensitivity"]
+        )
+        self.nav_zoom_sensitivity = float(NAV_SETTING_DEFAULTS["nav-zoom-sensitivity"])
+        self.nav_pan_sensitivity = float(NAV_SETTING_DEFAULTS["nav-pan-sensitivity"])
 
         self.prev_scale = 1
 
@@ -331,8 +360,9 @@ class F3DViewer(Gtk.GLArea):
         if source_id:
             try:
                 GLib.source_remove(source_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                if self.logger:
+                    self.logger.debug("stop_animation_timer: %s", exc)
 
     def _advance_animation(self):
         if not self._playing or self.scene is None:
@@ -360,39 +390,47 @@ class F3DViewer(Gtk.GLArea):
         self.orthographic = not self.orthographic
 
     def reset_to_bounds(self):
+        if self.camera is None:
+            return
         self.camera.reset_to_bounds()
         self.get_distance()
-        self.queue_render()
+        self._finalize_camera_nav()
 
     def front_view(self, *args):
         apply_view(self.camera, "front", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
+        self._notify_camera_changed()
 
     def right_view(self, *args):
         apply_view(self.camera, "right", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
+        self._notify_camera_changed()
 
     def back_view(self, *args):
         apply_view(self.camera, "back", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
+        self._notify_camera_changed()
 
     def left_view(self, *args):
         apply_view(self.camera, "left", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
+        self._notify_camera_changed()
 
     def top_view(self, *args):
         apply_view(self.camera, "top", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
+        self._notify_camera_changed()
 
     def isometric_view(self, *args):
         apply_view(self.camera, "isometric", self.settings["scene.up_direction"])
         self.get_distance()
         self.queue_render()
+        self._notify_camera_changed()
 
     def _map_setting_to_f3d(self, key, value):
         """Translate Exhibit settings to current F3D option names/values."""
@@ -465,57 +503,12 @@ class F3DViewer(Gtk.GLArea):
             return []
         try:
             return [float(t) for t in getter()]
-        except Exception:
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug("get_animation_keyframes failed: %s", exc)
             return []
 
-    def _clear_force_reader(self) -> None:
-        """Unset optional ``scene.force_reader`` (Python lacks options.reset)."""
-        if not self.engine:
-            return
-        opts = self.engine.options
-        if "scene.force_reader" not in opts:
-            return
-        reset = getattr(opts, "reset", None) or getattr(opts, "remove_value", None)
-        if callable(reset):
-            try:
-                reset("scene.force_reader")
-                return
-            except Exception:
-                pass
-        kept = {key: opts[key] for key in list(opts.keys()) if key != "scene.force_reader"}
-        fresh = f3d.Options()
-        for key, value in kept.items():
-            try:
-                fresh[key] = value
-            except Exception:
-                pass
-        self.engine.options = fresh
-        if self.settings:
-            try:
-                self.engine.options.update(self.settings)
-            except Exception:
-                pass
 
-    def _add_scene_buffer(self, data: bytes, *, reader: str = "GLB") -> None:
-        """
-        Load geometry from an in-memory buffer (F3D ``scene.add(bytes)``).
-
-        VTK builds older than 9.6.20260128 need ``scene.force_reader``.
-        """
-        if not self.scene or not self.engine:
-            raise RuntimeError("Viewer engine is not ready")
-
-        try:
-            self.scene.add(data)
-            return
-        except Exception:
-            pass
-
-        self.engine.options["scene.force_reader"] = reader
-        try:
-            self.scene.add(data)
-        finally:
-            self._clear_force_reader()
 
     def render_image(self):
         self.get_context().make_current()
@@ -523,296 +516,20 @@ class F3DViewer(Gtk.GLArea):
         # print(img.to_terminal_text())
         return img
 
-    def supports(self, filepath):
-        return self.scene.supports(filepath)
 
-    def _prepare_filepath(self, filepath):
-        try:
-            return prepare_glb_for_load(filepath)
-        except MeshoptError as e:
-            self.logger.error(f"Error while decompressing meshopt GLB: {e}")
-            return None, None
 
-    def _resolve_load_path(self, filepath, prepared_path=None):
-        """Return path ready for F3D. Prefer caller-prepared path (single owner)."""
-        if prepared_path:
-            return prepared_path, None
-        return self._prepare_filepath(filepath)
 
-    def _release_prepared_path(self) -> None:
-        previous = self._prepared_path
-        self._prepared_path = None
-        if previous and previous != self._loaded_filepath:
-            release_prepared(previous)
 
-    def release_resources(self) -> None:
-        """Stop timers, clear scene, drop engine + prepare temps (tab close)."""
-        self._playing = False
-        self._stop_animation_timer()
-        try:
-            self.set_auto_render(False)
-        except Exception:
-            pass
 
-        # Make GL current so VTK/F3D can free GPU-side resources.
-        try:
-            if self.get_realized():
-                self.make_current()
-        except Exception:
-            pass
 
-        if self.scene is not None:
-            try:
-                self.scene.clear()
-            except Exception:
-                pass
 
-        self._release_prepared_path()
-        self._loaded_filepath = None
-        self._hidden_part_indices = set()
 
-        # Drop native F3D/VTK refs so GPU/RAM can be reclaimed.
-        engine = self.engine
-        self.camera = None
-        self.window = None
-        self.scene = None
-        self.engine = None
-        del engine
 
-    def load_file(self, filepath, prepared_path=None):
-        hdri_ambient = bool(self.settings.get("render.hdri.ambient"))
-        if hdri_ambient and self.engine:
-            self.engine.options.update({"render.hdri.ambient": False})
 
-        # prepare_glb_for_load retains cache temps; drop duplicate if we already hold it.
-        if (
-            prepared_path
-            and prepared_path == self._prepared_path
-            and prepared_path != filepath
-        ):
-            release_prepared(prepared_path)
 
-        previous_prepared = self._prepared_path
-        self.scene.clear()
-        self._hidden_part_indices = set()
 
-        load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
-        if load_path is None:
-            self._loaded_filepath = None
-            self._prepared_path = None
-            if previous_prepared and previous_prepared != filepath:
-                release_prepared(previous_prepared)
-            return False
 
-        try:
-            self.scene.add(load_path)
-        except Exception as e:
-            self.logger.error(f"Error while loading file: {e}")
-            self._loaded_filepath = None
-            self._prepared_path = None
-            if previous_prepared and previous_prepared != load_path:
-                release_prepared(previous_prepared)
-            if load_path != filepath and load_path != previous_prepared:
-                release_prepared(load_path)
-            return False
-        finally:
-            cleanup_decompressed(meshopt_temp)
 
-        self._loaded_filepath = filepath
-        self._prepared_path = load_path
-        if previous_prepared and previous_prepared != load_path:
-            release_prepared(previous_prepared)
-        self.notify("lower-time-range")
-        self.notify("upper-time-range")
-        self.queue_render()
-
-        return True
-
-    def add_file(self, filepath, prepared_path=None):
-        if self.settings.get("render.hdri.ambient") and self.engine:
-            self.engine.options.update({"render.hdri.ambient": False})
-
-        load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
-        if load_path is None:
-            return False
-
-        try:
-            self.scene.add(load_path)
-        except Exception as e:
-            self.logger.error(f"Error while loading file: {e}")
-            if load_path != filepath:
-                release_prepared(load_path)
-            return False
-        finally:
-            cleanup_decompressed(meshopt_temp)
-
-        previous_prepared = self._prepared_path
-        self._loaded_filepath = filepath
-        self._prepared_path = load_path
-        if previous_prepared and previous_prepared != load_path:
-            release_prepared(previous_prepared)
-        self.notify("lower-time-range")
-        self.notify("upper-time-range")
-
-        self.get_distance()
-        self.queue_render()
-
-        return True
-
-    def get_scene_parts(self) -> list[ScenePart]:
-        path = self._prepared_path or self._loaded_filepath
-        if not path:
-            return []
-        return list_mesh_parts(path, already_prepared=bool(self._prepared_path))
-
-    def get_scene_tree(self) -> list[SceneTreeNode]:
-        path = self._prepared_path or self._loaded_filepath
-        if not path:
-            return []
-        return build_scene_tree(path, already_prepared=bool(self._prepared_path))
-
-    def get_hidden_part_indices(self) -> set[int]:
-        return set(self._hidden_part_indices)
-
-    def get_effective_hidden_part_indices(self) -> set[int]:
-        """Hidden set expanded so descendants of a hidden ancestor stay hidden."""
-        explicit = set(self._hidden_part_indices)
-        if not explicit:
-            return explicit
-        path = self._prepared_path or self._loaded_filepath
-        if not path:
-            return explicit
-        gltf = _load_gltf(path, already_prepared=bool(self._prepared_path))
-        if not gltf:
-            return explicit
-        nodes = gltf.get("nodes") or []
-        if not isinstance(nodes, list):
-            return explicit
-        return _effective_hidden(nodes, explicit)
-
-    def get_prepared_path(self) -> str | None:
-        """Path currently prepared for F3D (may equal the source file)."""
-        return self._prepared_path or self._loaded_filepath
-
-    def set_part_visible(self, node_index: int, visible: bool) -> bool:
-        """Show/hide a mesh node. Returns False if the scene could not be updated."""
-        if not self._loaded_filepath:
-            return False
-
-        previous_hidden = set(self._hidden_part_indices)
-        if visible:
-            self._hidden_part_indices.discard(int(node_index))
-        else:
-            self._hidden_part_indices.add(int(node_index))
-
-        if not self._reload_with_part_visibility():
-            self._hidden_part_indices = previous_hidden
-            return False
-        return True
-
-    def reset_to_bind_pose(self) -> bool:
-        """
-        Reimport with empty ``scene.animation.indices``.
-
-        Clearing indices alone leaves the last skin pose; F3D only restores
-        bind/rest pose when the file is loaded with no clip enabled.
-        """
-        return self._reload_with_part_visibility(restore_animation_time=False)
-
-    def _reload_with_part_visibility(self, *, restore_animation_time: bool = True) -> bool:
-        """
-        Reimport scene with hidden meshes stripped from GLB JSON.
-
-        Native per-actor hide needs F3D ``ui.scene_hierarchy`` (MODULE_UI).
-        Meanwhile clear+add with an in-memory filtered GLB avoids temp files.
-        """
-        filepath = self._loaded_filepath
-        prepared = self._prepared_path
-        if not filepath:
-            return False
-
-        camera_state = None
-        if self.camera is not None:
-            try:
-                camera_state = self.get_camera_state()
-            except Exception:
-                camera_state = None
-
-        anim_time = self._animation_time
-        was_playing = self._playing
-        self.playing = False
-
-        hdri_ambient = bool(self.settings.get("render.hdri.ambient"))
-        if hdri_ambient and self.engine:
-            self.engine.options.update({"render.hdri.ambient": False})
-
-        # Options (incl. empty animation indices) must be current before add.
-        if self.engine and self.settings:
-            try:
-                self.engine.options.update(self.settings)
-            except Exception:
-                pass
-
-        restore_path = prepared or filepath
-        load_buffer: bytes | None = None
-        load_path: str | None = None
-        try:
-            if self._hidden_part_indices:
-                load_buffer = build_glb_hiding_nodes_bytes(
-                    filepath,
-                    self._hidden_part_indices,
-                    prepared_path=prepared,
-                )
-            else:
-                # Restore full scene from the prepared path (no re-prepare).
-                if prepared:
-                    load_path = prepared
-                else:
-                    load_path, prep_temp = self._prepare_filepath(filepath)
-                    if load_path is None:
-                        return False
-                    self._prepared_path = load_path
-                    restore_path = load_path
-
-            # Build filtered GLB before clearing so a failure keeps the scene.
-            self.scene.clear()
-            try:
-                if load_buffer is not None:
-                    self._add_scene_buffer(load_buffer)
-                else:
-                    self.scene.add(load_path)
-            except Exception:
-                # Best-effort restore of the previous full scene.
-                try:
-                    self.scene.add(restore_path)
-                except Exception:
-                    pass
-                raise
-        except Exception as e:
-            self.logger.error(f"Error while updating part visibility: {e}")
-            return False
-
-        self.notify("lower-time-range")
-        self.notify("upper-time-range")
-
-        if restore_animation_time:
-            lower = self.lower_time_range
-            upper = self.upper_time_range
-            if anim_time < lower or anim_time > upper:
-                anim_time = lower
-            self.animation_time = anim_time
-
-        if camera_state is not None:
-            try:
-                self.set_camera_state(camera_state)
-            except Exception:
-                pass
-
-        if was_playing and restore_animation_time:
-            self.playing = True
-
-        self.queue_render()
-        return True
 
     def done(self):
         if self.settings.get("render.hdri.ambient") and self.engine:
@@ -921,14 +638,19 @@ class F3DViewer(Gtk.GLArea):
         return self.camera.state
 
     def _pointer_modifiers(self, controller):
-        """Return (shift, ctrl) from the current event, if any."""
+        """Return (shift, ctrl, alt) from the current event, if any."""
         try:
             state = controller.get_current_event_state()
         except Exception:
-            return False, False
+            return False, False, False
         shift = bool(state & Gdk.ModifierType.SHIFT_MASK)
         ctrl = bool(state & Gdk.ModifierType.CONTROL_MASK)
-        return shift, ctrl
+        alt = bool(state & Gdk.ModifierType.ALT_MASK)
+        return shift, ctrl, alt
+
+    def _pref_toggled_by_alt(self, enabled: bool, alt: bool) -> bool:
+        """Alt temporarily flips a cursor-pivot preference."""
+        return bool(enabled) != bool(alt)
 
     def _scroll_is_touchpad(self, controller):
         """True when scroll comes from a touchpad/surface (not a mouse wheel)."""
@@ -937,99 +659,360 @@ class F3DViewer(Gtk.GLArea):
             try:
                 if get_unit() == Gdk.ScrollUnit.SURFACE:
                     return True
-            except Exception:
-                pass
+            except Exception as exc:
+                if self.logger:
+                    self.logger.debug("scroll unit probe failed: %s", exc)
         # Fallback when ScrollUnit is unavailable or misreported.
         try:
             event = controller.get_current_event()
             device = event.get_device() if event is not None else None
             if device is not None and device.get_source() == Gdk.InputSource.TOUCHPAD:
                 return True
-        except Exception:
-            pass
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug("scroll device probe failed: %s", exc)
         return False
+
+    def apply_nav_settings(self, settings: dict) -> None:
+        """Apply navigation prefs from WindowSettings / gschema."""
+        if "nav-invert-x" in settings:
+            self.nav_invert_x = bool(settings["nav-invert-x"])
+        if "nav-invert-y" in settings:
+            self.nav_invert_y = bool(settings["nav-invert-y"])
+        if "nav-zoom-to-cursor" in settings:
+            self.nav_zoom_to_cursor = bool(settings["nav-zoom-to-cursor"])
+        if "nav-orbit-around-cursor" in settings:
+            self.nav_orbit_around_cursor = bool(settings["nav-orbit-around-cursor"])
+        if "nav-touchpad-orbit" in settings:
+            self.nav_touchpad_orbit = bool(settings["nav-touchpad-orbit"])
+        if "nav-mmb-click-pivot" in settings:
+            self.nav_mmb_click_pivot = bool(settings["nav-mmb-click-pivot"])
+        if "nav-orbit-sensitivity" in settings:
+            self.nav_orbit_sensitivity = clamp_sensitivity(
+                settings["nav-orbit-sensitivity"]
+            )
+        if "nav-zoom-sensitivity" in settings:
+            self.nav_zoom_sensitivity = clamp_sensitivity(
+                settings["nav-zoom-sensitivity"]
+            )
+        if "nav-pan-sensitivity" in settings:
+            self.nav_pan_sensitivity = clamp_sensitivity(settings["nav-pan-sensitivity"])
 
     def _nav_mode(self, *, shift, ctrl, touchpad):
         """
         Blender-like viewport navigation.
 
-        Middle-mouse / touchpad two-finger:
-          none  → orbit (touchpad) or zoom (mouse wheel)
+        Middle-mouse / touchpad two-finger / LMB drag:
+          none  → orbit (touchpad/LMB) or zoom (mouse wheel)
           Shift → pan
           Ctrl  → zoom
+        Alt (with orbit/zoom) → pivot about view center, not under cursor.
+        Double-click LMB → classic reset to bounds.
         """
         if shift:
             return "pan"
         if ctrl:
             return "zoom"
-        return "orbit" if touchpad else "zoom"
+        if touchpad and self.nav_touchpad_orbit:
+            return "orbit"
+        return "zoom"
+
+    def _event_widget_xy(self, controller):
+        """Pointer position in widget coordinates (GTK top-left)."""
+        try:
+            event = controller.get_current_event()
+            if event is not None:
+                pos = event.get_position()
+                if isinstance(pos, tuple) and len(pos) >= 2:
+                    return float(pos[0]), float(pos[1])
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug("event position probe failed: %s", exc)
+        # Prefer center when we never saw motion — corner pivots are unstable.
+        if self._pointer_xy == (0.0, 0.0) and self.width > 1 and self.height > 1:
+            return self.width * 0.5, self.height * 0.5
+        return self._pointer_xy
+
+    def _world_under_pointer(self, x: float, y: float):
+        """
+        World point under the cursor on the current focal plane.
+
+        Uses F3D ``get_display_from_world`` / ``get_world_from_display`` so zoom
+        and orbit respect click/pointer location (no mesh picker required).
+        """
+        if self.window is None or self.camera is None:
+            return None
+        try:
+            scale = float(self.get_scale_factor())
+            dx, dy = gtk_to_display(x, y, self.height, scale)
+            foc = tuple(self.camera.focal_point)
+            pos = tuple(self.camera.position)
+            foc_disp = self.window.get_display_from_world(foc)
+            world = tuple(self.window.get_world_from_display((dx, dy, foc_disp[2])))
+            if not is_sane_pivot(world, pos, foc):
+                return None
+            return world
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug("world_under_pointer failed: %s", exc)
+            return None
+
+    def _elevation_gimbal_allows(self, elevation_deg: float) -> bool:
+        dist, direction = self.get_camera_to_focal_distance()
+        limit = self.get_gimble_limit()
+        if dist > limit:
+            return True
+        if direction == 1 and elevation_deg < 0:
+            return True
+        if direction == -1 and elevation_deg > 0:
+            return True
+        return False
 
     def _apply_orbit_delta(self, azimuth_deg, elevation_deg):
-        dist, direction = self.get_camera_to_focal_distance()
+        """Orbit around the current focal point (legacy / fallback)."""
         if not self.always_point_up:
             self.camera.elevation(elevation_deg)
             self.camera.azimuth(azimuth_deg)
             return
-        if (
-            dist > self.get_gimble_limit()
-            or (dist < self.get_gimble_limit())
-            and (direction == 1 and elevation_deg < 0)
-            or (dist < self.get_gimble_limit() and direction == -1 and elevation_deg > 0)
-        ):
+        if self._elevation_gimbal_allows(elevation_deg):
             self.camera.elevation(elevation_deg)
         self.camera.azimuth(azimuth_deg)
 
-    def _apply_pan_delta(self, dx, dy):
-        scale = 0.0000001 * self.width + 0.001 * self.distance
+    def _apply_orbit_at(
+        self,
+        azimuth_deg,
+        elevation_deg,
+        x: float,
+        y: float,
+        *,
+        around_cursor: bool | None = None,
+    ):
+        """
+        Orbit the camera.
+
+        Classic Exhibit (default): pivot = focal point — model stays centered.
+        Cursor mode: pivot under pointer (model can leave screen center).
+        """
+        az = axis_delta(
+            azimuth_deg, invert=self.nav_invert_x, sensitivity=self.nav_orbit_sensitivity
+        )
+        el = axis_delta(
+            elevation_deg,
+            invert=self.nav_invert_y,
+            sensitivity=self.nav_orbit_sensitivity,
+        )
+        # Soft per-event angle cap after sensitivity.
+        az = max(-15.0, min(15.0, az))
+        el = max(-15.0, min(15.0, el))
+
+        if around_cursor is None:
+            around_cursor = self.nav_orbit_around_cursor
+
+        pos = tuple(self.camera.position)
+        foc = tuple(self.camera.focal_point)
+        # Classic: lock orbit on the view/focal center so the model does not drift.
+        pivot = foc
+        if around_cursor:
+            under = self._world_under_pointer(x, y)
+            if under is not None:
+                pivot = under
+
+        up = up_dirs_vector[self.settings["scene.up_direction"]]
+
+        def gimbal_ok(_pos, _foc):
+            if not self.always_point_up:
+                return True
+            return self._elevation_gimbal_allows(el)
+
+        new_pos, new_foc = orbit_rig_around_pivot(
+            pos,
+            foc,
+            pivot,
+            up,
+            az,
+            el,
+            gimbal_ok=gimbal_ok,
+        )
+        self.camera.position = new_pos
+        self.camera.focal_point = new_foc
+
+    def _apply_pan_delta(
+        self,
+        dx,
+        dy,
+        x: float | None = None,
+        y: float | None = None,
+        *,
+        use_cursor_depth: bool = True,
+    ):
+        dx = axis_delta(dx, invert=self.nav_invert_x, sensitivity=self.nav_pan_sensitivity)
+        dy = axis_delta(dy, invert=self.nav_invert_y, sensitivity=self.nav_pan_sensitivity)
+        dist = self.distance
+        if use_cursor_depth and x is not None and y is not None:
+            under = self._world_under_pointer(x, y)
+            if under is not None:
+                dist = depth_distance(tuple(self.camera.position), under)
+        scale = pan_scale_for_distance(dist, self.width)
         self.camera.pan(dx * scale, dy * scale, 0)
 
-    def _apply_zoom_delta(self, dy):
-        factor = 1 - 0.1 * dy
+    def _apply_zoom_delta(
+        self,
+        dy,
+        x: float | None = None,
+        y: float | None = None,
+        *,
+        to_cursor: bool | None = None,
+    ):
+        dy = axis_delta(dy, invert=self.nav_invert_y, sensitivity=self.nav_zoom_sensitivity)
+        factor = clamp_dolly_factor(1 - 0.1 * dy)
+        if abs(factor - 1.0) < 1e-12:
+            return
         if self.settings.get("scene.camera.orthographic"):
             self.camera.zoom(factor)
-        else:
+            self.get_distance()
+            return
+
+        if to_cursor is None:
+            to_cursor = self.nav_zoom_to_cursor
+        use_cursor = to_cursor and x is not None and y is not None
+        cursor = self._world_under_pointer(x, y) if use_cursor else None
+        if cursor is None:
             self.camera.dolly(factor)
+            self.get_distance()
+            return
+
+        pos = tuple(self.camera.position)
+        foc = tuple(self.camera.focal_point)
+        new_pos, new_foc = dolly_to_cursor(pos, foc, factor, cursor)
+        self.camera.position = new_pos
+        self.camera.focal_point = new_foc
         self.get_distance()
+
+    def _recenter_on_pointer(self, x: float, y: float) -> bool:
+        """Set orbit center to the focal-plane point under the cursor (F3D MMB click)."""
+        if not self.nav_mmb_click_pivot:
+            return False
+        pivot = self._world_under_pointer(x, y)
+        if pivot is None:
+            return False
+        pos = tuple(self.camera.position)
+        foc = tuple(self.camera.focal_point)
+        new_pos, new_foc = pivot_camera_to_point(pos, foc, pivot, keep_camera_plane=True)
+        self.camera.position = new_pos
+        self.camera.focal_point = new_foc
+        self.get_distance()
+        return True
+
+    def _notify_camera_changed(self) -> None:
+        cb = self.camera_changed_cb
+        if not callable(cb):
+            return
+        try:
+            cb(self)
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug("camera_changed_cb failed: %s", exc)
 
     def _finalize_camera_nav(self):
         if self.always_point_up:
             up = up_dirs_vector[self.settings["scene.up_direction"]]
             self.camera.view_up = up
         self.queue_render()
+        self._notify_camera_changed()
+
+    @Gtk.Template.Callback("on_pointer_motion")
+    def on_pointer_motion(self, _controller, x, y):
+        self._pointer_xy = (float(x), float(y))
 
     @Gtk.Template.Callback("on_scroll")
     def on_scroll(self, gesture, dx, dy):
         if self.camera is None:
             return False
 
-        shift, ctrl = self._pointer_modifiers(gesture)
+        shift, ctrl, alt = self._pointer_modifiers(gesture)
         touchpad = self._scroll_is_touchpad(gesture)
         mode = self._nav_mode(shift=shift, ctrl=ctrl, touchpad=touchpad)
+        around = self._pref_toggled_by_alt(self.nav_orbit_around_cursor, alt)
+        to_cursor = self._pref_toggled_by_alt(self.nav_zoom_to_cursor, alt)
+        use_cursor_depth = self._pref_toggled_by_alt(True, alt)
+        x, y = self._event_widget_xy(gesture)
+        dx, dy = clamp_scroll_delta(dx, dy, touchpad=touchpad)
 
         # SURFACE deltas are pixel-like; WHEEL notches are ~±1.
         if mode == "pan":
             if touchpad:
-                self._apply_pan_delta(-dx, dy)
+                self._apply_pan_delta(
+                    -dx, dy, x, y, use_cursor_depth=use_cursor_depth
+                )
             else:
-                self._apply_pan_delta(-dx * 40.0, dy * 40.0)
+                self._apply_pan_delta(
+                    -dx * 40.0,
+                    dy * 40.0,
+                    x,
+                    y,
+                    use_cursor_depth=use_cursor_depth,
+                )
         elif mode == "orbit":
-            # Two-finger swipe ≈ Blender middle-mouse orbit.
+            # Two-finger swipe ≈ Blender middle-mouse orbit (low gain).
             if touchpad:
-                self._apply_orbit_delta(-dx * 0.5, dy * 0.5)
+                self._apply_orbit_at(
+                    -dx * 0.15, dy * 0.15, x, y, around_cursor=around
+                )
             else:
-                self._apply_orbit_delta(-dx * 8.0, dy * 8.0)
+                self._apply_orbit_at(
+                    -dx * 8.0, dy * 8.0, x, y, around_cursor=around
+                )
         else:
-            self._apply_zoom_delta(dy * 0.05 if touchpad else dy)
+            self._apply_zoom_delta(
+                dy * 0.05 if touchpad else dy, x, y, to_cursor=to_cursor
+            )
 
         self._finalize_camera_nav()
         return True
 
     @Gtk.Template.Callback("on_zoom_scale_changed")
     def on_zoom_scale_changed(self, zoom_gesture, scale):
-        self.camera.dolly(1 - self.prev_scale + scale)
+        if self.camera is None:
+            return
+        _shift, _ctrl, alt = self._pointer_modifiers(zoom_gesture)
+        to_cursor = self._pref_toggled_by_alt(self.nav_zoom_to_cursor, alt)
+        x, y = self._pointer_xy
+        factor = clamp_dolly_factor(1 - self.prev_scale + scale)
+        if abs(factor - 1.0) > 1e-12:
+            # Map pinch factor into zoom-delta space used by _apply_zoom_delta.
+            dy = (1.0 - factor) / 0.1
+            self._apply_zoom_delta(dy, x, y, to_cursor=to_cursor)
         self.prev_scale = scale
-        self.get_distance()
-        self.queue_render()
+        self._finalize_camera_nav()
+
+    @Gtk.Template.Callback("on_click_pressed")
+    def on_click_pressed(self, gesture, n_press, x, y):
+        # Classic F3D/viewer: double-click LMB frames the model (reset to bounds).
+        if n_press != 2 or self.camera is None:
+            return
+        self._pointer_xy = (float(x), float(y))
+        self.reset_to_bounds()
+
+    @Gtk.Template.Callback("on_drag_begin")
+    def on_drag_begin(self, gesture, x, y):
+        self.drag_prev_offset = (0, 0)
+        self._drag_start_xy = (float(x), float(y))
+        self._pointer_xy = (float(x), float(y))
+        self._drag_moved = False
+        self._drag_button = gesture.get_current_button()
+        shift, ctrl, alt = self._pointer_modifiers(gesture)
+        # Stored for the whole drag so Alt state at press decides pivot mode.
+        self._drag_orbit_around_cursor = self._pref_toggled_by_alt(
+            self.nav_orbit_around_cursor, alt
+        )
+        self._drag_zoom_to_cursor = self._pref_toggled_by_alt(
+            self.nav_zoom_to_cursor, alt
+        )
+        self._drag_use_cursor_depth = self._pref_toggled_by_alt(True, alt)
+        if self._drag_button == 2:
+            self._drag_mode = "zoom" if (ctrl and not shift) else "pan"
+        else:
+            self._drag_mode = self._nav_mode(shift=shift, ctrl=ctrl, touchpad=True)
 
     @Gtk.Template.Callback("on_drag_update")
     def on_drag_update(self, gesture, x_offset, y_offset):
@@ -1038,31 +1021,59 @@ class F3DViewer(Gtk.GLArea):
 
         dx = self.drag_prev_offset[0] - x_offset
         dy = self.drag_prev_offset[1] - y_offset
-        button = gesture.get_current_button()
-        shift, ctrl = self._pointer_modifiers(gesture)
+        if abs(x_offset) > self._click_drag_threshold or abs(y_offset) > self._click_drag_threshold:
+            self._drag_moved = True
 
-        if button == 1:
-            # LMB: Blender MMB mapping (orbit / Shift+pan / Ctrl+zoom).
-            mode = self._nav_mode(shift=shift, ctrl=ctrl, touchpad=True)
+        px = self._drag_start_xy[0] + x_offset
+        py = self._drag_start_xy[1] + y_offset
+        self._pointer_xy = (px, py)
+        mode = self._drag_mode
+
+        if self._drag_button == 1 or self._drag_button == 2:
             if mode == "pan":
-                self._apply_pan_delta(dx, -dy)
+                # GTK y grows down; camera pan y grows up.
+                self._apply_pan_delta(
+                    dx,
+                    -dy,
+                    px,
+                    py,
+                    use_cursor_depth=self._drag_use_cursor_depth,
+                )
             elif mode == "zoom":
-                self._apply_zoom_delta(dy * 0.05)
+                self._apply_zoom_delta(
+                    dy * 0.05,
+                    px,
+                    py,
+                    to_cursor=self._drag_zoom_to_cursor,
+                )
             else:
-                self._apply_orbit_delta(dx * 0.5, -dy * 0.5)
-        elif button == 2:
-            # Keep plain MMB as pan; Ctrl+MMB zooms like Blender.
-            if ctrl and not shift:
-                self._apply_zoom_delta(dy * 0.05)
-            else:
-                self._apply_pan_delta(dx, -dy)
+                # Natural: drag right → +azimuth; drag down → +elevation.
+                # Invert X/Y settings flip via axis_delta inside.
+                self._apply_orbit_at(
+                    dx * 0.5,
+                    dy * 0.5,
+                    px,
+                    py,
+                    around_cursor=self._drag_orbit_around_cursor,
+                )
 
         self._finalize_camera_nav()
         self.drag_prev_offset = (x_offset, y_offset)
 
     @Gtk.Template.Callback("on_drag_end")
     def on_drag_end(self, gesture, *args):
+        # MMB click without drag: new orbit center under cursor (F3D).
+        # Classic frame-all is double-click LMB (see on_click_pressed).
+        if (
+            self.camera is not None
+            and not self._drag_moved
+            and self._drag_button == 2
+        ):
+            x, y = self._drag_start_xy
+            if self._recenter_on_pointer(x, y):
+                self._finalize_camera_nav()
         self.drag_prev_offset = (0, 0)
+        self._drag_moved = False
 
     def create_action(self, name, callback, *args):
         action = Gio.SimpleAction.new(name, None)

@@ -18,9 +18,6 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
-import json
-import re
-import threading
 
 import gi
 
@@ -28,111 +25,57 @@ gi.require_version("Gtk", "4.0")
 gi.require_version("Adw", "1")
 
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
-from .widgets import FileRow, ViewerTab
-from wand.image import Image
 
 from . import logger_lib
+from .periodic_checker import PeriodicChecker
 from .settings_manager import WindowSettings
-from .meshopt_decompress import (
-    cleanup_decompressed,
-    clear_prepare_cache,
-    prepare_glb_for_load,
-    release_prepared,
-)
-from .gltf_scene_graph import SceneTreeNode, glb_has_skins, tree_has_mesh
-from .mesh_stats import MeshStats, collect_mesh_stats, format_overlay_text
-
-import f3d
+from .window_tabs import TabsMixin
+from .window_animation import AnimationMixin
+from .window_object_tree import ObjectTreeItem, ObjectTreeMixin
+from .window_settings_ui import SettingsUIMixin, list_to_rgb, rgb_to_list, up_dir_n_to_string, up_dir_string_to_n
+from .file_patterns import allowed_extensions, image_patterns
 
 from gettext import gettext as _
 
 _HELP_OVERLAY_RESOURCE = "/io/github/nokse22/Exhibit/gtk/help-overlay.ui"
 
-
-class ObjectTreeItem(GObject.Object):
-    """GObject wrapper for a glTF scene node in the floating object tree."""
-
-    __gtype_name__ = "ExhibitObjectTreeItem"
-
-    def __init__(self, node: SceneTreeNode):
-        super().__init__()
-        self.index = int(node.index)
-        self.name = node.name
-        self.has_mesh = bool(node.has_mesh)
-        self.children = [ObjectTreeItem(child) for child in node.children]
-
-
-up_dir_n_to_string = {
-    0: "-X",
-    1: "+X",
-    2: "-Y",
-    3: "+Y",
-    4: "-Z",
-    5: "+Z"
-}
-
-up_dir_string_to_n = {
-    "-X": 0,
-    "+X": 1,
-    "-Y": 2,
-    "+Y": 3,
-    "-Z": 4,
-    "+Z": 5
-}
-
-up_dirs_vector = {
-    "-X": (-1.0, 0.0, 0.0),
-    "+X": (1.0, 0.0, 0.0),
-    "-Y": (0.0, -1.0, 0.0),
-    "+Y": (0.0, 1.0, 0.0),
-    "-Z": (0.0, 0.0, -1.0),
-    "+Z": (0.0, 0.0, 1.0)
-}
-
-allowed_extensions = []
-
-for reader in f3d.Engine.get_readers_info():
-    allowed_extensions += reader.extensions
-
-image_patterns = ["hdr", "exr", "png", "jpg", "pnm", "tiff", "bmp"]
-
-
-class PeriodicChecker(GObject.Object):
-    def __init__(self, function):
-        super().__init__()
-
-        self._running = False
-        self._source_id = 0
-        self._function = function
-
-    def run(self):
-        if self._running:
-            return
-        self._running = True
-        self._source_id = GLib.timeout_add(500, self.periodic_check)
-
-    def stop(self):
-        self._running = False
-        if self._source_id:
-            try:
-                GLib.source_remove(self._source_id)
-            except Exception:
-                pass
-            self._source_id = 0
-
-    def periodic_check(self):
-        if self._running:
-            self._function()
-            return True
-        self._source_id = 0
-        return False
+from .window_load import LoadMixin
+from .window_layout import LayoutMixin
+from .window_chrome import ChromeMixin
+from .window_export import ExportMixin
+from .window_file_watch import FileWatchMixin
+from .window_inspect import InspectMixin
+from .window_lifecycle import LifecycleMixin
+from .window_settings_io import SettingsIOMixin
+from .window_settings_react import SettingsReactMixin
+from .window_preferences import PreferencesMixin
 
 
 @Gtk.Template(resource_path='/io/github/nokse22/Exhibit/ui/window.ui')
-class Viewer3dWindow(Adw.ApplicationWindow):
+class Viewer3dWindow(
+    TabsMixin,
+    AnimationMixin,
+    ObjectTreeMixin,
+    SettingsUIMixin,
+    SettingsIOMixin,
+    SettingsReactMixin,
+    PreferencesMixin,
+    LoadMixin,
+    LayoutMixin,
+    ChromeMixin,
+    LifecycleMixin,
+    InspectMixin,
+    FileWatchMixin,
+    ExportMixin,
+    Adw.ApplicationWindow,
+):
     __gtype_name__ = 'Viewer3dWindow'
 
     loading_label = Gtk.Template.Child()
+    error_status_page = Gtk.Template.Child()
+    recent_files_box = Gtk.Template.Child()
+    recent_files_list = Gtk.Template.Child()
+    clear_recent_button = Gtk.Template.Child()
 
     split_view = Gtk.Template.Child()
 
@@ -146,6 +89,13 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     loading_drop_target = Gtk.Template.Child()
 
     toast_overlay = Gtk.Template.Child()
+    split_compare_main_paned = Gtk.Template.Child()
+    split_compare_revealer = Gtk.Template.Child()
+    split_compare_column = Gtk.Template.Child()
+    split_compare_paned = Gtk.Template.Child()
+    split_compare_pin_check = Gtk.Template.Child()
+    split_compare_swap_button = Gtk.Template.Child()
+    split_compare_primary_label = Gtk.Template.Child()
 
     grid_switch = Gtk.Template.Child()
     absolute_grid_switch = Gtk.Template.Child()
@@ -171,10 +121,25 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
     point_up_switch = Gtk.Template.Child()
     up_direction_combo = Gtk.Template.Child()
+    nav_invert_y_switch = Gtk.Template.Child()
+    nav_invert_x_switch = Gtk.Template.Child()
+    nav_zoom_to_cursor_switch = Gtk.Template.Child()
+    nav_orbit_around_cursor_switch = Gtk.Template.Child()
+    nav_touchpad_orbit_switch = Gtk.Template.Child()
+    nav_mmb_click_pivot_switch = Gtk.Template.Child()
+    nav_orbit_sensitivity_spin = Gtk.Template.Child()
+    nav_zoom_sensitivity_spin = Gtk.Template.Child()
+    nav_pan_sensitivity_spin = Gtk.Template.Child()
 
     automatic_settings_switch = Gtk.Template.Child()
+    restore_session_switch = Gtk.Template.Child()
 
     automatic_reload_switch = Gtk.Template.Child()
+
+    preferences_dialog = Gtk.Template.Child()
+    preferences_button = Gtk.Template.Child()
+    theme_toggle_button = Gtk.Template.Child()
+    home_button_headerbar = Gtk.Template.Child()
 
     points_group = Gtk.Template.Child()
     spheres_switch = Gtk.Template.Child()
@@ -192,7 +157,11 @@ class Viewer3dWindow(Adw.ApplicationWindow):
     armature_switch = Gtk.Template.Child()
     checkerboard_switch = Gtk.Template.Child()
     normal_glyphs_switch = Gtk.Template.Child()
+    normal_glyphs_scale_spin = Gtk.Template.Child()
     display_depth_switch = Gtk.Template.Child()
+    skin_weights_switch = Gtk.Template.Child()
+    skin_weights_mode_combo = Gtk.Template.Child()
+    skin_weights_joint_combo = Gtk.Template.Child()
     stats_overlay_switch = Gtk.Template.Child()
 
     model_color_row = Gtk.Template.Child()
@@ -239,8 +208,14 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self._anim_bindings = []
         self._playing_handler_id = 0
         self._switching_tab = False
+        self._pending_open_paths: list[str] = []
         self._mesh_stats = None
         self._armature_xray_restore = None
+        self._depth_opacity_restore = None
+        self._skin_weights_scivis_restore = None
+        self._skin_weights_base_path = None
+        self._skin_weights_heat_temp = None
+        self._skin_weights_joints = []
         self.filepath = ""
         self.file_name = ""
         self._cached_time_stamp = 0.0
@@ -252,37 +227,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         builder = Gtk.Builder.new_from_resource(_HELP_OVERLAY_RESOURCE)
         self.set_help_overlay(builder.get_object("help_overlay"))
 
-        # Defining all the actions
-        self.save_as_action = self.create_action(
-            'save-as-image', self.open_save_file_chooser)
-        self.open_new_action = self.create_action(
-            'open-new', self.open_file_chooser)
-        self.open_new_action = self.create_action(
-            'add-new', self.open_file_chooser)
-
-        self.orthographic_action = Gio.SimpleAction.new_stateful(
-            "orthographic",
-            None,
-            GLib.Variant(
-                "b", self.window_settings.get_setting("orthographic").value))
-        self.orthographic_action.connect(
-            "change-state", self.orthographic_state_changed)
-        self.window_settings.get_setting("orthographic").connect(
-            "changed", self.on_orthographic_changed)
-        self.add_action(self.orthographic_action)
-
-        self.settings_action = Gio.SimpleAction.new_stateful(
-            "settings",
-            GLib.VariantType.new("s"),
-            GLib.Variant("s", "general"))
-        self.settings_action.connect(
-            "change-state",
-            lambda action, state: self.change_setting_state(state))
-        self.add_action(self.settings_action)
-
-        self.save_settings_action = self.create_action(
-            'save-settings', self.on_save_settings)
-        self.save_settings_action.set_enabled(False)
+        self._setup_window_actions()
 
         # Initialize the change checker
         self.change_checker = PeriodicChecker(
@@ -314,6 +259,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         # Setting drop target type
         self.view_drop_target.set_gtypes([Gdk.FileList])
         self.loading_drop_target.set_gtypes([Gdk.FileList])
+        self._refresh_recent_files_ui()
 
         # Setting the window to the last state
         self.set_default_size(
@@ -344,6 +290,9 @@ class Viewer3dWindow(Adw.ApplicationWindow):
 
         # First empty viewer tab (bindings + settings target).
         self._add_viewer_tab(title=_("Untitled"), select=True)
+        # close-page is connected in code: signals nested under GtkPaned
+        # start-child are not always seen by Gtk.Template.Callback scanning.
+        self.tab_view.connect("close-page", self.on_tab_close_page)
         self.tab_view.connect(
             "notify::selected-page", self.on_tab_selected_page)
 
@@ -386,101 +335,7 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.save_settings_extensions_entry.connect(
             "changed", self.on_save_settings_extensions_entry_changed)
 
-        # Setting the UI and connecting widgets
-        self.window_settings.connect(
-            "changed-other", self.on_other_setting_changed)
-        self.window_settings.connect(
-            "changed-internal", self.on_internal_setting_changed)
-        self.window_settings.connect(
-            "changed-view", self.on_view_setting_changed)
-
-        # Switches signals
-        switches = [
-            (self.grid_switch, "grid"),
-            (self.absolute_grid_switch, "grid-absolute"),
-            (self.translucency_switch, "translucency-support"),
-            (self.tone_mapping_switch, "tone-mapping"),
-            (self.ambient_occlusion_switch, "ambient-occlusion"),
-            (self.anti_aliasing_switch, "anti-aliasing"),
-            (self.hdri_ambient_switch, "hdri-ambient"),
-            (self.edges_switch, "show-edges"),
-            (self.spheres_switch, "sprite-enabled"),
-            (self.use_skybox_switch, "hdri-skybox"),
-            (self.blur_switch, "blur-background"),
-            (self.use_color_switch, "use-color"),
-            (self.automatic_settings_switch, "auto-best"),
-            (self.automatic_reload_switch, "auto-reload"),
-            (self.point_up_switch, "point-up"),
-            (self.armature_switch, "armature-enable"),
-            (self.checkerboard_switch, "checkerboard-enable"),
-            (self.normal_glyphs_switch, "normal-glyphs"),
-            (self.display_depth_switch, "display-depth"),
-            (self.stats_overlay_switch, "stats-overlay"),
-        ]
-
-        for switch, name in switches:
-            switch.connect("notify::active", self.on_switch_toggled, name)
-            setting = self.window_settings.get_setting(name)
-            setting.connect("changed", self.set_switch_to, switch)
-
-        # Spins
-        spins = [
-            (self.edges_width_spin, "edges-width"),
-            (self.points_size_spin, "point-size"),
-            (self.sprite_size_spin, "sprites-size"),
-            (self.model_roughness_spin, "model-roughness"),
-            (self.model_metallic_spin, "model-metallic"),
-            (self.model_opacity_spin, "model-opacity"),
-            (self.blur_coc_spin, "blur-coc"),
-            (self.light_intensity_spin, "light-intensity"),
-        ]
-
-        for spin, name in spins:
-            spin.connect("notify::value", self.on_spin_changed, name)
-            setting = self.window_settings.get_setting(name)
-            setting.connect("changed", self.set_spin_to, spin)
-
-        # Color buttons
-        self.model_color_button.connect(
-            "notify::rgba", self.on_color_changed, "model-color")
-        self.background_color_button.connect(
-            "notify::rgba", self.on_color_changed, "bg-color")
-        self.window_settings.get_setting("model-color").connect(
-            "changed", self.set_color_button, self.model_color_button)
-        self.window_settings.get_setting("bg-color").connect(
-            "changed", self.set_color_button, self.background_color_button)
-
-        # File rows
-        self.hdri_file_row.connect(
-            "delete-file", self.on_delete_skybox)
-        self.hdri_file_row.connect(
-            "file-added", lambda row, filepath: self.load_hdri(filepath))
-        self.window_settings.get_setting("hdri-file").connect(
-            "changed", self.set_hdri_file_row)
-
-        # Combos
-        self.model_scivis_component_combo.connect(
-            "notify::selected", self.on_scivis_component_combo_changed)
-        self.window_settings.get_setting("up").connect(
-            "changed", self.set_up_direction_combo)
-        self.window_settings.get_setting("scivis-component").connect(
-            "changed", self.set_scivis_component_combo)
-        self.window_settings.get_setting("cells").connect(
-            "changed", self.set_scivis_component_combo)
-        self.point_sprites_type_combo.connect(
-            "notify::selected", self.point_sprites_type_combo_changed)
-        self.window_settings.get_setting("sprites-type").connect(
-            "changed", self.set_point_sprites_type_combo_changed)
-
-        # Others
-        self.background_color_button.connect(
-            "notify::rgba", self.update_background_color)
-
-        self.up_direction_combo.connect(
-            "notify::selected", self.on_up_direction_combo_changed)
-
-        self.window_settings.set_setting(
-            "auto-best", self.saved_settings.get_boolean("auto-best"))
+        self._wire_settings_widgets()
 
         self.play_button.connect("clicked", self.on_play_button_clicked)
         self._bind_animation_controls(self.f3d_viewer)
@@ -508,1709 +363,254 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         if startup_filepath:
             self.logger.info(f"startup file detected: {startup_filepath}")
             self.load_file(filepath=startup_filepath)
+        else:
+            self._restore_session_files()
+
+        GLib.timeout_add(250, self._maybe_restore_split_compare)
 
         self.logger.info("Started")
 
-    # ---- Multi-document tabs ---------------------------------------------
-
-    @property
-    def f3d_viewer(self):
-        tab = self._active_tab()
-        if tab is None:
-            raise RuntimeError("No viewer tab available")
-        return tab.viewer
-
-    @property
-    def stats_overlay_label(self):
-        tab = self._active_tab()
-        if tab is None:
-            raise RuntimeError("No viewer tab available")
-        return tab.stats_overlay_label
-
-    def _active_tab(self) -> ViewerTab | None:
-        page = self.tab_view.get_selected_page()
-        if page is None:
-            return None
-        child = page.get_child()
-        return child if isinstance(child, ViewerTab) else None
-
-    def _tab_page(self, tab: ViewerTab):
-        return self.tab_view.get_page(tab)
-
-    def _iter_tabs(self):
-        for i in range(self.tab_view.get_n_pages()):
-            child = self.tab_view.get_nth_page(i).get_child()
-            if isinstance(child, ViewerTab):
-                yield child
-
-    def _update_all_viewers_options(self, options, queue_render=True):
-        for tab in self._iter_tabs():
-            tab.viewer.update_options(options, queue_render=queue_render)
-
-    def _update_tab_bar_visibility(self) -> bool:
-        # Only after 2+ models are ready — during 2nd open: no bar, full-bleed
-        # loading cover on the new tab (feels like a single-file transition).
-        loaded = sum(1 for t in self._iter_tabs() if t.loaded)
-        want_bar = loaded > 1
-        was_bar = self.tab_bar.get_visible()
-        self.tab_bar.set_visible(want_bar)
-        self.toolbar_view.set_extend_content_to_top_edge(not want_bar)
-        chrome_changed = was_bar != want_bar
-        if chrome_changed:
-            GLib.timeout_add(100, self._reframe_after_chrome_change)
-        return chrome_changed
-
-    def _reframe_after_chrome_change(self):
-        """Re-fit cameras after tab bar steals/returns vertical space."""
-        for tab in self._iter_tabs():
-            if not tab.loaded:
-                continue
-            viewer = tab.viewer
-            if viewer.camera is None:
-                continue
-            try:
-                viewer.reset_to_bounds()
-            except Exception as exc:
-                self.logger.debug(f"reframe skipped: {exc}")
-        return GLib.SOURCE_REMOVE
-
-    def _configure_tab_page(self, page, tab: ViewerTab):
-        title = tab.tab_title(_("modified"), _("Untitled"))
-        page.set_title(title)
-        page.set_icon(Gio.ThemedIcon.new("image-x-generic-symbolic"))
-        tooltip = tab.filepath or tab.file_name or title
-        if tab.externally_modified and tab.filepath:
-            tooltip = _("{path} — changed on disk").format(path=tab.filepath)
-        if hasattr(page, "set_tooltip"):
-            page.set_tooltip(tooltip)
-        else:
-            tab.set_tooltip_text(tooltip)
-
-    def _refresh_tab_title(self, tab: ViewerTab | None):
-        if tab is None:
-            return
-        page = self._tab_page(tab)
-        if page is not None:
-            self._configure_tab_page(page, tab)
-
-    @staticmethod
-    def _file_mtime(path: str) -> float | None:
-        if not path:
-            return None
-        try:
-            return os.stat(path).st_mtime
-        except OSError:
-            return None
-
-    def _mark_tab_externally_modified(self, tab: ViewerTab, disk_mtime: float):
-        tab.externally_modified = True
-        tab.seen_disk_mtime = disk_mtime
-        self._refresh_tab_title(tab)
-        if tab is self._active_tab():
-            self._sync_window_from_tab(tab)
-        self.logger.info(
-            f"External change: {tab.file_name or tab.filepath}")
-
-    def _clear_tab_modified(self, tab: ViewerTab, disk_mtime: float | None = None):
-        tab.externally_modified = False
-        if disk_mtime is not None:
-            tab.loaded_mtime = disk_mtime
-            tab.seen_disk_mtime = disk_mtime
-        self._refresh_tab_title(tab)
-        if tab is self._active_tab():
-            self._sync_window_from_tab(tab)
-
-    def _prompt_reload_if_modified(self, tab: ViewerTab | None):
-        if tab is None or not tab.externally_modified or not tab.filepath:
-            return
-        if tab._reload_dialog_open or self.block_reload:
-            return
-        if self.stack.get_visible_child_name() != "3d_page":
-            return
-
-        tab._reload_dialog_open = True
-        name = tab.file_name or os.path.basename(tab.filepath)
-
-        dialog = Adw.AlertDialog(
-            heading=_("File changed on disk"),
-            body=_("“{name}” was modified outside Exhibit. Reload the new version?").format(
-                name=name
-            ),
-        )
-        dialog.add_response("keep", _("Keep current"))
-        dialog.add_response("reload", _("Reload"))
-        dialog.set_response_appearance("reload", Adw.ResponseAppearance.SUGGESTED)
-        dialog.set_default_response("reload")
-        dialog.set_close_response("keep")
-
-        def on_response(_dialog, response):
-            tab._reload_dialog_open = False
-            if response == "reload":
-                self._reload_tab(tab, preserve_orientation=True)
-            else:
-                # Acknowledge disk version so we don't re-prompt until next change.
-                mtime = self._file_mtime(tab.filepath)
-                if mtime is not None:
-                    self._clear_tab_modified(tab, mtime)
-                else:
-                    self._clear_tab_modified(tab, tab.loaded_mtime)
-
-        dialog.connect("response", on_response)
-        dialog.present(self)
-        return GLib.SOURCE_REMOVE
-
-    def _reload_tab(self, tab: ViewerTab, preserve_orientation: bool = True):
-        if not tab.filepath:
-            return
-        if self.block_reload:
-            return
-        if self._active_tab() is not tab:
-            page = self._tab_page(tab)
-            if page is not None:
-                self._switching_tab = True
-                self.tab_view.set_selected_page(page)
-                self._switching_tab = False
-                self._bind_animation_controls(tab.viewer)
-                self._sync_window_from_tab(tab)
-        self.load_file(
-            filepath=tab.filepath,
-            override=True,
-            preserve_orientation=preserve_orientation,
-            new_tab=False,
-            _tab=tab,
-        )
-
-    def on_window_is_active(self, *args):
-        if not self.get_property("is-active"):
-            return
-        self._prompt_reload_if_modified(self._active_tab())
-
-    def _add_viewer_tab(self, title: str = "", select: bool = True) -> ViewerTab:
-        tab = ViewerTab()
-        if title:
-            tab.file_name = title
-        page = self.tab_view.append(tab)
-        self._configure_tab_page(page, tab)
-        tab.viewer.update_options(self.window_settings.get_view_settings())
-        if select:
-            self.tab_view.set_selected_page(page)
-            self._bind_animation_controls(tab.viewer)
-        self._update_tab_bar_visibility()
-        return tab
-
-    def _unbind_animation_controls(self, viewer=None) -> None:
-        """Drop scrubber bindings / playing handler (optionally for one viewer)."""
-        for binding in self._anim_bindings:
-            try:
-                binding.unbind()
-            except Exception:
-                pass
-        self._anim_bindings = []
-        handler_id = self._playing_handler_id
-        self._playing_handler_id = 0
-        if not handler_id:
-            return
-        viewers = [viewer] if viewer is not None else [
-            tab.viewer for tab in self._iter_tabs()
-        ]
-        for candidate in viewers:
-            if candidate is None:
-                continue
-            try:
-                if candidate.handler_is_connected(handler_id):
-                    candidate.disconnect(handler_id)
-                    return
-            except Exception:
-                pass
-
-    def _bind_animation_controls(self, viewer):
-        self._unbind_animation_controls()
-        flags_range = GObject.BindingFlags.BIDIRECTIONAL
-        flags_value = (
-            GObject.BindingFlags.BIDIRECTIONAL
-            | GObject.BindingFlags.SYNC_CREATE)
-        self._anim_bindings = [
-            self.animation_time_adj.bind_property(
-                "lower", viewer, "lower-time-range", flags_range),
-            self.animation_time_adj.bind_property(
-                "upper", viewer, "upper-time-range", flags_range),
-            self.animation_time_adj.bind_property(
-                "value", viewer, "animation-time", flags_value),
-        ]
-        self._playing_handler_id = viewer.connect(
-            "notify::playing", self.on_playing_changed)
-        self.on_playing_changed()
-
-    def _sync_window_from_tab(self, tab: ViewerTab | None):
-        if tab is None:
-            self.filepath = ""
-            self.file_name = ""
-            self._mesh_stats = None
-            return
-        self.filepath = tab.filepath
-        self.file_name = tab.file_name
-        self._mesh_stats = tab.mesh_stats
-        # Keep per-tab x-ray restore; do not invent defaults across switches.
-        self._armature_xray_restore = tab.armature_xray_restore
-        if tab.loaded:
-            label = tab.tab_title(_("modified"), _("Untitled"))
-            self.set_title(_("Exhibit - {}").format(label))
-            self.title_widget.set_subtitle(label)
-        else:
-            self.set_title(_("Exhibit"))
-            self.title_widget.set_subtitle(_("Asset preview"))
-
-    def on_tab_selected_page(self, *args):
-        if self._switching_tab:
-            return
-        tab = self._active_tab()
-        if tab is None:
-            return
-        self._switching_tab = True
-        try:
-            self._bind_animation_controls(tab.viewer)
-            self._sync_window_from_tab(tab)
-            if tab.loaded:
-                self.no_file_loaded = False
-                self.refresh_animation_combo()
-                self.refresh_object_tree()
-                if self.window_settings.get_setting("stats-overlay").value:
-                    self._apply_stats_overlay(True)
-                else:
-                    tab.stats_overlay_label.set_visible(False)
-                # Do not baseline/clear (modified) here — that races the prompt.
-                self.change_checker.run()
-                tab.viewer.grab_focus()
-                # Ensure GL picks up the visible allocation after a switch.
-                GLib.idle_add(tab.viewer.queue_render)
-                GLib.idle_add(self._prompt_reload_if_modified, tab)
-            self._update_tab_bar_visibility()
-        finally:
-            self._switching_tab = False
-
-    def _release_warm_holder_temps(self, holder: dict) -> None:
-        """Drop prepare temps owned by a cancelled/abandoned warm-load holder."""
-        if not holder or holder.get("_temps_released"):
-            return
-        if not holder.get("ready") or "ok" not in holder:
-            return
-        holder["_temps_released"] = True
-        _resolved, load_path, meshopt_temp = holder["ok"]
-        cleanup_decompressed(meshopt_temp)
-        if load_path != _resolved:
-            release_prepared(load_path)
-
-    def _cancel_warm_load(self, tab: ViewerTab) -> None:
-        """Abort in-flight warm load for a tab and free retained prepare temps."""
-        holder = getattr(tab, "_warm_load_holder", None)
-        tab._warm_load_holder = None
-        if not holder or holder.get("finished"):
-            return
-        holder["cancelled"] = True
-        self._release_warm_holder_temps(holder)
-
-    @Gtk.Template.Callback("on_tab_close_page")
-    def on_tab_close_page(self, tab_view, page):
-        tab = page.get_child()
-        closing_viewer = tab.viewer if isinstance(tab, ViewerTab) else None
-        was_selected = self.tab_view.get_selected_page() == page
-
-        # Block notify::selected-page re-entrancy while pages reshuffle.
-        self._switching_tab = True
-        created_empty = False
-        try:
-            if was_selected:
-                self._unbind_animation_controls(closing_viewer)
-
-            self.tab_view.close_page_finish(page, True)
-            if isinstance(tab, ViewerTab):
-                self._cancel_warm_load(tab)
-                try:
-                    tab.viewer.release_resources()
-                except Exception:
-                    pass
-                tab.mesh_stats = None
-                tab.loaded = False
-                try:
-                    tab.clear_overlays()
-                except Exception:
-                    pass
-
-            if self.tab_view.get_n_pages() == 0:
-                self.no_file_loaded = True
-                self.filepath = ""
-                self.file_name = ""
-                self._mesh_stats = None
-                self.change_checker.stop()
-                self.set_title(_("Exhibit"))
-                self.title_widget.set_subtitle(_("Asset preview"))
-                self.stack.set_visible_child_name("startup_page")
-                self.startup_stack.set_visible_child_name("welcome_page")
-                self._add_viewer_tab(select=True)
-                created_empty = True
-        finally:
-            self._switching_tab = False
-
-        # Empty-tab path already bound via _add_viewer_tab(select=True).
-        if was_selected and not created_empty and self.tab_view.get_n_pages() > 0:
-            self.on_tab_selected_page()
-        self._update_tab_bar_visibility()
-        return Gdk.EVENT_STOP
-
-    def setup_configurations(self):
-        self.configurations = Gio.resources_lookup_data(
-            '/io/github/nokse22/Exhibit/configurations.json',
-            Gio.ResourceLookupFlags.NONE).get_data().decode('utf-8')
-        self.configurations = json.loads(self.configurations)
-
-        for filename in os.listdir(self.user_configurations_path):
-            if filename.endswith('.json'):
-                filepath = os.path.join(
-                    self.user_configurations_path, filename)
-                with open(filepath, 'r') as file:
-                    try:
-                        configuration = json.load(file)
-
-                        # Check if the loaded configurations
-                        #   has all the required keys
-                        required_keys = {
-                            "name", "formats",
-                            "view-settings", "other-settings"
-                        }
-                        first_key_value = next(iter(configuration.values()))
-                        if required_keys.issubset(first_key_value.keys()):
-                            self.configurations.update(configuration)
-                        else:
-                            self.logger.error(
-                                f"Error: {filepath} is missing required keys.")
-
-                    except json.JSONDecodeError as e:
-                        self.logger.error(f"Error reading {filename}: {e}")
-
-        item = Gio.MenuItem.new("Custom", "win.settings")
-        item.set_attribute_value("target", GLib.Variant.new_string("custom"))
-        self.settings_section.append_item(item)
-
-        for key, setting in self.configurations.items():
-            item = Gio.MenuItem.new(setting["name"], "win.settings")
-            item.set_attribute_value("target", GLib.Variant.new_string(key))
-            self.settings_section.append_item(item)
-
-    def setup_hdri_folder(self):
-        if os.path.isdir(self.hdri_path):
-            return
-
-        os.makedirs(self.hdri_path, exist_ok=True)
-        os.makedirs(self.hdri_thumbnails_path, exist_ok=True)
-
-        hdri_names = ["city.hdr", "meadow.hdr", "field.hdr", "sky.hdr"]
-        for hdri_filename in hdri_names:
-            if not os.path.isfile(self.hdri_path + hdri_filename):
-                hdri = Gio.resources_lookup_data(
-                    '/io/github/nokse22/Exhibit/HDRIs/' + hdri_filename,
-                    Gio.ResourceLookupFlags.NONE).get_data()
-                hdri_bytes = bytearray(hdri)
-                with open(self.hdri_path + hdri_filename, 'wb') as output_file:
-                    output_file.write(hdri_bytes)
-                self.logger.info(f"Added {hdri_filename}")
-
-    #
-    # Functions that set the UI from the settings, triggered when
-    #   a setting has changed.
-
-    def set_hdri_file_row(self, setting, name, enum):
-        self.logger.info(f"Setting hdri file row filename to {setting.value}")
-        self.hdri_file_row.set_filename(setting.value)
-
-    def set_switch_to(self, setting, name, enum, switch):
-        self.logger.info(f"Setting switch to {setting.value}")
-        switch.set_active(setting.value)
-
-    def set_spin_to(self, setting, name, enum, spin):
-        self.logger.info(f"Setting spin to {setting.value}")
-        spin.set_value(setting.value)
-
-    def set_up_direction_combo(self, *args):
-        val = up_dir_string_to_n[self.window_settings.get_setting("up").value]
-        self.logger.info(f"Setting up direction combo to {val}")
-        self.up_direction_combo.set_selected(val)
-
-    def set_color_button(self, setting, name, enum, color_button):
-        rgba = Gdk.RGBA()
-        rgba.parse(list_to_rgb(setting.value))
-        color_button.set_rgba(rgba)
-
-    def set_scivis_component_combo(self, setting, *args):
-        selected = self.model_scivis_component_combo.get_selected()
-        self.logger.debug(
-            f"Setting scivis component combo, selected: {selected}")
-        self.model_color_row.set_sensitive(True if selected == 0 else False)
-
-        if (self.window_settings.get_setting("scivis-component").value == -1 and
-                self.window_settings.get_setting("cells").value):
-            self.model_scivis_component_combo.set_selected(0)
-        else:
-            self.model_scivis_component_combo.set_selected(
-                -self.window_settings.get_setting("scivis-component").value + 1)
-
-    _SPRITE_TYPES = ("sphere", "gaussian", "circle", "cross", "stddev", "bound")
-
-    def set_point_sprites_type_combo_changed(self, setting, *args):
-        value = self.window_settings.get_setting("sprites-type").value
-        try:
-            index = self._SPRITE_TYPES.index(value)
-        except ValueError:
-            index = 0
-        self.point_sprites_type_combo.set_selected(index)
-
-    # Functions that are called when a UI changes, they should only
-    #   set the corresponding setting.
-
-    def _animation_index_from_combo(self):
-        selected = self.animation_combo.get_selected()
-        if selected == Gtk.INVALID_LIST_POSITION or selected == 0:
-            # First item is "None" → no clip / bind pose
-            return None
-        # Second item is "All animations" → -1
-        if selected == 1:
-            return -1
-        return int(selected) - 2
-
-    def _combo_position_for_animation_index(self, index):
-        if index is None:
-            return 0
-        if index < 0:
-            return 1
-        return int(index) + 2
-
-    def _set_animation_controls_sensitive(self, enabled: bool) -> None:
-        self.play_button.set_sensitive(enabled)
-        self.animation_time_scale.set_sensitive(enabled)
-
-    def refresh_animation_combo(self):
-        count = self.f3d_viewer.available_animations()
-        if count <= 0:
-            self.animation_group.set_visible(False)
-            self.animation_time_scale.clear_marks()
-            self._set_animation_controls_sensitive(False)
-            return
-
-        names = self.f3d_viewer.get_animation_names()
-        string_list = Gtk.StringList()
-        string_list.append(_("None"))
-        string_list.append(_("All animations"))
-        for i in range(count):
-            name = names[i] if i < len(names) else ""
-            if name:
-                string_list.append(name)
-            else:
-                string_list.append(_("Animation {}").format(i))
-
-        current = self.window_settings.get_setting("animation-index").value
-        if isinstance(current, int) and current >= count:
-            current = None
-            self.window_settings.set_setting("animation-index", current, False)
-
-        position = self._combo_position_for_animation_index(current)
-        if position >= string_list.get_n_items():
-            position = 0
-
-        self._block_animation_combo = True
-        try:
-            self.animation_combo.set_model(string_list)
-            self.animation_combo.set_selected(position)
-        finally:
-            self._block_animation_combo = False
-
-        self.animation_group.set_visible(True)
-        self._set_animation_controls_sensitive(current is not None)
-        if current is None:
-            self.animation_time_adj.set_lower(0)
-            self.animation_time_adj.set_upper(0)
-            self.animation_time_scale.clear_marks()
-        else:
-            lower = self.f3d_viewer.lower_time_range
-            upper = self.f3d_viewer.upper_time_range
-            self.animation_time_adj.set_lower(lower)
-            self.animation_time_adj.set_upper(upper)
-            self._refresh_animation_keyframe_marks()
-
-    def on_animation_combo_changed(self, *args):
-        if self._block_animation_combo:
-            return
-
-        index = self._animation_index_from_combo()
-        self.window_settings.set_setting("animation-index", index)
-        self.f3d_viewer.update_options({"animation-index": index})
-        self.f3d_viewer.playing = False
-        # Clip switches via scene.animation.indices. Returning to None needs a
-        # reimport — clearing indices alone leaves the last skin pose.
-        if index is None:
-            if not self.f3d_viewer.reset_to_bind_pose():
-                self.send_toast(_("Couldn't reset animation pose"))
-            self._set_animation_controls_sensitive(False)
-            self.animation_time_adj.set_lower(0)
-            self.animation_time_adj.set_upper(0)
-            self.f3d_viewer.notify("lower-time-range")
-            self.f3d_viewer.notify("upper-time-range")
-            self.animation_time_scale.clear_marks()
-            return
-
-        self._set_animation_controls_sensitive(True)
-        lower = self.f3d_viewer.lower_time_range
-        upper = self.f3d_viewer.upper_time_range
-        self.animation_time_adj.set_lower(lower)
-        self.animation_time_adj.set_upper(upper)
-        self.f3d_viewer.notify("lower-time-range")
-        self.f3d_viewer.notify("upper-time-range")
-        self.f3d_viewer.animation_time = lower
-        self._refresh_animation_keyframe_marks()
-
-    def _refresh_animation_keyframe_marks(self) -> None:
-        """Mark keyframe times on the scrubber (F3D get_animation_keyframes)."""
-        scale = self.animation_time_scale
-        scale.clear_marks()
-        if not self.animation_group.get_visible():
-            return
-        keyframes = self.f3d_viewer.get_animation_keyframes()
-        if not keyframes:
-            return
-        lower = self.animation_time_adj.get_lower()
-        upper = self.animation_time_adj.get_upper()
-        for time_value in keyframes:
-            if time_value < lower or time_value > upper:
-                continue
-            scale.add_mark(time_value, Gtk.PositionType.TOP, None)
-
-    def _setup_object_tree_view(self):
-        factory = Gtk.SignalListItemFactory()
-        factory.connect("setup", self._on_object_tree_setup)
-        factory.connect("bind", self._on_object_tree_bind)
-        factory.connect("unbind", self._on_object_tree_unbind)
-        self.object_tree_view.set_factory(factory)
-        empty = Gio.ListStore.new(ObjectTreeItem)
-        self.object_tree_view.set_model(Gtk.NoSelection.new(empty))
-
-    def _object_tree_child_model(self, item):
-        if not isinstance(item, ObjectTreeItem) or not item.children:
-            return None
-        store = Gio.ListStore.new(ObjectTreeItem)
-        for child in item.children:
-            store.append(child)
-        return store
-
-    def refresh_object_tree(self):
-        try:
-            roots = self.f3d_viewer.get_scene_tree()
-            available = tree_has_mesh(roots)
-            self.object_tree_button.set_visible(available)
-
-            if not available:
-                self._scene_tree_roots = []
-                empty = Gio.ListStore.new(ObjectTreeItem)
-                self.object_tree_view.set_model(Gtk.NoSelection.new(empty))
-                if self.object_tree_popover is not None and self.object_tree_popover.get_visible():
-                    self.object_tree_popover.popdown()
-                return
-
-            self._scene_tree_roots = [ObjectTreeItem(node) for node in roots]
-            root_store = Gio.ListStore.new(ObjectTreeItem)
-            for item in self._scene_tree_roots:
-                root_store.append(item)
-
-            tree_model = Gtk.TreeListModel.new(
-                root_store,
-                False,
-                True,
-                self._object_tree_child_model,
-            )
-            self.object_tree_view.set_model(Gtk.NoSelection.new(tree_model))
-        except Exception as e:
-            self.logger.error(f"Error while building object tree: {e}")
-            self.object_tree_button.set_visible(False)
-
-    def _on_object_tree_setup(self, factory, list_item):
-        expander = Gtk.TreeExpander()
-        expander.set_indent_for_icon(True)
-
-        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-        check = Gtk.CheckButton()
-        label = Gtk.Label(xalign=0.0, hexpand=True)
-        label.set_wrap(False)
-        label.set_ellipsize(Pango.EllipsizeMode.END)
-        row.append(check)
-        row.append(label)
-        expander.set_child(row)
-        list_item.set_child(expander)
-
-    def _on_object_tree_bind(self, factory, list_item):
-        tree_row = list_item.get_item()
-        if tree_row is None:
-            return
-        item = tree_row.get_item()
-        expander = list_item.get_child()
-        expander.set_list_row(tree_row)
-
-        row = expander.get_child()
-        check = row.get_first_child()
-        label = check.get_next_sibling()
-        label.set_label(item.name)
-        if item.has_mesh:
-            label.remove_css_class("object-tree-structural")
-        else:
-            label.add_css_class("object-tree-structural")
-
-        hidden = self.f3d_viewer.get_effective_hidden_part_indices()
-        self._block_object_tree = True
-        try:
-            check.set_active(item.index not in hidden)
-        finally:
-            self._block_object_tree = False
-
-        handler_id = check.connect(
-            "notify::active", self.on_object_part_toggled, item.index
-        )
-        self._object_tree_check_handlers[id(check)] = handler_id
-
-    def _on_object_tree_unbind(self, factory, list_item):
-        expander = list_item.get_child()
-        if expander is None:
-            return
-        row = expander.get_child()
-        if row is None:
-            return
-        check = row.get_first_child()
-        handler_id = self._object_tree_check_handlers.pop(id(check), None)
-        if handler_id is not None:
-            check.disconnect(handler_id)
-
-    def on_object_part_toggled(self, check, _pspec, node_index):
-        if self._block_object_tree:
-            return
-        if not self.f3d_viewer.set_part_visible(node_index, check.get_active()):
-            self.send_toast(_("Couldn't update object visibility"))
-            self._block_object_tree = True
-            try:
-                check.set_active(not check.get_active())
-            finally:
-                self._block_object_tree = False
-            return
-        # Ancestor hide expands via effective_hidden — refresh checkboxes.
-        GLib.idle_add(self.refresh_object_tree)
-
-    def on_switch_toggled(self, switch, active, name):
-        self.window_settings.set_setting(name, switch.get_active())
-
-    def on_spin_changed(self, spin, value, name):
-        val = float(round(spin.get_value(), 2))
-        self.window_settings.set_setting(name, val)
-
-    def on_color_changed(self, btn, color, setting):
-        color_list = rgb_to_list(btn.get_rgba().to_string())
-        self.window_settings.set_setting(setting, color_list)
-
-    def on_up_direction_combo_changed(self, combo, *args):
-        direction = up_dir_n_to_string[combo.get_selected()]
-        self.window_settings.set_setting("up", direction)
-
-    def on_scivis_component_combo_changed(self, *args):
-        selected = self.model_scivis_component_combo.get_selected()
-        self.model_color_row.set_sensitive(True if selected == 0 else False)
-
-        if selected == 0:
-            self.window_settings.set_setting("scivis-component", -1, False)
-            self.window_settings.set_setting("cells", True)
-            self.window_settings.set_setting("scivis-enabled", False)
-        else:
-            self.window_settings.set_setting("scivis-component", -(selected - 1))
-            self.window_settings.set_setting("cells", False)
-            self.window_settings.set_setting("scivis-enabled", True)
-
-    def point_sprites_type_combo_changed(self, *args):
-        selected = self.point_sprites_type_combo.get_selected()
-        if selected < 0 or selected >= len(self._SPRITE_TYPES):
-            value = "sphere"
-        else:
-            value = self._SPRITE_TYPES[selected]
-        # update=False avoids combo re-entry; still emit changed-view → viewer.
-        self.window_settings.set_setting("sprites-type", value, False)
-    #
-    # Special functions called when a setting changes that trigger
-    #   an action like reloading.
-
-    def reload_file(self, pres_or=False):
-        if self.block_reload:
-            return
-        tab = self._active_tab()
-        path = (tab.filepath if tab else "") or self.filepath
-        if not path:
-            self.logger.warning("reload_file: no filepath on active tab")
-            return
-        self.logger.info(f"Reloading file: {path}")
-        self.load_file(
-            filepath=path,
-            override=True,
-            preserve_orientation=pres_or,
-            new_tab=False,
-            _tab=tab,
-        )
-
-    def update_background_color(self, *args):
-        self.logger.info(
-            f"Use color is: {self.window_settings.get_setting('use-color').value}")
-        if self.window_settings.get_setting("use-color").value:
-            options = {
-                "bg-color": self.window_settings.get_setting("bg-color").value,
-            }
-            self._update_all_viewers_options(options)
-            return
-        if self.style_manager.get_dark():
-            options = {"bg-color": [0.117, 0.117, 0.117]}
-        else:
-            options = {"bg-color": [1.0, 1.0, 1.0]}
-        self._update_all_viewers_options(options)
-
     # Functions to set the settings
-
-    def on_view_setting_changed(self, window_settings, setting):
-        self.logger.info(f"Setting: {setting.name} to {setting.value}")
-        if setting.name == "armature-enable":
-            self._apply_armature_mode(bool(setting.value))
-            self.check_for_options_change()
-            return
-        if setting.name == "stats-overlay":
-            self._apply_stats_overlay(bool(setting.value))
-            self.check_for_options_change()
-            return
-
-        options = {setting.name: setting.value}
-        self._update_all_viewers_options(options)
-        self.check_for_options_change()
-
-        if setting.name == "up":
-            self.reload_file()
-        elif setting.name == "checkerboard-enable":
-            # model.checkerboard.enable is applied on load.
-            self.reload_file(pres_or=True)
-
-    def _refresh_mesh_stats(self) -> None:
-        tab = self._active_tab()
-        if tab is None:
-            self._mesh_stats = None
-            return
-        path = tab.viewer.get_prepared_path() or tab.filepath
-        if not path or not os.path.isfile(path):
-            self._mesh_stats = None
-            tab.mesh_stats = None
-            return
-        up = self.window_settings.get_setting("up").value
-        try:
-            # Path comes from the viewer post-load — do not re-prepare.
-            stats = collect_mesh_stats(path, already_prepared=True, up=up)
-        except Exception as exc:
-            self.logger.error(f"Failed to collect mesh stats: {exc}")
-            stats = None
-        self._mesh_stats = stats
-        tab.mesh_stats = stats
-
-    def _apply_stats_overlay(self, enabled: bool) -> None:
-        """Show/hide the Gtk stats overlay; refresh counts when enabling."""
-        if enabled:
-            if self._mesh_stats is None:
-                self._refresh_mesh_stats()
-            if self._mesh_stats is not None:
-                self.stats_overlay_label.set_label(
-                    format_overlay_text(self._mesh_stats)
-                )
-            else:
-                self.stats_overlay_label.set_label(_("No stats available"))
-            self.stats_overlay_label.set_visible(True)
-            # Also drive F3D's native metadata + our text via filename_info.
-            info = (
-                format_overlay_text(self._mesh_stats)
-                if self._mesh_stats is not None
-                else ""
-            )
-            if self.f3d_viewer.engine:
-                self.f3d_viewer.engine.options.update(
-                    {
-                        "ui.metadata": True,
-                        "ui.filename": True,
-                        "ui.filename_info": info,
-                        "ui.backdrop.opacity": 0.55,
-                    }
-                )
-                self.f3d_viewer.queue_render()
-            return
-
-        self.stats_overlay_label.set_visible(False)
-        if self.f3d_viewer.engine:
-            self.f3d_viewer.engine.options.update(
-                {
-                    "ui.metadata": False,
-                    "ui.filename": False,
-                    "ui.filename_info": "",
-                }
-            )
-            self.f3d_viewer.queue_render()
-
-    def _apply_armature_mode(self, enabled: bool):
-        """
-        Toggle F3D armature and apply an X-ray presentation.
-
-        F3D draws bones on top, but with default opacity=1 and line_width=1 the
-        skeleton is nearly invisible. Match the documented look (thicker lines
-        + translucent mesh).
-        """
-        xray_opacity = 0.35
-        min_line_width = 4.0
-
-        tab = self._active_tab()
-        if enabled:
-            if self._armature_xray_restore is None:
-                self._armature_xray_restore = {
-                    "model-opacity": float(
-                        self.window_settings.get_setting("model-opacity").value
-                    ),
-                    "edges-width": float(
-                        self.window_settings.get_setting("edges-width").value
-                    ),
-                }
-            if tab is not None:
-                tab.armature_xray_restore = self._armature_xray_restore
-            line_width = max(
-                min_line_width, float(self._armature_xray_restore["edges-width"])
-            )
-            self.window_settings.begin_view_batch()
-            try:
-                self.window_settings.set_setting("model-opacity", xray_opacity)
-                self.window_settings.set_setting("edges-width", line_width)
-            finally:
-                self.window_settings.end_view_batch()
-
-            self.f3d_viewer.update_options(
-                {
-                    "armature-enable": True,
-                    "model-opacity": xray_opacity,
-                    "edges-width": line_width,
-                }
-            )
-
-            probe = self.f3d_viewer.get_prepared_path() or self.filepath
-            has_skins = glb_has_skins(probe) if probe else None
-            if has_skins is False:
-                self.send_toast(_("No armature found in this model"))
-            return
-
-        restore = self._armature_xray_restore or {
-            "model-opacity": 1.0,
-            "edges-width": 1.0,
-        }
-        self._armature_xray_restore = None
-        if tab is not None:
-            tab.armature_xray_restore = None
-        self.window_settings.begin_view_batch()
-        try:
-            self.window_settings.set_setting(
-                "model-opacity", restore["model-opacity"]
-            )
-            self.window_settings.set_setting("edges-width", restore["edges-width"])
-        finally:
-            self.window_settings.end_view_batch()
-
-        self.f3d_viewer.update_options(
-            {
-                "armature-enable": False,
-                "model-opacity": restore["model-opacity"],
-                "edges-width": restore["edges-width"],
-            }
-        )
-
-    def on_other_setting_changed(self, window_settings, setting):
-        self.logger.info(f"Setting: {setting.name} to {setting.value}")
-        if setting.name == "use-color":
-            self.update_background_color()
-        elif setting.name == "point-up":
-            if setting.value:
-                self.f3d_viewer.set_view_up(
-                    up_dirs_vector[
-                        self.window_settings.get_setting("up").value])
-                self.f3d_viewer.always_point_up = True
-            else:
-                self.f3d_viewer.always_point_up = False
-        elif setting.name == "auto-reload":
-            # Watcher always runs while documents are open; this flag only
-            # controls silent reload of the active tab vs (modified) + prompt.
-            if any(t.loaded for t in self._iter_tabs()):
-                self.change_checker.run()
-
-        self.check_for_options_change()
-
-    def on_internal_setting_changed(self, window_settings, setting):
-        self.logger.info(f"Setting: {setting.name} to {setting.value}")
-        if setting.name == "auto-best":
-            pass
-        elif setting.name == "sidebar-show":
-            pass
 
     # Functions related to the save settings dialog
 
-    def on_save_settings_button_clicked(self, btn):
-        # Extract view settings, name, and formats
-        view_settings = self.window_settings.get_view_settings()
-        other_settings = self.window_settings.get_other_settings()
-        name = self.save_settings_name_entry.get_text()
-        formats = self.save_settings_extensions_entry.get_text()
-
-        # Format the key
-        key = name.lower().replace(' ', '_')
-
-        # Construct the dictionary
-        settings_dict = {
-            key: {
-                "name": name,
-                "formats": f".*({formats.replace(', ', '|')})",
-                "view-settings": view_settings,
-                "other-settings": other_settings
-            }
-        }
-
-        # Save to JSON file
-        with open(self.user_configurations_path + key + '.json', 'w') as j_f:
-            json.dump(settings_dict, j_f, indent=4)
-
-        # Update configurations and menu UI
-        self.configurations.update(settings_dict)
-        item = Gio.MenuItem.new(name, "win.settings")
-        item.set_attribute_value("target", GLib.Variant.new_string(key))
-        self.settings_section.append_item(item)
-
-        self.save_dialog.close()
-
-    def on_save_settings_name_entry_changed(self, entry):
-        if entry.get_text_length() != 0:
-            self.save_settings_button.set_sensitive(True)
-        else:
-            self.save_settings_button.set_sensitive(False)
-
-    def on_save_settings_extensions_entry_changed(self, entry):
-        extensions_text = entry.get_text()
-
-        if extensions_text == "":
-            entry.remove_css_class("error")
-            return
-
-        entered_exts = [ext.strip() for ext in extensions_text.split(',')]
-
-        if all(ext in allowed_extensions for ext in entered_exts):
-            entry.remove_css_class("error")
-        else:
-            entry.add_css_class("error")
-
-    def on_save_settings(self, *args):
-        self.save_settings_name_entry.set_text("")
-        self.save_settings_extensions_entry.set_text("")
-        self.save_settings_expander.set_expanded(False)
-        self.save_dialog.present(self)
-
-    def set_settings_from_name(self, name):
-        self.logger.debug("settings from name")
-        if name == "custom":
-            return
-
-        # Get the default settings and change the ones defined by the chosen presets
-        options = self.window_settings.get_default_user_customizable_settings()
-        for key, value in self.configurations[name]["view-settings"].items():
-            options[key] = value
-
-        # Batch view emits so presets do one update_options + one queue_render
-        self.window_settings.begin_view_batch()
-        for tab in self._iter_tabs():
-            tab.viewer.begin_options_batch()
-        try:
-            for key, value in options.items():
-                self.window_settings.set_setting(key, value)
-            self._update_all_viewers_options(options, queue_render=False)
-            for key, value in self.configurations[name]["other-settings"].items():
-                self.window_settings.set_setting(key, value)
-        finally:
-            self.window_settings.end_view_batch()
-            for tab in self._iter_tabs():
-                tab.viewer.end_options_batch()
-
-    def check_for_options_change(self):
-        if self.block_reload:
-            return
-
-        state_name = self.settings_action.get_state().get_string()
-        if state_name == "custom":
-            return
-
-        self.logger.debug(f"Checking for changed options from {state_name}")
-
-        state_options = self.window_settings.get_default_user_customizable_settings()
-
-        for key, value in self.configurations[state_name]["view-settings"].items():
-            state_options[key] = value
-
-        for key, value in self.configurations[state_name]["other-settings"].items():
-            state_options[key] = value
-
-        current_settings = self.window_settings.get_user_customized_settings()
-        for key, value in state_options.items():
-            if key in current_settings:
-                if self._settings_values_equal(current_settings[key], value):
-                    continue
-                self.logger.info(
-                    f"current key: {key}'s value is {current_settings[key]} != {value}")
-                self.change_setting_state(GLib.Variant("s", "custom"))
-                return
-
-    @staticmethod
-    def _settings_values_equal(a, b) -> bool:
-        """Compare setting values; normalize RGB list/tuple mismatches from JSON."""
-        if isinstance(a, (list, tuple)) and isinstance(b, (list, tuple)):
-            if len(a) != len(b):
-                return False
-            try:
-                return all(abs(float(x) - float(y)) < 1e-6 for x, y in zip(a, b))
-            except (TypeError, ValueError):
-                return tuple(a) == tuple(b)
-        return a == b
-
-    def periodic_check_for_file_change(self):
-        """Watch every loaded tab for external edits; never title a tab Nothing."""
-        if self.block_reload:
-            return any(t.loaded and t.filepath for t in self._iter_tabs())
-
-        active = self._active_tab()
-        auto = self.window_settings.get_setting("auto-reload").value
-
-        for tab in self._iter_tabs():
-            if not tab.loaded or not tab.filepath:
-                continue
-            disk_mtime = self._file_mtime(tab.filepath)
-            if disk_mtime is None:
-                continue
-            if not tab.loaded_mtime:
-                # First stamp after open — baseline, not a user edit.
-                tab.loaded_mtime = disk_mtime
-                tab.seen_disk_mtime = disk_mtime
-                continue
-            if disk_mtime <= tab.loaded_mtime:
-                continue
-            if disk_mtime <= tab.seen_disk_mtime:
-                continue
-
-            tab.seen_disk_mtime = disk_mtime
-            if auto and tab is active:
-                self.logger.debug(f"auto-reload {tab.filepath}")
-                self._reload_tab(tab, preserve_orientation=True)
-            else:
-                self._mark_tab_externally_modified(tab, disk_mtime)
-                if tab is active:
-                    GLib.idle_add(self._prompt_reload_if_modified, tab)
-
-        if active and active.filepath:
-            mtime = self._file_mtime(active.filepath)
-            if mtime is not None:
-                self._cached_time_stamp = mtime
-
-        # Keep polling while any document is open (mark/prompt even if
-        # auto-reload is off).
-        return any(t.loaded and t.filepath for t in self._iter_tabs())
-
-    def update_time_stamp(self):
-        """Baseline active tab mtime after a successful load (no change event)."""
-        tab = self._active_tab()
-        path = (tab.filepath if tab else "") or self.filepath
-        mtime = self._file_mtime(path)
-        if mtime is None:
-            return False
-        self._cached_time_stamp = mtime
-        if tab is not None:
-            tab.loaded_mtime = mtime
-            if tab.externally_modified:
-                self._clear_tab_modified(tab, mtime)
-        return False
-
-    def change_setting_state(self, state):
-        self.logger.debug(f"Requested changing settings to {state}")
-
-        if state.get_string() == "custom":
-            self.save_settings_action.set_enabled(True)
-            self.settings_action.set_state(state)
-            return
-
-        self.set_settings_from_name(state.get_string())
-
-        self.settings_action.set_state(state)
-
-        self.save_settings_action.set_enabled(False)
-
-        self.update_background_color()
-
-    def get_gimble_limit(self):
-        return self.distance / 10
-
-    def open_file_chooser(self, *args):
-        file_filter = Gtk.FileFilter(name=_("All supported formats"))
-
-        for patt in allowed_extensions:
-            file_filter.add_pattern("*." + patt)
-
-        filter_list = Gio.ListStore.new(Gtk.FileFilter())
-        filter_list.append(file_filter)
-
-        dialog = Gtk.FileDialog(
-            title=_("Open File"),
-            filters=filter_list)
-
-        dialog.open_multiple(self, None, self.on_open_files_response)
-
-    def on_open_files_response(self, dialog, response):
-        try:
-            files = dialog.open_multiple_finish(response)
-        except Exception as e:
-            self.logger.error(f"Exception Opening file: {e}")
-            return
-
-        if not files:
-            return
-        for i in range(files.get_n_items()):
-            file = files.get_item(i)
-            filepath = file.get_path() if file else None
-            if not filepath:
-                self.logger.error("Opened file has no local path")
-                self.on_file_not_opened(
-                    file.get_basename() if file else _("Unknown"))
-                continue
-            self.logger.info("open file response")
-            self.load_file(filepath=filepath)
-
-    def load_file(self, **kwargs):
-        tab_hint = kwargs.get("_tab")
-        filepath = kwargs.get("filepath")
-        if not filepath and isinstance(tab_hint, ViewerTab):
-            filepath = tab_hint.filepath
-        if not filepath:
-            filepath = self.filepath
-        kwargs["filepath"] = filepath
-
-        if filepath:
-            basename = os.path.basename(filepath)
-        elif isinstance(tab_hint, ViewerTab) and tab_hint.file_name:
-            basename = tab_hint.file_name
-        elif self.file_name:
-            basename = self.file_name
-        else:
-            basename = _("Untitled")
-
-        replace = kwargs.get("override") or kwargs.get("preserve_orientation")
-        new_tab = kwargs.get("new_tab")
-        if new_tab is None:
-            # First document reuses the empty tab; later opens get a new tab.
-            new_tab = (not replace) and (not self.no_file_loaded)
-
-        if new_tab:
-            # Prepare tab in background; same startup loading_page as first open.
-            tab = self._add_viewer_tab(title=basename, select=False)
-            page = self._tab_page(tab)
-            if page is not None:
-                page.set_loading(True)
-                page.set_title(basename)
-        else:
-            tab = tab_hint if isinstance(tab_hint, ViewerTab) else self._active_tab()
-            if tab is None:
-                tab = self._add_viewer_tab(title=basename, select=True)
-            if not tab.file_name:
-                tab.file_name = basename
-            page = self._tab_page(tab)
-            if page is not None:
-                page.set_loading(True)
-                self._refresh_tab_title(tab)
-
-        kwargs["_tab"] = tab
-        # Extra tabs inherit current preset — skip auto-best churn.
-        kwargs["_skip_auto_best"] = bool(new_tab)
-        self._update_tab_bar_visibility()
-
-        # Keep 3d_page mapped so the tab GLArea can realize — F3D
-        # create_external needs a current Gtk GL context. Full-page
-        # startup loading unmaps the viewer and makes init impossible.
-        self.loading_label.set_label(_("Loading {}").format(basename))
-        self.stack.set_visible_child_name("3d_page")
-
-        tab.stats_overlay_label.set_visible(False)
-        self.block_reload = True
-
-        # Fresh opens start in bind pose; reloads keep the selected clip.
-        if not kwargs.get("override") and not kwargs.get("preserve_orientation"):
-            self.window_settings.set_setting("animation-index", None, False)
-            tab.viewer.update_options({"animation-index": None}, queue_render=False)
-
-        # Capture camera on the main thread before async prepare.
-        if kwargs.get("preserve_orientation") and tab.viewer.engine is not None:
-            try:
-                kwargs["_camera_state"] = tab.viewer.get_camera_state()
-            except Exception:
-                kwargs["_camera_state"] = None
-
-        # Always prepare off-main; scene.add only on main (GL-safe).
-        self._start_warm_load(tab, kwargs)
-
-    @staticmethod
-    def _resolve_readable_path(filepath: str) -> str | None:
-        """Return a path the sandbox can read (follow home→/media symlinks)."""
-        if not filepath:
-            return None
-        candidates = [filepath]
-        try:
-            real = os.path.realpath(filepath)
-            if real and real not in candidates:
-                candidates.append(real)
-        except OSError:
-            pass
-        for path in candidates:
-            try:
-                if os.path.isfile(path) and os.access(path, os.R_OK):
-                    return path
-            except OSError:
-                continue
-        return None
-
-    def _start_warm_load(self, tab: ViewerTab, kwargs: dict):
-        """Overlap GLB prepare (worker) with F3D engine create (main)."""
-        # Replace any prior in-flight prepare for this tab.
-        self._cancel_warm_load(tab)
-
-        filepath = kwargs.get("filepath")
-        holder: dict = {
-            "ready": False,
-            "cancelled": False,
-            "finished": False,
-            "_temps_released": False,
-        }
-        tab._warm_load_holder = holder
-
-        def prepare_worker():
-            try:
-                if not filepath:
-                    raise ValueError("missing filepath")
-                resolved = self._resolve_readable_path(filepath)
-                if resolved is None:
-                    raise FileNotFoundError(filepath)
-                load_path, meshopt_temp = prepare_glb_for_load(resolved)
-                holder["ok"] = (resolved, load_path, meshopt_temp)
-            except Exception as exc:
-                holder["err"] = exc
-                holder["path"] = filepath
-            holder["ready"] = True
-            # Tab may have closed while prepare ran — free temps here because
-            # the GLib tick will only see cancelled and exit.
-            if holder.get("cancelled"):
-                self._release_warm_holder_temps(holder)
-
-        # Map the target tab so its GLArea can realize during prepare.
-        self.stack.set_visible_child_name("3d_page")
-        page = self._tab_page(tab)
-        if page is not None and self.tab_view.get_selected_page() != page:
-            self._switching_tab = True
-            self.tab_view.set_selected_page(page)
-            self._switching_tab = False
-
-        threading.Thread(target=prepare_worker, daemon=True).start()
-        # Single poller: wait for realize + prepare, then load once.
-        GLib.timeout_add(16, self._warm_load_tick, tab, kwargs, holder)
-
-    def _warm_load_tick(self, tab: ViewerTab, kwargs: dict, holder: dict):
-        """Advance warm load when prepare and GL context are both ready."""
-        if holder.get("cancelled"):
-            self._release_warm_holder_temps(holder)
-            if tab._warm_load_holder is holder:
-                tab._warm_load_holder = None
-            return GLib.SOURCE_REMOVE
-        if holder.get("finished"):
-            return GLib.SOURCE_REMOVE
-
-        viewer = tab.viewer
-        try:
-            if viewer.engine is None:
-                if not viewer.get_realized():
-                    # First open still shows startup loading; flip to 3d so
-                    # the GLArea can map, then keep polling for realize.
-                    if self.stack.get_visible_child_name() != "3d_page":
-                        self.stack.set_visible_child_name("3d_page")
-                    return GLib.SOURCE_CONTINUE
-                viewer.initialize()
-        except Exception as exc:
-            holder["cancelled"] = True
-            self.logger.error(f"F3D init failed: {exc}")
-            path = kwargs.get("filepath")
-            self._release_warm_holder_temps(holder)
-            if tab._warm_load_holder is holder:
-                tab._warm_load_holder = None
-            self.on_file_not_opened(path, tab)
-            return GLib.SOURCE_REMOVE
-
-        if not holder.get("ready"):
-            return GLib.SOURCE_CONTINUE
-
-        if "err" in holder:
-            holder["finished"] = True
-            if tab._warm_load_holder is holder:
-                tab._warm_load_holder = None
-            err = holder["err"]
-            path = holder.get("path") or kwargs.get("filepath")
-            self.logger.error(f"Warm prepare failed: {err}")
-            self.on_file_not_opened(path, tab)
-            return GLib.SOURCE_REMOVE
-
-        holder["finished"] = True
-        if tab._warm_load_holder is holder:
-            tab._warm_load_holder = None
-        try:
-            self._warm_prepare_finished(tab, kwargs, holder)
-        except Exception as exc:
-            self.logger.error(f"Warm load failed: {exc}")
-            path = kwargs.get("filepath")
-            self._release_warm_holder_temps(holder)
-            self.on_file_not_opened(path, tab)
-        return GLib.SOURCE_REMOVE
-
-    def _warm_prepare_finished(self, tab: ViewerTab, kwargs: dict, holder: dict):
-        if holder.get("cancelled"):
-            self._release_warm_holder_temps(holder)
-            return GLib.SOURCE_REMOVE
-        if holder.get("_temps_released"):
-            return GLib.SOURCE_REMOVE
-
-        if "err" in holder:
-            err = holder["err"]
-            path = holder.get("path") or kwargs.get("filepath")
-            self.logger.error(f"Warm prepare failed: {err}")
-            self.on_file_not_opened(path, tab)
-            return GLib.SOURCE_REMOVE
-
-        filepath, load_path, meshopt_temp = holder["ok"]
-        viewer = tab.viewer
-        if viewer.engine is None:
-            viewer.initialize()
-
-        override = kwargs.get("override", False)
-        add_file = kwargs.get("add_file", False)
-        skip_auto_best = kwargs.get("_skip_auto_best", False)
-        preserve_orientation = kwargs.get("preserve_orientation", False)
-        camera_state = kwargs.get("_camera_state")
-
-        self.change_checker.stop()
-
-        if (not skip_auto_best
-                and self.window_settings.get_setting("auto-best").value
-                and not override and not add_file):
-            self.logger.debug("choosing best settings")
-            settings = "general"
-            for key, value in self.configurations.items():
-                pattern = value["formats"]
-                if pattern == ".*()":
-                    continue
-                if re.search(pattern, filepath):
-                    settings = key
-            self.logger.debug(f"best settings is {settings}")
-            self.change_setting_state(GLib.Variant("s", settings))
-
-        try:
-            if holder.get("cancelled"):
-                self._release_warm_holder_temps(holder)
-                return GLib.SOURCE_REMOVE
-            if not viewer.supports(load_path):
-                holder["_temps_released"] = True
-                if load_path != filepath:
-                    release_prepared(load_path)
-                self.on_file_not_opened(filepath, tab)
-                return GLib.SOURCE_REMOVE
-            if add_file:
-                ok = viewer.add_file(filepath, prepared_path=load_path)
-            else:
-                ok = viewer.load_file(filepath, prepared_path=load_path)
-            # Success: viewer owns prepared path. Failure: viewer already
-            # released (or never retained). Either way, cancel must not
-            # release_prepared again.
-            holder["_temps_released"] = True
-            if not ok:
-                self.on_file_not_opened(filepath, tab)
-                return GLib.SOURCE_REMOVE
-        except Exception as exc:
-            self.logger.error(f"Error while loading into viewer: {exc}")
-            holder["_temps_released"] = True
-            if load_path != filepath:
-                release_prepared(load_path)
-            self.on_file_not_opened(filepath, tab)
-            return GLib.SOURCE_REMOVE
-        finally:
-            cleanup_decompressed(meshopt_temp)
-
-        if preserve_orientation and camera_state is not None:
-            try:
-                viewer.set_camera_state(camera_state)
-            except Exception:
-                pass
-
-        tab.filepath = filepath
-        tab.file_name = os.path.basename(filepath)
-        self.on_file_opened(tab)
-        return GLib.SOURCE_REMOVE
-
-    def on_file_opened(self, tab=None):
-        self.logger.debug("on file opened")
-        tab = tab or self._active_tab()
-        if tab is None:
-            self.block_reload = False
-            return GLib.SOURCE_REMOVE
-
-        page = self._tab_page(tab)
-        if page is not None:
-            page.set_loading(False)
-
-        self.filepath = tab.filepath
-        self.file_name = tab.file_name
-        tab.loaded = True
-        mtime = self._file_mtime(tab.filepath)
-        if mtime is not None:
-            tab.loaded_mtime = mtime
-            tab.seen_disk_mtime = mtime
-        tab.externally_modified = False
-        if page is not None:
-            self._configure_tab_page(page, tab)
-
-        # Reveal the ready tab (may have been prepared off-screen).
-        if page is not None and self.tab_view.get_selected_page() != page:
-            self._switching_tab = True
-            self.tab_view.set_selected_page(page)
-            self._switching_tab = False
-        self._bind_animation_controls(tab.viewer)
-
-        self.no_file_loaded = False
-        # Reveal tab bar only once the 2nd+ model is ready.
-        chrome_changed = self._update_tab_bar_visibility()
-
-        self.update_time_stamp()
-        self.change_checker.run()
-
-        self.set_title(_("Exhibit - {}").format(self.file_name))
-        self.title_widget.set_subtitle(self.file_name)
-        self.stack.set_visible_child_name("3d_page")
-        tab.viewer.grab_focus()
-
-        self.update_background_color()
-
-        self.block_reload = False
-        # Paint model first; sidebar extras can wait one idle tick.
-        GLib.idle_add(self._post_open_sidebar_refresh)
-
-        # Fit sooner when chrome already stable (3rd+ tab).
-        GLib.timeout_add(120 if chrome_changed else 30, tab.viewer.done)
-        return GLib.SOURCE_REMOVE
-
-    def _post_open_sidebar_refresh(self):
-        self.refresh_animation_combo()
-        self.refresh_object_tree()
-        self._refresh_mesh_stats()
-        if self.window_settings.get_setting("stats-overlay").value:
-            self._apply_stats_overlay(True)
-        return GLib.SOURCE_REMOVE
-
-    def on_file_not_opened(self, filepath, tab=None):
-        self.logger.debug("on file not opened")
-        tab = tab or self._active_tab()
-        if tab is not None:
-            page = self._tab_page(tab)
-            if page is not None:
-                page.set_loading(False)
-            # Close a failed newly-created empty tab when other files remain.
-            if not tab.loaded and self.tab_view.get_n_pages() > 1:
-                if page is not None:
-                    self.tab_view.close_page(page)
-            else:
-                tab.clear_overlays()
-                tab.mesh_stats = None
-
-        if self.no_file_loaded:
-            self.set_title(_("Exhibit"))
-            self.stack.set_visible_child_name("startup_page")
-            self.startup_stack.set_visible_child_name("error_page")
-        else:
-            # Return to the viewer; toast explains the failed open.
-            self.stack.set_visible_child_name("3d_page")
-            name = os.path.basename(str(filepath)) if filepath else _("Unknown")
-            self.send_toast(_("Can't open {}").format(name))
-
-        self.update_background_color()
-        self.refresh_object_tree()
-        self._mesh_stats = None
-        self._update_tab_bar_visibility()
-
-        self.block_reload = False
-        return GLib.SOURCE_REMOVE
-
-    def send_toast(self, message):
-        toast = Adw.Toast(title=message, timeout=2)
-        self.toast_overlay.add_toast(toast)
-
-    def save_as_image(self, filepath):
-        img = self.f3d_viewer.render_image()
-        img.save(filepath)
-
-    def open_save_file_chooser(self, *args):
-        dialog = Gtk.FileDialog(
-            title=_("Save File"),
-            initial_name=self.file_name.split(".")[0] + ".png",
-        )
-        dialog.save(self, None, self.on_save_file_response)
-
-    def on_save_file_response(self, dialog, response):
-        try:
-            file = dialog.save_finish(response)
-        except Exception:
-            return
-
-        if file:
-            file_path = file.get_path()
-            self.save_as_image(file_path)
-            toast = Adw.Toast(
-                title="Image Saved",
-                timeout=2,
-                button_label="Open",
-                action_name="app.show-image-externally",
-                action_target=GLib.Variant("s", file_path)
-            )
-            self.toast_overlay.add_toast(toast)
-
-    @Gtk.Template.Callback("on_home_clicked")
-    def on_home_clicked(self, btn):
-        self.f3d_viewer.reset_to_bounds()
-
-    @Gtk.Template.Callback("on_open_button_clicked")
-    def on_open_button_clicked(self, btn):
-        self.open_file_chooser()
-
-    def orthographic_state_changed(self, action, state):
-        action.set_state(state)
-        self.window_settings.set_setting("orthographic", state.get_boolean())
-        self._update_all_viewers_options(
-            {"orthographic": state.get_boolean()})
-
-    def on_orthographic_changed(self, setting, *args):
-        self.orthographic_action.set_state(
+    def on_tab_close_page(self, tab_view, page):
+        return TabsMixin.on_tab_close_page(self, tab_view, page)
+
+
+    def _setup_window_actions(self) -> None:
+        """Register window Gio actions and keyboard accelerators."""
+        self.save_as_action = self.create_action(
+            'save-as-image', self.open_save_file_chooser)
+        self.open_new_action = self.create_action(
+            'open-new', self.open_file_chooser)
+        self.open_new_action = self.create_action(
+            'add-new', self.open_file_chooser)
+        self.create_action('open-folder', self.open_folder_chooser)
+
+        self.orthographic_action = Gio.SimpleAction.new_stateful(
+            "orthographic",
+            None,
             GLib.Variant(
                 "b", self.window_settings.get_setting("orthographic").value))
+        self.orthographic_action.connect(
+            "change-state", self.orthographic_state_changed)
+        self.window_settings.get_setting("orthographic").connect(
+            "changed", self.on_orthographic_changed)
+        self.add_action(self.orthographic_action)
 
-    def toggle_orthographic(self, *args):
+        # Compare: keep peer-tab cameras matched to the active view.
+        self._camera_sync = False
+        self._syncing_cameras = False
+        self.sync_cameras_action = Gio.SimpleAction.new_stateful(
+            "sync-cameras", None, GLib.Variant("b", False)
+        )
+        self.sync_cameras_action.connect(
+            "change-state", self._on_sync_cameras_change
+        )
+        self.add_action(self.sync_cameras_action)
+
+        self._split_compare = False
+        self._split_compare_pinned = False
+        self._split_compare_pin_filepath = None
+        self._split_compare_pin_prepared = None
+        self._split_compare_sizing = False
+        self._split_compare_sash_save_id = 0
+        self._split_compare_restoring = False
+        self._split_restore_attempts = 0
+        self.split_compare_action = Gio.SimpleAction.new_stateful(
+            "split-compare", None, GLib.Variant("b", False)
+        )
+        self.split_compare_action.connect(
+            "change-state", self._on_split_compare_change
+        )
+        self.add_action(self.split_compare_action)
+        self.split_compare_swap_action = Gio.SimpleAction.new(
+            "split-compare-swap", None
+        )
+        self.split_compare_swap_action.connect(
+            "activate", self._on_split_compare_swap
+        )
+        self.split_compare_swap_action.set_enabled(False)
+        self.add_action(self.split_compare_swap_action)
+        self.split_compare_pin_check.connect(
+            "notify::active", self._on_split_compare_pin_toggled
+        )
+        if self.split_compare_main_paned is not None:
+            self.split_compare_main_paned.connect(
+                "notify::position", self._on_split_compare_sash_changed
+            )
+
+        app = self.get_application()
+        if app is not None:
+            app.set_accels_for_action(
+                "win.sync-cameras", ["<Primary><Shift>c"]
+            )
+            app.set_accels_for_action(
+                "win.open-new", ["<Primary>o"]
+            )
+            app.set_accels_for_action(
+                "win.open-folder", ["<Primary><Shift>o"]
+            )
+            app.set_accels_for_action(
+                "win.split-compare", ["<Primary><Shift>d"]
+            )
+            app.set_accels_for_action(
+                "win.split-compare-swap", ["<Primary><Shift>x"]
+            )
+
+        self.settings_action = Gio.SimpleAction.new_stateful(
+            "settings",
+            GLib.VariantType.new("s"),
+            GLib.Variant("s", "general"))
+        self.settings_action.connect(
+            "change-state",
+            lambda action, state: self.change_setting_state(state))
+        self.add_action(self.settings_action)
+
+        self.save_settings_action = self.create_action(
+            'save-settings', self.on_save_settings)
+        self.save_settings_action.set_enabled(False)
+        self._init_preferences_actions()
+        self._init_home_button()
+
+    def _wire_settings_widgets(self) -> None:
+        """Connect sidebar settings widgets to WindowSettings."""
+        self.window_settings.connect(
+            "changed-other", self.on_other_setting_changed)
+        self.window_settings.connect(
+            "changed-internal", self.on_internal_setting_changed)
+        self.window_settings.connect(
+            "changed-view", self.on_view_setting_changed)
+
+        switches = [
+            (self.grid_switch, "grid"),
+            (self.absolute_grid_switch, "grid-absolute"),
+            (self.translucency_switch, "translucency-support"),
+            (self.tone_mapping_switch, "tone-mapping"),
+            (self.ambient_occlusion_switch, "ambient-occlusion"),
+            (self.anti_aliasing_switch, "anti-aliasing"),
+            (self.hdri_ambient_switch, "hdri-ambient"),
+            (self.edges_switch, "show-edges"),
+            (self.spheres_switch, "sprite-enabled"),
+            (self.use_skybox_switch, "hdri-skybox"),
+            (self.blur_switch, "blur-background"),
+            (self.use_color_switch, "use-color"),
+            (self.automatic_settings_switch, "auto-best"),
+            (self.automatic_reload_switch, "auto-reload"),
+            (self.point_up_switch, "point-up"),
+            (self.nav_invert_y_switch, "nav-invert-y"),
+            (self.nav_invert_x_switch, "nav-invert-x"),
+            (self.nav_zoom_to_cursor_switch, "nav-zoom-to-cursor"),
+            (self.nav_orbit_around_cursor_switch, "nav-orbit-around-cursor"),
+            (self.nav_touchpad_orbit_switch, "nav-touchpad-orbit"),
+            (self.nav_mmb_click_pivot_switch, "nav-mmb-click-pivot"),
+            (self.armature_switch, "armature-enable"),
+            (self.checkerboard_switch, "checkerboard-enable"),
+            (self.normal_glyphs_switch, "normal-glyphs"),
+            (self.display_depth_switch, "display-depth"),
+            (self.skin_weights_switch, "skin-weights"),
+            (self.stats_overlay_switch, "stats-overlay"),
+        ]
+
+        for switch, name in switches:
+            switch.connect("notify::active", self.on_switch_toggled, name)
+            setting = self.window_settings.get_setting(name)
+            setting.connect("changed", self.set_switch_to, switch)
+
+        spins = [
+            (self.edges_width_spin, "edges-width"),
+            (self.points_size_spin, "point-size"),
+            (self.sprite_size_spin, "sprites-size"),
+            (self.model_roughness_spin, "model-roughness"),
+            (self.model_metallic_spin, "model-metallic"),
+            (self.model_opacity_spin, "model-opacity"),
+            (self.normal_glyphs_scale_spin, "normal-glyphs-scale"),
+            (self.blur_coc_spin, "blur-coc"),
+            (self.light_intensity_spin, "light-intensity"),
+            (self.nav_orbit_sensitivity_spin, "nav-orbit-sensitivity"),
+            (self.nav_zoom_sensitivity_spin, "nav-zoom-sensitivity"),
+            (self.nav_pan_sensitivity_spin, "nav-pan-sensitivity"),
+        ]
+
+        for spin, name in spins:
+            spin.connect("notify::value", self.on_spin_changed, name)
+            setting = self.window_settings.get_setting(name)
+            setting.connect("changed", self.set_spin_to, spin)
+
+        self.model_color_button.connect(
+            "notify::rgba", self.on_color_changed, "model-color")
+        self.background_color_button.connect(
+            "notify::rgba", self.on_color_changed, "bg-color")
+        self.window_settings.get_setting("model-color").connect(
+            "changed", self.set_color_button, self.model_color_button)
+        self.window_settings.get_setting("bg-color").connect(
+            "changed", self.set_color_button, self.background_color_button)
+
+        self.hdri_file_row.connect(
+            "delete-file", self.on_delete_skybox)
+        self.hdri_file_row.connect(
+            "file-added", lambda row, filepath: self.load_hdri(filepath))
+        self.window_settings.get_setting("hdri-file").connect(
+            "changed", self.set_hdri_file_row)
+
+        self.model_scivis_component_combo.connect(
+            "notify::selected", self.on_scivis_component_combo_changed)
+        self.window_settings.get_setting("up").connect(
+            "changed", self.set_up_direction_combo)
+        self.window_settings.get_setting("scivis-component").connect(
+            "changed", self.set_scivis_component_combo)
+        self.window_settings.get_setting("cells").connect(
+            "changed", self.set_scivis_component_combo)
+        self.point_sprites_type_combo.connect(
+            "notify::selected", self.point_sprites_type_combo_changed)
+        self.window_settings.get_setting("sprites-type").connect(
+            "changed", self.set_point_sprites_type_combo_changed)
+
+        self.skin_weights_mode_combo.connect(
+            "notify::selected", self.on_skin_weights_mode_combo_changed)
+        self.skin_weights_joint_combo.connect(
+            "notify::selected", self.on_skin_weights_joint_combo_changed)
+        self.window_settings.get_setting("skin-weights-mode").connect(
+            "changed", self.set_skin_weights_mode_combo)
+        self.window_settings.get_setting("skin-weights").connect(
+            "changed", lambda *_: self._refresh_skin_weights_joint_combo())
+
+        self.background_color_button.connect(
+            "notify::rgba", self.update_background_color)
+
+        self.up_direction_combo.connect(
+            "notify::selected", self.on_up_direction_combo_changed)
+
         self.window_settings.set_setting(
-            "orthographic",
-            not self.window_settings.get_setting("orthographic").value)
+            "auto-best", self.saved_settings.get_boolean("auto-best"))
 
-    @Gtk.Template.Callback("on_drop_received")
-    def on_drop_received(self, drop, value, x, y):
-        dropped = value.get_files()[0]
-        filepath = dropped.get_path()
-        if not filepath:
-            self.logger.error("Dropped file has no local path")
-            self.on_file_not_opened(dropped.get_basename() or _("Unknown"))
-            return
+        self.saved_settings.bind(
+            "restore-session",
+            self.restore_session_switch,
+            "active",
+            Gio.SettingsBindFlags.DEFAULT,
+        )
+        self.restore_session_switch.connect(
+            "notify::active", self.on_restore_session_toggled)
 
-        extension = os.path.splitext(filepath)[1][1:].lower()
-
-        if extension in image_patterns:
-            self.load_hdri(filepath)
-        elif extension in allowed_extensions:
-            self.logger.info("drop received")
-            self.load_file(filepath=filepath)
-
-    @Gtk.Template.Callback("on_drop_enter")
-    def on_drop_enter(self, drop_target, *args):
-        drop_target.get_widget().set_visible_child_name("drop")
-
-    @Gtk.Template.Callback("on_drop_leave")
-    def on_drop_leave(self, drop_target, *args):
-        drop_target.get_widget().set_visible_child_name("content")
-
-    @Gtk.Template.Callback("on_close_sidebar_clicked")
-    def on_close_sidebar_clicked(self, *args):
-        self.split_view.set_show_sidebar(False)
-
-    def open_with_external_app(self):
-        try:
-            file = Gio.File.new_for_path(self.filepath)
-        except Exception:
-            self.logger.error("Failed to construct a new Gio.File from path.")
-        else:
-            launcher = Gtk.FileLauncher.new(file)
-            launcher.set_always_ask(True)
-            launcher.launch(self, None, None)
-
-    @Gtk.Template.Callback("on_apply_breakpoint")
-    def on_apply_breakpoint(self, *args):
-        self.applying_breakpoint = True
-        self.split_view.set_collapsed(True)
-        self.split_view.set_show_sidebar(False)
-        self.applying_breakpoint = False
-
-    @Gtk.Template.Callback("on_unapply_breakpoint")
-    def on_unapply_breakpoint(self, *args):
-        state = self.window_settings.get_setting("sidebar-show").value
-        self.applying_breakpoint = True
-        self.split_view.set_collapsed(False)
-        self.split_view.set_show_sidebar(state)
-        self.applying_breakpoint = False
-
-    @Gtk.Template.Callback("on_split_view_show_sidebar_changed")
-    def on_split_view_show_sidebar_changed(self, *args):
-        if self.applying_breakpoint:
-            return
-        state = self.split_view.get_show_sidebar()
-        self.window_settings.set_setting("sidebar-show", state)
-
-    def on_play_button_clicked(self, btn):
-        if self.window_settings.get_setting("animation-index").value is None:
-            return
-        self.f3d_viewer.playing = not self.f3d_viewer.playing
-
-    def on_playing_changed(self, *args):
-        if self.f3d_viewer.playing:
-            self.play_button.set_icon_name("media-playback-pause-symbolic")
-            self.play_button.set_tooltip_text(_("Stop"))
-        else:
-            self.play_button.set_icon_name("media-playback-start-symbolic")
-            self.play_button.set_tooltip_text(_("Start"))
-
-    # def on_orthographic_changed(self, *args):
-    #     self.ortho_action.set_state(GLib.Variant("b", self.f3d_viewer.orthographic))
-    #     self.window_settings.set_setting("orthographic", self.f3d_viewer.orthographic)
-
-    #
-    # Function called when the HDRI is deleted/added...
-
-    def on_delete_skybox(self, *args):
-        self.window_settings.set_setting("hdri-file", "")
-        self.window_settings.set_setting("hdri-skybox", False)
-        self.use_skybox_switch.set_active(False)
-        options = {
-            "hdri-file": "",
-            "hdri-skybox": False}
-        self._update_all_viewers_options(options)
-        self.check_for_options_change()
-
-    def load_hdri(self, filepath):
-        self.window_settings.set_setting("hdri-file", filepath)
-        self.window_settings.set_setting("hdri-skybox", True)
-        self.use_skybox_switch.set_active(True)
-        self.hdri_file_row.set_filename(filepath)
-        options = {
-            "hdri-file": filepath,
-            "hdri-skybox": True}
-        self._update_all_viewers_options(options)
-        self.check_for_options_change()
+        self._load_nav_settings_from_gschema()
+        # Push defaults into switch/spin widgets without fighting gschema bind.
+        for key in (
+            "nav-invert-x",
+            "nav-invert-y",
+            "nav-zoom-to-cursor",
+            "nav-orbit-around-cursor",
+            "nav-touchpad-orbit",
+            "nav-mmb-click-pivot",
+            "nav-orbit-sensitivity",
+            "nav-zoom-sensitivity",
+            "nav-pan-sensitivity",
+            "point-up",
+        ):
+            setting = self.window_settings.get_setting(key)
+            setting.emit("changed", setting.name, setting.type)
+        self._sync_theme_toggle_button()
 
     def create_action(self, name, callback):
         action = Gio.SimpleAction.new(name, None)
@@ -2218,61 +618,6 @@ class Viewer3dWindow(Adw.ApplicationWindow):
         self.add_action(action)
         return action
 
-    def generate_thumbnail(self, hdri_file_path, width=300, height=200):
-        base_name = os.path.basename(hdri_file_path)
-        name, _ext = os.path.splitext(base_name)
-
-        thumbnail_name = f"{name}.jpeg"
-        thumbnail_filepath = os.path.join(
-            self.hdri_thumbnails_path, thumbnail_name)
-
-        with Image(filename=hdri_file_path) as img:
-            img.thumbnail(width, height)
-            img.gamma(1.7)
-            img.brightness_contrast(0, -5)
-            img.format = 'jpeg'
-            img.save(filename=thumbnail_filepath)
-
-        return thumbnail_filepath
-
-    @Gtk.Template.Callback("on_close_request")
-    def on_close_request(self, window):
-        self.logger.debug("window closed, saving settings")
-        self.change_checker.stop()
-        for tab in list(self._iter_tabs()):
-            self._cancel_warm_load(tab)
-            try:
-                tab.viewer.release_resources()
-            except Exception:
-                pass
-        # Global prepare cache is shared across windows — only flush when
-        # this is the last Viewer3dWindow still alive.
-        app = self.get_application()
-        sibling_windows = 0
-        if app is not None:
-            sibling_windows = sum(
-                1 for w in app.get_windows()
-                if w is not self and isinstance(w, Viewer3dWindow)
-            )
-        if sibling_windows == 0:
-            clear_prepare_cache()
-        self.saved_settings.set_int(
-            "startup-width", window.get_width())
-        self.saved_settings.set_int(
-            "startup-height", window.get_height())
-        self.saved_settings.set_boolean(
-            "startup-sidebar-show", window.split_view.get_show_sidebar())
-        self.saved_settings.set_boolean(
-            "auto-best", self.window_settings.get_setting("auto-best").value)
-
-
-def rgb_to_list(rgb):
-    values = tuple(int(x) / 255 for x in rgb[4:-1].split(','))
-    return values
-
-
-def list_to_rgb(lst):
-    return f"rgb({int(lst[0] * 255)},{int(lst[1] * 255)},{int(lst[2] * 255)})"
 
 
 def list_files(directory):

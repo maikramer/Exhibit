@@ -24,6 +24,8 @@ class CustomFormatter(logging.Formatter):
 
 def init():
     global logger
+    # When XDG_DATA_HOME is set (Flatpak: ~/.var/app/<id>/data) it already is
+    # the app data root. Otherwise use ~/.local/share/exhibit.
     data_home = os.environ.get("XDG_DATA_HOME") or os.path.join(
         os.path.expanduser("~"), ".local", "share", "exhibit"
     )

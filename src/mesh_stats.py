@@ -14,7 +14,7 @@ import struct
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from .gltf_scene_graph import is_glb
+from .gltf_scene_graph import is_gltf_or_glb
 from .meshopt_decompress import (
     MeshoptError,
     _COMPONENT_SIZE,
@@ -465,6 +465,7 @@ def _stats_from_gltf(
     bin_chunk: bytes | None,
     *,
     up: str = "+Y",
+    asset_format: str = "glb",
 ) -> MeshStats:
     meshes = gltf.get("meshes") or []
     materials = gltf.get("materials") or []
@@ -573,7 +574,7 @@ def _stats_from_gltf(
         skins=len(skins) if isinstance(skins, list) else 0,
         animations=len(animations) if isinstance(animations, list) else 0,
         morph_targets=morph_targets or None,
-        format="glb",
+        format=asset_format,
         # Height is O(nodes×prims) via min/max corners — still deferred until
         # overlay / manifest asks (never scans vertex buffers).
         _lazy_height=_LazyHeight(_height_input_snapshot(gltf), up=up),
@@ -586,8 +587,8 @@ def collect_mesh_stats(
     """
     Collect stats for ``path``.
 
-    For ``.glb``, prepares meshopt/quantization when needed so counts match
-    what F3D loads. Non-GLB returns file size only.
+    For ``.glb`` / ``.gltf``, prepares (pack / meshopt / quantization / KTX2)
+    when needed so counts match what F3D loads. Other formats return size only.
     """
     abs_path = os.path.abspath(path)
     try:
@@ -595,10 +596,11 @@ def collect_mesh_stats(
     except OSError:
         file_bytes = 0
 
-    if not is_glb(abs_path):
+    if not is_gltf_or_glb(abs_path):
         ext = os.path.splitext(abs_path)[1].lstrip(".").lower() or None
         return MeshStats(path=abs_path, file_bytes=file_bytes, format=ext)
 
+    asset_format = "gltf" if abs_path.lower().endswith(".gltf") else "glb"
     temp = None
     load_path = abs_path
     retained = False
@@ -607,7 +609,9 @@ def collect_mesh_stats(
             load_path, temp = prepare_glb_for_load(abs_path)
             retained = load_path != abs_path and temp is None
         except (OSError, MeshoptError):
-            return MeshStats(path=abs_path, file_bytes=file_bytes, format="glb")
+            return MeshStats(
+                path=abs_path, file_bytes=file_bytes, format=asset_format
+            )
 
     try:
         try:
@@ -617,9 +621,15 @@ def collect_mesh_stats(
             try:
                 gltf = _read_glb_json(load_path)
             except (OSError, MeshoptError):
-                return MeshStats(path=abs_path, file_bytes=file_bytes, format="glb")
-            return _stats_from_gltf(abs_path, gltf, None, up=up)
-        return _stats_from_gltf(abs_path, gltf, bin_chunk, up=up)
+                return MeshStats(
+                    path=abs_path, file_bytes=file_bytes, format=asset_format
+                )
+            return _stats_from_gltf(
+                abs_path, gltf, None, up=up, asset_format=asset_format
+            )
+        return _stats_from_gltf(
+            abs_path, gltf, bin_chunk, up=up, asset_format=asset_format
+        )
     finally:
         cleanup_decompressed(temp)
         if retained:

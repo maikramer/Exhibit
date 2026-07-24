@@ -16,6 +16,7 @@ class ViewerTab(Gtk.Overlay):
         self.file_name = ""
         self.mesh_stats = None
         self.armature_xray_restore = None
+        self.depth_opacity_restore = None
         self.loaded = False
         # Disk mtime of the version currently shown in the viewer.
         self.loaded_mtime = 0.0

@@ -37,7 +37,13 @@ def v_mul(vector, scalar):
 
 
 def v_dot_p(vector1, vector2):
+    """Element-wise product (legacy name used by camera helpers)."""
     return tuple(v1 * v2 for v1, v2 in zip(vector1, vector2))
+
+
+def v_dot(vector1, vector2):
+    """Scalar dot product."""
+    return sum(v1 * v2 for v1, v2 in zip(vector1, vector2))
 
 
 def v_cross(vector1, vector2):

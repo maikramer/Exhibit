@@ -130,11 +130,18 @@ class WindowSettings(Gio.ListStore):
         "armature-enable": False,
         "checkerboard-enable": False,
         "normal-glyphs": False,
+        # Multiplier on F3D world-space glyph size (1.0 ≈ 0.45% of mesh diagonal).
+        "normal-glyphs-scale": 0.5,
         "display-depth": False,
+        "skin-weights": False,
+        # magnitude | slot0..slot3 | bone
+        "skin-weights-mode": "magnitude",
+        "skin-weights-joint": 0,
         "stats-overlay": False,
         "scivis-component": -1,
         "cells": True,
         "scivis-enabled": False,
+        "scalar": "",
         "model-color": (1.0, 1.0, 1.0),
         "grid": True,
         "grid-absolute": False,
@@ -170,6 +177,16 @@ class WindowSettings(Gio.ListStore):
         "point-up": True,
         "auto-reload": True,
         "object-tree": True,
+        # Viewport navigation (Blender-like); persisted via gschema too.
+        "nav-invert-x": False,
+        "nav-invert-y": False,
+        "nav-zoom-to-cursor": True,
+        "nav-orbit-around-cursor": False,
+        "nav-touchpad-orbit": True,
+        "nav-mmb-click-pivot": True,
+        "nav-orbit-sensitivity": 1.0,
+        "nav-zoom-sensitivity": 1.0,
+        "nav-pan-sensitivity": 1.0,
     }
 
     internal_settings = {"auto-best": True, "sidebar-show": True}

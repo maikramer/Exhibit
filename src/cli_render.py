@@ -14,8 +14,6 @@ import os
 import sys
 from typing import Any
 
-import f3d
-
 from .camera_views import PRESET_VIEWS, UP_DIRS, apply_orbit, apply_view
 from .gltf_scene_graph import glb_has_skins
 from .mesh_stats import collect_mesh_stats, format_overlay_for_f3d
@@ -25,13 +23,14 @@ from .meshopt_decompress import (
     prepare_glb_for_load,
     release_prepared,
 )
-from .settings_manager import WindowSettings
 
 DEFAULT_VIEWS = ("front", "right", "back", "left", "top", "isometric")
 DEFAULT_SIZE = (1024, 1024)
-# Match GUI WindowSettings defaults for closer parity.
-DEFAULT_BG = WindowSettings.default_settings["bg-color"]
-DEFAULT_GRID = WindowSettings.default_settings["grid"]
+# Match GUI WindowSettings.default_settings for closer parity (avoid importing
+# settings_manager / PyGObject here so parser helpers stay headless-testable).
+DEFAULT_BG = (1.0, 1.0, 1.0)
+DEFAULT_GRID = True
+DEFAULT_LIGHT_INTENSITY = 1.5  # WindowSettings.default_settings["light-intensity"]
 XRAY_OPACITY = 0.35
 XRAY_LINE_WIDTH = 4.0
 
@@ -81,6 +80,12 @@ def build_parser() -> argparse.ArgumentParser:
             "Render a 3D model from multiple camera angles for analysis "
             "(PNG + manifest.json)."
         ),
+        epilog=(
+            "Flatpak: if ffmpeg is missing in the sandbox PATH, "
+            "--video mp4/webm tries `flatpak-spawn --host ffmpeg`, "
+            "then falls back to GIF via Pillow."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     parser.add_argument("model", help="Path to the model file (glb, fbx, obj, …)")
     parser.add_argument(
@@ -191,6 +196,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Image format (only png for now)",
     )
     parser.add_argument(
+        "--video",
+        choices=("mp4", "webm", "gif"),
+        default=None,
+        help=(
+            "Encode orbit frames into a turntable (mp4/webm need ffmpeg or "
+            "host ffmpeg via flatpak-spawn; gif uses Pillow; auto-GIF if "
+            "ffmpeg missing). Use with --orbit / views including orbit."
+        ),
+    )
+    parser.add_argument(
+        "--video-fps",
+        type=int,
+        default=24,
+        dest="video_fps",
+        help="Turntable video frame rate (default: 24)",
+    )
+    parser.add_argument(
         "--overlay",
         action="store_true",
         help="Burn mesh stats into PNGs (F3D filename/metadata overlay)",
@@ -230,9 +252,7 @@ def _build_options(
         "render.effect.antialiasing.mode": "fxaa",
         "render.effect.tone_mapping": True,
         "render.effect.blending.mode": "ddp",
-        "render.light.intensity": float(
-            WindowSettings.default_settings["light-intensity"]
-        ),
+        "render.light.intensity": float(DEFAULT_LIGHT_INTENSITY),
     }
     if args.overlay and overlay_text:
         options.update(
@@ -273,6 +293,8 @@ def _expand_view_jobs(
 
 
 def render_model(args: argparse.Namespace) -> str:
+    import f3d
+
     model_path = os.path.abspath(args.model)
     if not os.path.isfile(model_path):
         raise SystemExit(f"Model not found: {model_path}")
@@ -328,13 +350,14 @@ def render_model(args: argparse.Namespace) -> str:
 
     try:
         eng.scene.load_animation_time(float(args.animation_time))
-    except Exception:
-        pass
+    except Exception as exc:
+        print(f"animation time ignored: {exc}", file=sys.stderr)
 
     animation_names: list[str] = []
     try:
         animation_names = list(eng.scene.get_animation_names())
-    except Exception:
+    except Exception as exc:
+        print(f"animation names unavailable: {exc}", file=sys.stderr)
         animation_names = []
 
     has_skins = glb_has_skins(model_path)
@@ -362,6 +385,61 @@ def render_model(args: argparse.Namespace) -> str:
         if retained:
             release_prepared(load_path)
 
+    video_fmt = getattr(args, "video", None)
+    video_fps = int(getattr(args, "video_fps", 24) or 24)
+    video_file: str | None = None
+    if video_fmt:
+        from .video_encode import encode_turntable_video
+
+        orbit_frames = [
+            os.path.join(out_dir, entry["file"])
+            for entry in view_entries
+            if str(entry.get("name", "")).startswith("orbit_")
+        ]
+        if len(orbit_frames) >= 2:
+            video_name = f"{stem}_turntable.{video_fmt}"
+            video_path = os.path.join(out_dir, video_name)
+            try:
+                encode_turntable_video(
+                    orbit_frames,
+                    video_path,
+                    fps=video_fps,
+                    fmt=str(video_fmt),
+                )
+                video_file = video_name
+                print(f"Wrote turntable {video_path}", file=sys.stderr)
+            except FileNotFoundError:
+                # mp4/webm without ffmpeg → GIF via Pillow when available.
+                gif_name = f"{stem}_turntable.gif"
+                gif_path = os.path.join(out_dir, gif_name)
+                try:
+                    encode_turntable_video(
+                        orbit_frames,
+                        gif_path,
+                        fps=video_fps,
+                        fmt="gif",
+                    )
+                    video_file = gif_name
+                    print(
+                        "ffmpeg not found; wrote GIF turntable via Pillow "
+                        f"→ {gif_path}",
+                        file=sys.stderr,
+                    )
+                except Exception as gif_exc:
+                    print(
+                        "ffmpeg not found and GIF fallback failed: "
+                        f"{gif_exc}",
+                        file=sys.stderr,
+                    )
+            except Exception as exc:
+                print(f"Turntable video failed: {exc}", file=sys.stderr)
+        else:
+            print(
+                "--video needs at least 2 orbit frames "
+                "(use --orbit N or --views orbit)",
+                file=sys.stderr,
+            )
+
     manifest = {
         "model": model_path,
         "prepared": load_path != model_path,
@@ -383,8 +461,11 @@ def render_model(args: argparse.Namespace) -> str:
             "bg": list(args.bg),
             "animation_index": int(args.animation_index),
             "animation_time": float(args.animation_time),
+            "video": video_fmt,
+            "video_fps": video_fps,
         },
         "views": view_entries,
+        "video": video_file,
     }
     manifest_path = os.path.join(out_dir, "manifest.json")
     with open(manifest_path, "w", encoding="utf-8") as handle:
