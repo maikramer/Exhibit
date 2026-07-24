@@ -16,6 +16,7 @@ Powered by [F3D](https://github.com/f3d-app/f3d) (glTF, USD, STL, FBX, OBJ, PLY,
 - **Original app:** [Nokse22/Exhibit](https://github.com/Nokse22/Exhibit) by [Nokse](https://github.com/Nokse22) — GPLv3.
 - **Renderer:** [F3D](https://github.com/f3d-app/f3d) — BSD-3-Clause (see F3D license notes for bundled libs).
 - **This fork:** [maikramer/Exhibit](https://github.com/maikramer/Exhibit) — gamedev-focused changes on top of upstream.
+- In the app: **Help → About** lists the same fork summary, GitHub link, and upstream acknowledgement. Bug reports for this fork: [maikramer/Exhibit issues](https://github.com/maikramer/Exhibit/issues).
 
 Upstream Flathub build (original app, not this fork):  
 https://flathub.org/apps/io.github.nokse22.Exhibit
@@ -34,10 +35,13 @@ App ID stays `io.github.nokse22.Exhibit` so local Flatpak / GSettings stay compa
 | **Armature** | X-ray skeleton overlay (thicker bones + translucent mesh) |
 | **Stats** | Vertex/face/edge/height overlay in the GUI; same counts in CLI PNGs + `manifest.json` |
 | **Tabs** | Multi-document `AdwTabView`: each open/drop adds a tab; shared sidebar; same startup loading UI |
+| **Compare** | **Sync Cameras** + experimental **Split Compare** (side-by-side column, Pin, Swap; shortcuts below) |
+| **Recent** | Welcome page lists recent models (GSettings); drop a folder to open all GLB/glTF |
+| **Session** | Optionally restore last open tabs on startup (Loading → **Restore Last Session**) |
 | **UI** | Follow OS theme/accent (Yaru/Adwaita portal); Scene-tab IA (Animation + Inspect); glass chrome over the viewport |
-| **CLI** | `exhibit render` → multi-angle PNGs + machine-readable manifest |
-| **Perf** | Cached prepare; warm second-open (prepare ∥ new F3D engine); engine reuse; ~60 Hz anim tick |
-| **Flatpak** | `$HOME` + `/tmp` + `/media`; gtk config + Settings portal; pinned F3D; `libmeshoptimizer` + `libktx` |
+| **CLI** | `exhibit render` → multi-angle PNGs + optional turntable `--video` + `manifest.json` |
+| **Perf** | Cached prepare (LRU count + 256 MiB); warm second-open (prepare ∥ new F3D engine); ~60 Hz anim tick |
+| **Flatpak** | `$HOME` + `/tmp` + `/media`; gtk config + Settings portal; pinned F3D; `libmeshoptimizer` + `libktx`; host `ffmpeg` via `flatpak-spawn` |
 
 ### 1. Packed GLB preparation (before F3D load)
 
@@ -51,7 +55,7 @@ F3D/VTK/Assimp cannot load several common packed-glTF extensions. On `.glb` open
 
 Prepared temps are **cached** by `(realpath, mtime, size)` so reopen / part-toggle / CLI batches do not re-decode the same file every time.
 
-Only self-contained `.glb` (embedded BIN chunk) is supported for these rewrites — not external `.gltf` + `.bin` / URI textures.
+Self-contained `.glb` and external `.gltf` + URI buffers/images (local or `data:`) are supported. Remote `http(s)` URIs are not.
 
 ### 2. Animation clips by name
 
@@ -85,9 +89,13 @@ No Gtk window. Multi-angle PNGs + `manifest.json` for agent / review pipelines.
 # Default 6 views → /tmp/hero-views/*.png + manifest.json
 flatpak run io.github.nokse22.Exhibit render ./hero.glb -o /tmp/hero-views
 
-# X-ray armature + orbit turntable
+# X-ray armature + orbit turntable PNGs
 flatpak run io.github.nokse22.Exhibit render ./hero.glb -o /tmp/hero-rig \
   --armature --orbit 8 --size 1024x1024
+
+# Same orbit frames → MP4 (needs ffmpeg on PATH)
+flatpak run io.github.nokse22.Exhibit render ./hero.glb -o /tmp/hero-rig \
+  --orbit 24 --video mp4 --video-fps 24
 
 # Stats burned into PNGs + JSON stats block
 flatpak run io.github.nokse22.Exhibit render ./hero.glb -o /tmp/hero-views \
@@ -115,12 +123,23 @@ Stdout prints the absolute path to `manifest.json` (one line) for piping.
 | `--animation-index` / `--animation-time` | Clip index + time in seconds |
 | `--overlay` | Burn mesh stats into PNGs |
 | `--format png` | Only PNG for now |
+| `--video mp4\|webm\|gif` | Turntable video (`ffmpeg` for mp4/webm; Pillow GIF; auto-GIF if ffmpeg missing). Flatpak: uses host `ffmpeg` via `flatpak-spawn --host` when sandbox PATH has none |
+| `--video-fps N` | Turntable frame rate (default `24`) |
 
-Manifest includes model path, whether prepare ran, skins/animation names, `stats`, options used, and the list of view files.
+Manifest includes model path, whether prepare ran, skins/animation names, `stats`, options used, view files, and optional `video` filename.
 
 ### 7. Multi-document tabs
 
 - Opening or dropping another model while one is already loaded creates a **new tab** (file dialog supports multi-select).
+- Drop a **folder** (or multiple files), or use **Open Folder** (`Ctrl+Shift+O`), to open every supported GLB/glTF in new tabs.
+- Welcome page shows **Recent** models (persisted in GSettings), with **Clear Recent**.
+- **Restore Last Session** (sidebar Loading, default on) reopens the previous tabs on startup unless a file is passed on the command line; turn off to clear saved session paths.
+- Settings menu → **Sync Cameras Across Tabs** keeps peer-tab cameras matched while you navigate.
+- **Split Compare (Experimental)** checklist:
+  - `Ctrl+Shift+D` — toggle side-by-side secondary F3D column (drag sash to resize; width remembered)
+  - **Pin secondary model** — keep another file while switching tabs (camera still follows the active tab; pin path restored on next launch if the file exists)
+  - `Ctrl+Shift+X` — **Swap** active tab ↔ pinned model
+  - Split Compare + pin reopen quietly on the next launch when left on
 - First file: no tab bar. Second file: same startup **Loading…** page, then the model appears and the tab bar reveals with both documents.
 - Sidebar settings apply across tabs; animation scrubber / object tree follow the **active** tab.
 - Closing the last tab returns to the welcome page. `Open with` / `HANDLES_OPEN` reuses the active window and opens extra paths as tabs.
@@ -178,6 +197,20 @@ flatpak run io.github.nokse22.Exhibit /tmp/hero.glb
 
 ---
 
+## Tests (host, no Flatpak)
+
+Pipeline unit tests (GLB prepare, glTF pack, stats, camera, CLI parser) run without Gtk/F3D:
+
+```sh
+python3 -m pytest tests/
+# or
+./tools/run_tests.sh
+```
+
+CI: `.github/workflows/pytest.yml`.
+
+---
+
 ## Build (Flatpak, local)
 
 Needs `org.flatpak.Builder`, GNOME 49 SDK/Platform, and Flathub remotes.
@@ -206,6 +239,18 @@ flatpak run io.github.nokse22.Exhibit path/to/model.glb
 ```
 
 GNOME Builder against this repo also works if you prefer an IDE workflow.
+
+### Unit tests (host, no Flatpak / Gtk)
+
+Pipeline helpers (prepare, pack `.gltf`, stats, camera, CLI parser) run with pytest:
+
+```sh
+python3 -m pip install pytest   # once
+./tools/run_tests.sh
+# or: python3 -m pytest tests/
+```
+
+CI: `.github/workflows/pytest.yml`.
 
 ---
 
