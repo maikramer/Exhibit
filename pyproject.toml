@@ -8,3 +8,8 @@ indent-style = "space"
 line-ending = "auto"
 preview = true
 docstring-code-format = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-q"
