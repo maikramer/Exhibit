@@ -14,11 +14,13 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import struct
 import tempfile
 import threading
+from collections import OrderedDict
 from ctypes import (
     CDLL,
     POINTER,
@@ -37,9 +39,15 @@ MESHOPT_EXTENSIONS = (
 )
 QUANTIZATION_EXTENSION = "KHR_mesh_quantization"
 
+# Cap prepared-temp cache so multi-tab sessions cannot retain unbounded disk/RAM.
+MAX_PREPARE_CACHE_ENTRIES = 8
+MAX_PREPARE_CACHE_BYTES = 256 * 1024 * 1024  # 256 MiB of prepared temps
+
 _GLB_MAGIC = 0x46546C67
 _CHUNK_JSON = 0x4E4F534A
 _CHUNK_BIN = 0x004E4942
+
+_log = logging.getLogger(__name__)
 
 _COMPONENT_SIZE = {
     5120: 1,  # BYTE
@@ -71,10 +79,14 @@ _FLOAT = 5126
 _lib: CDLL | None = None
 _lib_failed = False
 
-# Prepared GLB cache: (realpath, mtime_ns, size) → temp path owned by this module.
+# Bump when prepare semantics change so stale temps are not reused.
+PREPARE_REVISION = 2  # fill missing skin.skeleton for F3D armature actors
+
+# Prepared GLB cache: (realpath, mtime_ns, size, revision) → temp path.
+# OrderedDict tracks LRU (oldest at the front).
 _prepare_lock = threading.Lock()
-_prepare_cache: dict[tuple[str, int, int], str] = {}
-_prepare_cache_by_abs: dict[str, tuple[tuple[str, int, int], str]] = {}
+_prepare_cache: OrderedDict[tuple[str, int, int, int], str] = OrderedDict()
+_prepare_cache_by_abs: dict[str, tuple[tuple[str, int, int, int], str]] = {}
 # Active users of a cached temp; unlink only when refs hit 0 and entry gone.
 _prepare_refs: dict[str, int] = {}
 _prepare_orphans: set[str] = set()
@@ -232,10 +244,10 @@ def _read_glb(path: str) -> tuple[dict[str, Any], bytes]:
     return _decode_gltf_json(json_chunk, path), bin_chunk
 
 
-def _file_cache_key(path: str) -> tuple[str, int, int]:
+def _file_cache_key(path: str) -> tuple[str, int, int, int]:
     abs_path = os.path.realpath(path)
     stat = os.stat(abs_path)
-    return abs_path, int(stat.st_mtime_ns), int(stat.st_size)
+    return abs_path, int(stat.st_mtime_ns), int(stat.st_size), PREPARE_REVISION
 
 
 def _retain_temp(temp_path: str) -> None:
@@ -281,6 +293,52 @@ def release_prepared(path: str | None) -> None:
         _try_unlink_temp(path)
 
 
+def _prepare_cache_bytes_unlocked() -> int:
+    """Sum on-disk size of temps currently in the prepare cache."""
+    total = 0
+    for temp_path in _prepare_cache.values():
+        try:
+            total += os.path.getsize(temp_path)
+        except OSError:
+            pass
+    return total
+
+
+def _evict_one_prepare_cache_unlocked() -> bool:
+    """Evict the LRU cache entry. Return False if the cache is empty."""
+    if not _prepare_cache:
+        return False
+    key, temp_path = _prepare_cache.popitem(last=False)
+    abs_path = key[0]
+    entry = _prepare_cache_by_abs.get(abs_path)
+    if entry and entry[0] == key:
+        _prepare_cache_by_abs.pop(abs_path, None)
+    _log.debug(
+        "Evicting prepared GLB cache entry for %s (%s)",
+        abs_path,
+        os.path.basename(temp_path),
+    )
+    _retire_temp(temp_path)
+    return True
+
+
+def _evict_prepare_cache_unlocked() -> None:
+    """Drop LRU entries until under count and total-bytes caps.
+
+    A single entry larger than ``MAX_PREPARE_CACHE_BYTES`` is kept (cannot
+    shrink further without discarding the only remaining prep).
+    """
+    while len(_prepare_cache) > MAX_PREPARE_CACHE_ENTRIES:
+        if not _evict_one_prepare_cache_unlocked():
+            break
+    while (
+        len(_prepare_cache) > 1
+        and _prepare_cache_bytes_unlocked() > MAX_PREPARE_CACHE_BYTES
+    ):
+        if not _evict_one_prepare_cache_unlocked():
+            break
+
+
 def _cache_prepared(key: tuple[str, int, int], temp_path: str) -> None:
     abs_path = key[0]
     previous = _prepare_cache_by_abs.get(abs_path)
@@ -290,14 +348,17 @@ def _cache_prepared(key: tuple[str, int, int], temp_path: str) -> None:
         if prev_temp != temp_path:
             _retire_temp(prev_temp)
     _prepare_cache[key] = temp_path
+    _prepare_cache.move_to_end(key)
     _prepare_cache_by_abs[abs_path] = (key, temp_path)
     _prepare_orphans.discard(temp_path)
     _retain_temp(temp_path)
+    _evict_prepare_cache_unlocked()
 
 
 def _cached_prepared(key: tuple[str, int, int]) -> str | None:
     cached = _prepare_cache.get(key)
     if cached and os.path.isfile(cached):
+        _prepare_cache.move_to_end(key)
         _retain_temp(cached)
         return cached
     if cached:
@@ -400,20 +461,28 @@ def needs_meshopt_decompress(path: str) -> bool:
 
 
 def needs_glb_prepare(path: str) -> bool:
-    """Return True if path needs any pre-F3D GLB rewrite."""
-    if not path or not str(path).lower().endswith(".glb"):
+    """Return True if path needs any pre-F3D rewrite (pack / meshopt / KTX2)."""
+    if not path:
+        return False
+    lower = str(path).lower()
+    # External .gltf always packs into a temporary self-contained GLB.
+    if lower.endswith(".gltf"):
+        return True
+    if not lower.endswith(".glb"):
         return False
     try:
         gltf = _read_glb_json(path)
     except (OSError, MeshoptError):
         return False
 
+    from .gltf_scene_graph import gltf_needs_skin_skeleton_fix
     from .ktx2_transcode import gltf_needs_ktx2_transcode
 
     return (
         _gltf_has_meshopt(gltf)
         or _gltf_has_quantization(gltf)
         or gltf_needs_ktx2_transcode(gltf)
+        or gltf_needs_skin_skeleton_fix(gltf)
     )
 
 
@@ -785,14 +854,18 @@ def decompress_glb(path: str) -> str:
     """
     Return a path to a GLB prepared for F3D/VTK.
 
-    Expands meshopt / mesh quantization and transcodes KTX2 / BasisU textures
-    to PNG. If preparation is unnecessary, returns ``path``. Otherwise writes a
-    temporary ``.glb`` and returns that path. Prefer ``prepare_glb_for_load``,
-    which caches prepared temps.
+    Expands meshopt / mesh quantization, transcodes KTX2 / BasisU textures to
+    PNG, and fills missing ``skin.skeleton`` for armature visualization. If
+    preparation is unnecessary, returns ``path``. Otherwise writes a temporary
+    ``.glb`` and returns that path. Prefer ``prepare_glb_for_load``, which
+    caches prepared temps. External ``.gltf`` must be packed first.
     """
+    if not path or not str(path).lower().endswith(".glb"):
+        return path
     if not needs_glb_prepare(path):
         return path
 
+    from .gltf_scene_graph import ensure_skin_skeletons
     from .ktx2_transcode import gltf_needs_ktx2_transcode, transcode_ktx2_in_gltf
 
     gltf, bin_chunk = _read_glb(path)
@@ -808,6 +881,9 @@ def decompress_glb(path: str) -> str:
 
     if gltf_needs_ktx2_transcode(gltf):
         bin_chunk = transcode_ktx2_in_gltf(gltf, bin_chunk)
+        changed = True
+
+    if ensure_skin_skeletons(gltf):
         changed = True
 
     if not changed:
@@ -837,25 +913,37 @@ def cleanup_decompressed(path: str | None) -> None:
         if path in _prepare_orphans:
             return
     try:
-        if os.path.basename(path).startswith("exhibit-meshopt-"):
+        base = os.path.basename(path)
+        if base.startswith("exhibit-meshopt-") or base.startswith("exhibit-gltf-"):
             os.unlink(path)
     except OSError:
         pass
+
+
+def _prepare_temp_prefixes(path: str) -> bool:
+    base = os.path.basename(path)
+    return base.startswith("exhibit-meshopt-") or base.startswith("exhibit-gltf-")
 
 
 def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
     """
     Prepare a path for F3D.
 
-    Returns ``(load_path, temp_path)``. Prepared temps (meshopt / KTX2) are
-    owned by an internal cache keyed by ``(realpath, mtime, size)``;
+    Accepts ``.glb`` and external ``.gltf`` (URI buffers/images are packed into
+    a temporary self-contained GLB first).
+
+    Returns ``(load_path, temp_path)``. Prepared temps (pack / meshopt / KTX2)
+    are owned by an internal cache keyed by ``(realpath, mtime, size)``;
     ``temp_path`` is then ``None`` and callers must not delete ``load_path``.
     Each successful return of a cached/new temp retains it — call
     ``release_prepared(load_path)`` when the viewer no longer needs it.
     Legacy callers that still receive a ``temp_path`` should call
     ``cleanup_decompressed``.
     """
-    if not path or not str(path).lower().endswith(".glb"):
+    if not path:
+        return path, None
+    lower = str(path).lower()
+    if not (lower.endswith(".glb") or lower.endswith(".gltf")):
         return path, None
 
     try:
@@ -871,8 +959,31 @@ def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
         if not needs_glb_prepare(path):
             return path, None
 
-    # Decode outside the lock (CPU/IO heavy).
-    load_path = decompress_glb(path)
+    # Decode / pack outside the lock (CPU/IO heavy).
+    packed_temp: str | None = None
+    work_path = path
+    if lower.endswith(".gltf"):
+        from .gltf_pack import write_packed_gltf_temp
+
+        packed_temp = write_packed_gltf_temp(path)
+        work_path = packed_temp
+
+    try:
+        load_path = decompress_glb(work_path)
+    except Exception:
+        if packed_temp:
+            cleanup_decompressed(packed_temp)
+        raise
+
+    # Packed .gltf with no further meshopt/KTX work still needs the temp GLB.
+    if load_path == work_path and packed_temp:
+        load_path = packed_temp
+        packed_temp = None
+    elif packed_temp and load_path != packed_temp:
+        # decompress wrote a new temp; drop the intermediate pack.
+        cleanup_decompressed(packed_temp)
+        packed_temp = None
+
     if load_path == path:
         return path, None
 
@@ -881,7 +992,7 @@ def prepare_glb_for_load(path: str) -> tuple[str, str | None]:
         cached = _cached_prepared(key)
         if cached is not None:
             try:
-                if os.path.basename(load_path).startswith("exhibit-meshopt-"):
+                if _prepare_temp_prefixes(load_path):
                     os.unlink(load_path)
             except OSError:
                 pass

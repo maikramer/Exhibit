@@ -13,6 +13,7 @@
 
 from __future__ import annotations
 
+import os
 import struct
 import zlib
 from ctypes import (
@@ -30,6 +31,7 @@ from ctypes import (
     cast,
 )
 from ctypes.util import find_library
+from pathlib import Path
 from typing import Any
 
 BASISU_EXTENSION = "KHR_texture_basisu"
@@ -85,6 +87,58 @@ def _error(message: str) -> Exception:
     return MeshoptError(message)
 
 
+def _library_candidates() -> list[str]:
+    """Ordered libktx shared-object names / paths to try."""
+    candidates: list[str] = []
+
+    for env_key in ("LIBKTX", "KTX_LIBRARY"):
+        value = os.environ.get(env_key)
+        if value:
+            candidates.append(value)
+
+    for part in os.environ.get("LD_LIBRARY_PATH", "").split(":"):
+        if not part:
+            continue
+        root = Path(part)
+        candidates.extend(
+            [
+                str(root / "libktx.so"),
+                str(root / "libktx.so.4"),
+                str(root / "libktx.so.0"),
+            ]
+        )
+
+    found = find_library("ktx")
+    if found:
+        candidates.append(found)
+
+    home = Path.home()
+    candidates.extend(
+        [
+            "ktx",
+            "libktx.so",
+            "libktx.so.4",
+            "libktx.so.0",
+            "/app/lib/libktx.so",
+            "/usr/lib/libktx.so",
+            "/usr/lib64/libktx.so",
+            "/usr/local/lib/libktx.so",
+            str(home / ".local/opt/KTX-Software/lib/libktx.so"),
+            str(home / ".local/lib/libktx.so"),
+        ]
+    )
+
+    # Preserve order while dropping empties / duplicates.
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for name in candidates:
+        if not name or name in seen:
+            continue
+        seen.add(name)
+        ordered.append(name)
+    return ordered
+
+
 def _load_library() -> CDLL:
     global _lib, _lib_failed
     if _lib is not None:
@@ -92,20 +146,8 @@ def _load_library() -> CDLL:
     if _lib_failed:
         raise _error("libktx is not available")
 
-    candidates = [
-        "ktx",
-        "libktx.so",
-        "libktx.so.4",
-        "/app/lib/libktx.so",
-        "/usr/lib/libktx.so",
-        "/usr/local/lib/libktx.so",
-    ]
-    found = find_library("ktx")
-    if found:
-        candidates.insert(0, found)
-
     last_error: Exception | None = None
-    for name in candidates:
+    for name in _library_candidates():
         try:
             lib = CDLL(name)
         except OSError as exc:
@@ -130,8 +172,32 @@ def _configure_lib(lib: CDLL) -> None:
     ]
     lib.ktxTexture_CreateFromMemory.restype = c_int
 
+    if hasattr(lib, "ktxTexture2_CreateFromMemory"):
+        lib.ktxTexture2_CreateFromMemory.argtypes = [
+            POINTER(c_ubyte),
+            c_size_t,
+            c_uint32,
+            POINTER(c_void_p),
+        ]
+        lib.ktxTexture2_CreateFromMemory.restype = c_int
+
     lib.ktxTexture_GetData.argtypes = [c_void_p]
     lib.ktxTexture_GetData.restype = c_void_p
+
+    lib.ktxTexture_GetRowPitch.argtypes = [c_void_p, c_uint32]
+    lib.ktxTexture_GetRowPitch.restype = c_uint32
+
+    lib.ktxTexture2_GetImageOffset.argtypes = [
+        c_void_p,
+        c_uint32,
+        c_uint32,
+        c_uint32,
+        POINTER(c_size_t),
+    ]
+    lib.ktxTexture2_GetImageOffset.restype = c_int
+
+    lib.ktxTexture2_GetImageSize.argtypes = [c_void_p, c_uint32]
+    lib.ktxTexture2_GetImageSize.restype = c_size_t
 
     lib.ktxTexture2_NeedsTranscoding.argtypes = [c_void_p]
     lib.ktxTexture2_NeedsTranscoding.restype = c_bool
@@ -182,6 +248,62 @@ def _encode_png_rgba(width: int, height: int, rgba: bytes) -> bytes:
 _KTX2_IDENTIFIER = b"\xabKTX 20\xbb\r\n\x1a\n"
 
 
+def _level0_rgba32(lib: CDLL, texture_ptr: c_void_p) -> tuple[int, int, bytes]:
+    """
+    Return ``(width, height, tightly-packed RGBA8)`` for mip level 0.
+
+    KTX2 stores mip levels smallest-first in ``pData``. Reading from offset 0
+    therefore yields garbage when ``numLevels > 1`` — use GetImageOffset.
+    """
+    texture = cast(texture_ptr, POINTER(_KtxTexture)).contents
+    width = int(texture.baseWidth)
+    height = int(texture.baseHeight)
+    if width <= 0 or height <= 0 or width > 65536 or height > 65536:
+        raise _error(f"Invalid KTX2 dimensions: {width}x{height}")
+
+    data_ptr = lib.ktxTexture_GetData(texture_ptr)
+    data_addr = int(data_ptr) if data_ptr else 0
+    if not data_addr:
+        raise _error("ktxTexture_GetData returned NULL")
+
+    offset = c_size_t(0)
+    rc = lib.ktxTexture2_GetImageOffset(texture_ptr, 0, 0, 0, byref(offset))
+    if rc != _KTX_SUCCESS:
+        raise _ktx_error(lib, rc, "ktxTexture2_GetImageOffset failed")
+
+    image_size = int(lib.ktxTexture2_GetImageSize(texture_ptr, 0))
+    row_pitch = int(lib.ktxTexture_GetRowPitch(texture_ptr, 0))
+    tight_stride = width * 4
+    expected = tight_stride * height
+    data_size = int(texture.dataSize)
+
+    if image_size <= 0:
+        raise _error("ktxTexture2_GetImageSize returned 0 for level 0")
+    if row_pitch < tight_stride:
+        raise _error(
+            f"KTX2 rowPitch {row_pitch} smaller than RGBA stride {tight_stride}"
+        )
+    if data_size > 0 and offset.value + image_size > data_size:
+        raise _error(
+            f"KTX2 level0 span out of range "
+            f"(offset={offset.value}, size={image_size}, dataSize={data_size})"
+        )
+
+    level_addr = data_addr + int(offset.value)
+    if row_pitch == tight_stride and image_size >= expected:
+        rgba = bytes((c_ubyte * expected).from_address(level_addr))
+        return width, height, rgba
+
+    # Copy rows tightly when the transcoder pads row pitch.
+    rows = bytearray(expected)
+    src = (c_ubyte * image_size).from_address(level_addr)
+    for row in range(height):
+        start = row * row_pitch
+        dest = row * tight_stride
+        rows[dest : dest + tight_stride] = bytes(src[start : start + tight_stride])
+    return width, height, bytes(rows)
+
+
 def ktx2_bytes_to_png(ktx_bytes: bytes) -> bytes:
     """Decode a KTX2 (BasisU/UASTC) blob to PNG bytes."""
     if not ktx_bytes:
@@ -192,14 +314,25 @@ def ktx2_bytes_to_png(ktx_bytes: bytes) -> bytes:
     lib = _load_library()
     texture_ptr = c_void_p()
     source = (c_ubyte * len(ktx_bytes)).from_buffer_copy(ktx_bytes)
-    result = lib.ktxTexture_CreateFromMemory(
-        source,
-        len(ktx_bytes),
-        _KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
-        byref(texture_ptr),
-    )
+    create = getattr(lib, "ktxTexture2_CreateFromMemory", None)
+    if create is not None:
+        result = create(
+            source,
+            len(ktx_bytes),
+            _KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
+            byref(texture_ptr),
+        )
+        create_name = "ktxTexture2_CreateFromMemory"
+    else:
+        result = lib.ktxTexture_CreateFromMemory(
+            source,
+            len(ktx_bytes),
+            _KTX_TEXTURE_CREATE_LOAD_IMAGE_DATA_BIT,
+            byref(texture_ptr),
+        )
+        create_name = "ktxTexture_CreateFromMemory"
     if result != _KTX_SUCCESS or not texture_ptr.value:
-        raise _ktx_error(lib, result, "ktxTexture_CreateFromMemory failed")
+        raise _ktx_error(lib, result, f"{create_name} failed")
 
     try:
         if lib.ktxTexture2_NeedsTranscoding(texture_ptr):
@@ -207,24 +340,7 @@ def ktx2_bytes_to_png(ktx_bytes: bytes) -> bytes:
             if tr != _KTX_SUCCESS:
                 raise _ktx_error(lib, tr, "ktxTexture2_TranscodeBasis failed")
 
-        texture = cast(texture_ptr, POINTER(_KtxTexture)).contents
-        width = int(texture.baseWidth)
-        height = int(texture.baseHeight)
-        if width <= 0 or height <= 0 or width > 65536 or height > 65536:
-            raise _error(f"Invalid KTX2 dimensions: {width}x{height}")
-
-        data_ptr = lib.ktxTexture_GetData(texture_ptr)
-        if not data_ptr:
-            raise _error("ktxTexture_GetData returned NULL")
-
-        expected = width * height * 4
-        data_size = int(texture.dataSize)
-        if data_size > 0 and data_size < expected:
-            raise _error(
-                f"KTX2 dataSize {data_size} smaller than RGBA32 {expected}"
-            )
-        nbytes = expected
-        rgba = bytes(cast(data_ptr, POINTER(c_ubyte * nbytes)).contents)
+        width, height, rgba = _level0_rgba32(lib, texture_ptr)
         return _encode_png_rgba(width, height, rgba)
     finally:
         lib.ktxTexture2_Destroy(texture_ptr)
@@ -252,6 +368,10 @@ def gltf_needs_ktx2_transcode(gltf: dict[str, Any]) -> bool:
         return True
 
     images = gltf.get("images") or []
+    for image in images:
+        if isinstance(image, dict) and _image_is_ktx2(image):
+            return True
+
     for texture in gltf.get("textures") or []:
         if not isinstance(texture, dict):
             continue

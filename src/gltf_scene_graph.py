@@ -54,20 +54,115 @@ def is_glb(path: str) -> bool:
     return bool(path) and str(path).lower().endswith(".glb")
 
 
+def is_gltf_or_glb(path: str) -> bool:
+    if not path:
+        return False
+    lower = str(path).lower()
+    return lower.endswith(".glb") or lower.endswith(".gltf")
+
+
 def glb_has_skins(path: str) -> bool | None:
     """
-    Return whether a GLB declares skins (armature).
+    Return whether a GLB/glTF declares skins (armature).
 
-    ``None`` means the file is not a readable GLB (unknown / N/A).
+    ``None`` means the file is not a readable glTF asset (unknown / N/A).
     """
-    if not is_glb(path):
+    if not is_gltf_or_glb(path):
         return None
     try:
-        gltf = _read_glb_json(path)
+        if is_glb(path):
+            gltf = _read_glb_json(path)
+        else:
+            prepared, temp = prepare_glb_for_load(path)
+            try:
+                gltf = _read_glb_json(prepared)
+            finally:
+                cleanup_decompressed(temp)
+                if prepared != path and temp is None:
+                    release_prepared(prepared)
     except (OSError, MeshoptError):
         return None
     skins = gltf.get("skins") or []
     return isinstance(skins, list) and len(skins) > 0
+
+
+def _joint_parent_map(nodes: list[Any]) -> dict[int, int]:
+    parents: dict[int, int] = {}
+    for index, node in enumerate(nodes):
+        if not isinstance(node, dict):
+            continue
+        for child in node.get("children") or []:
+            try:
+                parents[int(child)] = index
+            except (TypeError, ValueError):
+                continue
+    return parents
+
+
+def _infer_skin_skeleton(gltf: dict[str, Any], joints: list[int]) -> int | None:
+    """Pick a skeleton root joint for skins that omit ``skeleton``."""
+    if not joints:
+        return None
+    nodes = gltf.get("nodes") or []
+    joint_set = {int(j) for j in joints}
+    parents = _joint_parent_map(nodes if isinstance(nodes, list) else [])
+    roots = [j for j in joint_set if parents.get(j) not in joint_set]
+    if len(roots) == 1:
+        return roots[0]
+    # Prefer first joint listed that is a root (gltfpack order).
+    for joint in joints:
+        if int(joint) in roots:
+            return int(joint)
+    return int(joints[0])
+
+
+def gltf_needs_skin_skeleton_fix(gltf: dict[str, Any]) -> bool:
+    """True when a skin has joints but no valid ``skeleton`` root index."""
+    nodes = gltf.get("nodes") or []
+    n_nodes = len(nodes) if isinstance(nodes, list) else 0
+    for skin in gltf.get("skins") or []:
+        if not isinstance(skin, dict):
+            continue
+        joints = skin.get("joints")
+        if not isinstance(joints, list) or not joints:
+            continue
+        skeleton = skin.get("skeleton")
+        if not isinstance(skeleton, int) or skeleton < 0 or skeleton >= n_nodes:
+            return True
+    return False
+
+
+def ensure_skin_skeletons(gltf: dict[str, Any]) -> bool:
+    """
+    Fill missing ``skin.skeleton`` so F3D/VTK can build armature actors.
+
+    VTK only creates armature polydata when ``skeleton >= 0``. Many gltfpack
+    assets omit the optional field even though ``joints`` is populated.
+    """
+    nodes = gltf.get("nodes") or []
+    if not isinstance(nodes, list):
+        return False
+    n_nodes = len(nodes)
+    changed = False
+    for skin in gltf.get("skins") or []:
+        if not isinstance(skin, dict):
+            continue
+        joints_raw = skin.get("joints")
+        if not isinstance(joints_raw, list) or not joints_raw:
+            continue
+        try:
+            joints = [int(j) for j in joints_raw]
+        except (TypeError, ValueError):
+            continue
+        skeleton = skin.get("skeleton")
+        if isinstance(skeleton, int) and 0 <= skeleton < n_nodes:
+            continue
+        root = _infer_skin_skeleton(gltf, joints)
+        if root is None or not (0 <= root < n_nodes):
+            continue
+        skin["skeleton"] = root
+        changed = True
+    return changed
 
 
 def _node_name(nodes: list[dict[str, Any]], index: int) -> str:
@@ -103,13 +198,15 @@ def _depth_and_path(
 
 
 def _load_gltf(path: str, *, already_prepared: bool = False) -> dict[str, Any] | None:
-    if not is_glb(path):
+    if not is_gltf_or_glb(path):
         return None
 
     temp_path = None
     load_path = path
+    retained = False
     if not already_prepared:
         load_path, temp_path = prepare_glb_for_load(path)
+        retained = load_path != path and temp_path is None
     try:
         try:
             gltf, _bin = _read_glb(load_path)
@@ -118,6 +215,8 @@ def _load_gltf(path: str, *, already_prepared: bool = False) -> dict[str, Any] |
         return gltf if isinstance(gltf, dict) else None
     finally:
         cleanup_decompressed(temp_path)
+        if retained:
+            release_prepared(load_path)
 
 
 def _scene_root_indices(gltf: dict[str, Any], nodes: list[dict[str, Any]]) -> list[int]:
@@ -257,8 +356,12 @@ def _filter_glb_hiding_nodes(
     When ``prepared_path`` is given, that file is used as-is (no meshopt
     prepare). Caller must not mutate the returned structures after use.
     """
-    if not is_glb(source_path) and not (prepared_path and is_glb(prepared_path)):
-        raise MeshoptError("Object visibility filtering supports .glb only")
+    if not is_gltf_or_glb(source_path) and not (
+        prepared_path and is_glb(prepared_path)
+    ):
+        raise MeshoptError(
+            "Object visibility filtering supports .glb / .gltf only"
+        )
 
     prepare_temp = None
     retained_prepare = None
