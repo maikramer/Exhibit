@@ -15,13 +15,13 @@ grep '\.blp$' po/POTFILES > /tmp/TEMP_POTFILES.blp
 xgettext --files-from=/tmp/TEMP_POTFILES \
        	 --output="$OUTPUT" --package-name="$PACKAGE_NAME" \
        	 --from-code="$ENCODING" --add-comments \
-       	 --keyword=_ --keyword=C_:1c,2
+       	 --keyword=_ --keyword=ngettext:1,2 --keyword=C_:1c,2
 
 # Joins pot
 xgettext --files-from=/tmp/TEMP_POTFILES.blp \
     	 --output="$OUTPUT" --package-name="$PACKAGE_NAME" \
     	 --from-code="$ENCODING" --add-comments \
-    	 --keyword=_ --keyword=C_:1c,2 \
+    	 --keyword=_ --keyword=ngettext:1,2 --keyword=C_:1c,2 \
     	 $LANGUAGE_BLP \
     	 --join-existing
 
