@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 """Open/close large GLB tabs and report RSS — run inside Exhibit flatpak.
 
-  flatpak run --filesystem=host --command=python3 io.github.nokse22.Exhibit \
-    /home/maikeu/GitClones/Exhibit/tools/profile_tab_memory.py
+  See docs/MEMORY.md for the teardown contract and expected numbers.
+
+  EXHIBIT_MESH_DIR=/path/to/glbs EXHIBIT_PROFILE_FILES=3 \\
+  flatpak run --filesystem=host --command=python3 io.github.nokse22.Exhibit \\
+    "$(pwd)/tools/profile_tab_memory.py"
 """
 
 from __future__ import annotations
