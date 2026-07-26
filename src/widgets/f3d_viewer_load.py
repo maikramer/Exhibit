@@ -360,8 +360,12 @@ class F3DLoadMixin:
         if self.camera is not None:
             try:
                 camera_state = self.get_camera_state()
-            except Exception:
+            except Exception as exc:
                 camera_state = None
+                if self.logger:
+                    self.logger.debug(
+                        "part visibility: get_camera_state failed: %s", exc
+                    )
 
         anim_time = self._animation_time
         was_playing = self._playing
@@ -384,6 +388,8 @@ class F3DLoadMixin:
         restore_path = prepared or filepath
         load_buffer: bytes | None = None
         load_path: str | None = None
+        # Prepare retain applied only after a successful scene.add.
+        pending_prepare: str | None = None
         try:
             if self._hidden_part_indices:
                 load_buffer = build_glb_hiding_nodes_bytes(
@@ -396,11 +402,10 @@ class F3DLoadMixin:
                 if prepared:
                     load_path = prepared
                 else:
-                    load_path, prep_temp = self._prepare_filepath(filepath)
+                    load_path, _prep_temp = self._prepare_filepath(filepath)
                     if load_path is None:
                         return False
-                    self._prepared_path = load_path
-                    restore_path = load_path
+                    pending_prepare = load_path
 
             # Build filtered GLB before clearing so a failure keeps the scene.
             self.scene.clear()
@@ -421,8 +426,16 @@ class F3DLoadMixin:
                         )
                 raise
         except Exception as e:
+            if pending_prepare:
+                release_prepared(pending_prepare)
             self.logger.error(f"Error while updating part visibility: {e}")
             return False
+
+        if pending_prepare:
+            previous = self._prepared_path
+            self._prepared_path = pending_prepare
+            if previous and previous != pending_prepare:
+                release_prepared(previous)
 
         self.notify("lower-time-range")
         self.notify("upper-time-range")
