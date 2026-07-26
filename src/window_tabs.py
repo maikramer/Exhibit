@@ -240,8 +240,8 @@ class TabsMixin:
         if settings is not None:
             try:
                 settings.set_boolean("split-compare-enabled", enabled)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("split-compare-enabled persist failed: %s", exc)
         revealer = getattr(self, "split_compare_revealer", None)
         if revealer is not None:
             revealer.set_reveal_child(enabled)
@@ -302,8 +302,8 @@ class TabsMixin:
         try:
             settings.set_boolean("split-compare-pinned", False)
             settings.set_string("split-compare-pin-path", "")
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("split-compare pin clear failed: %s", exc)
 
     def _persist_split_compare_pin_settings(self, pinned: bool, filepath: str) -> None:
         settings = getattr(self, "saved_settings", None)
@@ -314,8 +314,8 @@ class TabsMixin:
             settings.set_string(
                 "split-compare-pin-path", filepath if pinned and filepath else ""
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("split-compare pin persist failed: %s", exc)
 
     def _restore_split_compare_pin(self) -> bool:
         """Re-apply pinned secondary path if the file still exists."""
@@ -500,8 +500,8 @@ class TabsMixin:
         enabled = bool(getattr(self, "_split_compare", False))
         try:
             main.set_wide_handle(enabled)
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("split compare wide_handle failed: %s", exc)
         try:
             total = max(int(main.get_width()), int(self.get_width()), 800)
         except Exception:
@@ -516,7 +516,8 @@ class TabsMixin:
             if settings is not None:
                 try:
                     ratio = float(settings.get_double("split-compare-sash-ratio"))
-                except Exception:
+                except Exception as exc:
+                    self.logger.debug("split-compare sash ratio read failed: %s", exc)
                     ratio = 0.62
             ratio = min(0.80, max(0.45, ratio))
             main.set_position(int(total * ratio))
@@ -533,20 +534,20 @@ class TabsMixin:
             tab = self._active_tab()
             if tab is not None and getattr(tab, "viewer", None) is not None:
                 tab.viewer.queue_render()
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("split compare queue_render (main) failed: %s", exc)
         split = getattr(self, "_split_compare_viewer", None)
         if split is not None:
             try:
                 split.queue_render()
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("split compare queue_render (split) failed: %s", exc)
         save_id = getattr(self, "_split_compare_sash_save_id", 0)
         if save_id:
             try:
                 GLib.source_remove(save_id)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("split compare sash timer remove failed: %s", exc)
         self._split_compare_sash_save_id = GLib.timeout_add(
             300, self._persist_split_compare_sash_ratio
         )

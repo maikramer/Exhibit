@@ -91,7 +91,8 @@ class InspectMixin:
             return False
         try:
             return gltf_needs_skin_skeleton_fix(_read_glb_json(path))
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("skeleton probe failed: %s", exc)
             return False
 
     def _apply_armature_mode(self, enabled: bool):
@@ -148,8 +149,8 @@ class InspectMixin:
             if split is not None:
                 try:
                     split.update_options(armature_opts)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("split armature options failed: %s", exc)
 
             probe = self.f3d_viewer.get_prepared_path() or self.filepath
             has_skins = glb_has_skins(probe) if probe else None
@@ -194,8 +195,8 @@ class InspectMixin:
         if split is not None:
             try:
                 split.update_options(armature_opts)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("inspect swallow: %s", exc)
 
     def _apply_display_depth_mode(self, enabled: bool) -> None:
         """
@@ -236,8 +237,8 @@ class InspectMixin:
             # Clipping / first paint often need a kick after pass swap.
             try:
                 self.f3d_viewer.queue_render()
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("inspect swallow: %s", exc)
             return
 
         restore = getattr(self, "_depth_opacity_restore", None)
@@ -282,8 +283,8 @@ class InspectMixin:
         # Glyph actors configure on the next prepare/render.
         try:
             self.f3d_viewer.queue_render()
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("inspect swallow: %s", exc)
 
     def _cleanup_skin_weight_heat(self) -> None:
         heat = getattr(self, "_skin_weights_heat_temp", None)
@@ -304,14 +305,14 @@ class InspectMixin:
         cam = None
         try:
             cam = self.f3d_viewer.get_camera_state()
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("inspect swallow: %s", exc)
         self.f3d_viewer.load_file(tab.filepath, prepared_path=base)
         if cam is not None:
             try:
                 self.f3d_viewer.set_camera_state(cam)
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("inspect swallow: %s", exc)
 
     def _skin_weights_source_path(self) -> str | None:
         """Base prepared GLB (not an exhibit-skinw heat temp)."""
@@ -377,8 +378,8 @@ class InspectMixin:
         if self.f3d_viewer.engine:
             try:
                 self.f3d_viewer.engine.options.update({"model.unlit": True})
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("inspect swallow: %s", exc)
             self.f3d_viewer.queue_render()
 
     def _apply_skin_weights_mode(self, enabled: bool) -> None:
@@ -407,8 +408,8 @@ class InspectMixin:
             if self.f3d_viewer.engine:
                 try:
                     self.f3d_viewer.engine.options.update({"model.unlit": False})
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("inspect swallow: %s", exc)
             self._refresh_skin_weights_joint_combo()
             return
 
@@ -470,8 +471,8 @@ class InspectMixin:
             cam = None
             try:
                 cam = self.f3d_viewer.get_camera_state()
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("inspect swallow: %s", exc)
             ok = self.f3d_viewer.load_file(
                 tab.filepath if tab else path, prepared_path=heat
             )
@@ -484,8 +485,8 @@ class InspectMixin:
             if cam is not None:
                 try:
                     self.f3d_viewer.set_camera_state(cam)
-                except Exception:
-                    pass
+                except Exception as exc:
+                    self.logger.debug("inspect swallow: %s", exc)
         else:
             # Leaving bone heat → native WEIGHTS_0: restore base geometry first.
             base = getattr(self, "_skin_weights_base_path", None) or path

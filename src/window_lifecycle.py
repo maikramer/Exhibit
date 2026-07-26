@@ -72,8 +72,8 @@ class LifecycleMixin:
                 "split-compare-enabled",
                 bool(getattr(self, "_split_compare", False)),
             )
-        except Exception:
-            pass
+        except Exception as exc:
+            self.logger.debug("split-compare-enabled close persist failed: %s", exc)
         if hasattr(self, "_persist_nav_settings_to_gschema"):
             self._persist_nav_settings_to_gschema()
         self._persist_session_files()
