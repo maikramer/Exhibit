@@ -1,9 +1,25 @@
 # Plano detalhado A–E — Exhibit fork
 
-Goal do loop: entregar as cinco faixas do estudo + extras úteis no caminho.
-Não editar o arquivo `.cursor/plans/estudo_melhorias_exhibit_*.plan.md`.
+**Status:** concluído (faixas A–E + Split Compare + extras). Loop 3 min **parado** no tick #55.
 
-Ordem de execução: **B → A → D → E → C → extras**.
+Docs vivos (arquitetura / features / learnings): [`docs/README.md`](README.md).
+Este arquivo = histórico do plano + ticks. Não editar `.cursor/plans/estudo_melhorias_exhibit_*.plan.md`.
+
+Ordem original: **B → A → D → E → C → extras**.
+
+Docs de feature / lições (além deste plano): índice [`docs/README.md`](README.md).
+
+| Doc | Assunto |
+|-----|---------|
+| [`ARCHITECTURE.md`](ARCHITECTURE.md) | Mixins, import rules, mapa de docs |
+| [`INSPECT_AND_PREPARE.md`](INSPECT_AND_PREPARE.md) | Prepare, KTX2 mip0, skin.skeleton, depth/glyphs/skin-weights |
+| [`SESSION_RESTORE.md`](SESSION_RESTORE.md) | Restore de abas: fila sequencial, anti-truncate GSettings |
+| [`NAVIGATION.md`](NAVIGATION.md) | Orbit/pan/zoom, prefs, polo/gimbal, GTK pitfalls |
+| [`SPLIT_COMPARE.md`](SPLIT_COMPARE.md) | Dual viewport, pin, swap |
+| [`MEMORY.md`](MEMORY.md) | Prepare LRU + teardown F3D |
+| [`RUNTIME.md`](RUNTIME.md) / [`FLATPAK.md`](FLATPAK.md) | Runtime Flatpak/F3D + pins de build |
+| [`TESTING.md`](TESTING.md) | Pytest host |
+| [`../README.md`](../README.md) | Features user-facing |
 
 ---
 
@@ -86,10 +102,12 @@ Compare side-by-side fica como extra futuro se tempo sobrar.
 
 ## Extras (se aparecer no caminho)
 
-1. CI job `pytest` no GitHub Actions (rápido, sem Flatpak).
-2. `vector_math` unit tests (grátis).
-3. `clear_prepare_cache` no shutdown da app.
-4. Script `tools/run_tests.sh`.
+1. ~~CI job `pytest` no GitHub Actions (rápido, sem Flatpak).~~ **feito**
+2. ~~`vector_math` unit tests (grátis).~~ **feito**
+3. ~~`clear_prepare_cache` no shutdown da app.~~ **feito** (`LifecycleMixin.on_close_request`, só última janela)
+4. ~~Script `tools/run_tests.sh`.~~ **feito**
+5. ~~Teardown F3D no tab close + cancel warm-load.~~ **feito** — ver [MEMORY.md](MEMORY.md)
+6. ~~Harness RSS Flatpak.~~ **feito** — `tools/profile_tab_memory.py`
 
 ---
 
@@ -126,6 +144,10 @@ Compare side-by-side fica como extra futuro se tempo sobrar.
 | Tick 3min #53 | feito | Idle smoke pytest OK |
 | Tick 3min #54 | feito | Idle smoke pytest OK |
 | Tick 3min #55 | feito | Idle smoke; loop 3min encerrado (backlog vazio) |
+| Session restore queue | feito | Fila sequencial + anti-truncate GSettings; doc `docs/SESSION_RESTORE.md`; testes `test_session_restore_queue.py` |
+| Onda 47 | feito | Prefs modal, theme menu, nav clássica + Alt, polo/gimbal, `docs/NAVIGATION.md` |
+| Expansão testes + docs | feito | Suite ~1300; `docs/TESTING.md`; índice `docs/README.md`; README CLI `--up=` / defaults |
+| Inspect / prepare onda | feito | KTX2 level0, skin.skeleton, depth/glyphs patches F3D, skin weights; `docs/INSPECT_AND_PREPARE.md` |
 
 ---
 
@@ -137,82 +159,87 @@ Compare side-by-side fica como extra futuro se tempo sobrar.
 
 | Módulo | Mixin | Papel |
 |--------|-------|-------|
-| `window_tabs.py` | `TabsMixin` | Tabs, warm-load, sync cameras, Split Compare |
+| `window_tabs.py` | `TabsMixin` | Tabs, close teardown, sync cameras, Split Compare |
+| `window_load.py` | `LoadMixin` | Open / drop / recent / session / warm-load (`warm_load.py`, fila `_pending_open_paths`) |
 | `window_animation.py` | `AnimationMixin` | Clip combo / scrubber |
 | `window_object_tree.py` | `ObjectTreeMixin` | Hide/show mesh parts |
 | `window_settings_ui.py` | `SettingsUIMixin` | Bindings switch/spin/color |
 | `window_settings_io.py` | `SettingsIOMixin` | Presets / HDRI / thumb |
 | `window_settings_react.py` | `SettingsReactMixin` | Reações a mudanças de settings |
-| `window_load.py` | `LoadMixin` | Open / drop / recent / session |
 | `window_layout.py` | `LayoutMixin` | Sidebar / breakpoint |
 | `window_chrome.py` | `ChromeMixin` | Play / ortho / open external |
-| `window_lifecycle.py` | `LifecycleMixin` | Close / home / restore toggle |
-| `window_inspect.py` | `InspectMixin` | Stats HUD / armature X-ray |
+| `window_lifecycle.py` | `LifecycleMixin` | Close / home / restore; `clear_prepare_cache` (última janela) |
+| `window_preferences.py` | `PreferencesMixin` | Preferences dialog, theme menu, nav gschema |
+| `window_inspect.py` | `InspectMixin` | Stats HUD, armature, depth, normals, skin weights |
+| `skin_weights.py` | (helpers) | Joint list + `WEIGHT_EXHIBIT` heat temps |
 | `window_file_watch.py` | `FileWatchMixin` | Auto-reload / mtime poll |
 | `window_export.py` | `ExportMixin` | Save PNG + toasts |
+| `camera_nav.py` | (helpers) | Orbit/dolly/polar clamp; `NAV_SETTING_DEFAULTS` |
 
-### Arquivo — ondas 2–33 (concluídas)
+### Entregas pós-plano (resumo ondas 2–46)
 
 Session/recent/Open Folder, sync cameras, CLI video/GIF, extracts de mixins,
-About/metainfo/POTFILES, e **Split Compare** experimental completo (dual viewport,
-pin, sash GSettings, restore silencioso, docs/i18n). Spike dual viewport → entregue
-como `win.split-compare` / `Ctrl+Shift+D`.
+About/metainfo/POTFILES, **Split Compare** (dual viewport / pin / sash / swap),
+idle smoke até tick #55. Detalhe: [SPLIT_COMPARE.md](SPLIT_COMPARE.md).
 
-### Loop — onda 34
-1. ~~**Potfiles**~~ — `file_patterns.py` fora do POTFILES + teste negativo (tick #43).
-2. ~~**Backlog hygiene**~~ — ticks/ondas antigas compactados (tick #43).
-3. ~~**Sem extract**~~ — salvo regressão.
+### Loop — pós tick #55
+1. ~~**Session restore bug**~~ — warm-loads paralelos deixavam abas unrealized + truncavam `session-files` no meio do restore. Fix: fila `_pending_open_paths` + `_advance_open_queue` + persist só com batch idle. Doc: [`SESSION_RESTORE.md`](SESSION_RESTORE.md). Testes: `tests/test_session_restore_queue.py`.
 
-### Loop — onda 35
-1. ~~**Swap models**~~ — `win.split-compare-swap` / `Ctrl+Shift+X` + botão (tick #44).
-2. ~~**Sem extract**~~ — salvo regressão.
+### Loop — onda 47 (nav / prefs / theme)
+1. ~~**Prefs modal**~~ — `AdwPreferencesDialog`; Navigation/Loading/folders; removed sidebar More tab.
+2. ~~**Theme header**~~ — dropdown `MenuButton` + `Gio.Menu` (Follow/Light/Dark; avoid missing `dark-mode-symbolic`).
+3. ~~**Touchpad nav**~~ — Blender-like orbit/pan/zoom; scroll/dolly clamps; kinetic off.
+4. ~~**Classic orbit**~~ — default `nav-orbit-around-cursor=false`; pivot=focal; Alt toggles cursor mode.
+5. ~~**Pole unstick**~~ — `elevation_axis` fallback + `clamp_camera_polar` (no hard gimbal freeze at top).
+6. ~~**GTK wiring**~~ — header home/prefs/theme via `connect` / actions (Template.Callback CallThing pitfalls).
+7. ~~**Docs**~~ — [`NAVIGATION.md`](NAVIGATION.md) + README §8/8b.
 
-### Loop — onda 36
-1. ~~**Disable swap when identical**~~ — action desabilitada se paths iguais / pin ausente (tick #45).
-2. ~~**i18n pot merge**~~ — Swap strings no pot + msgmerge nos `.po` (tick #45).
-3. ~~**Sem extract**~~ — salvo regressão.
+### Loop — docs / testes (pós onda 47)
+1. ~~**Expansão pytest**~~ — matrizes camera/vector/meshopt/pack/stats/CLI; ~1300 collected.
+2. ~~**Quirk CLI `--up`**~~ — eixos negativos exigem `--up=-Y` (argparse); README + [`TESTING.md`](TESTING.md).
+3. ~~**Docs índice**~~ — [`docs/README.md`](README.md) cobre ARCHITECTURE / SPLIT / SESSION / INSPECT / NAV / MEMORY / RUNTIME / FLATPAK / TESTING.
+4. ~~**Memory teardown docs**~~ — [`MEMORY.md`](MEMORY.md) com contrato + números A/B + harness Flatpak; README §9 / Tests + TESTING.md.
 
-### Loop — onda 37
-1. ~~**Tooltip dinâmico**~~ — botão Swap explica por que está desabilitado (tick #46).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 38
-1. ~~**Pause feature streak**~~ — pytest verde; `window.py` 560 LOC; ciclos none (tick #47).
-2. ~~**Bugfix**~~ — string help “reopen silently” restaurada no `pt_BR` (msgmerge tinha marcado obsolete).
-3. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 39
-1. ~~**Test help-overlay strings**~~ — `tests/test_help_overlay_i18n.py` (tick #48).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 40
-1. ~~**Pause / README checklist**~~ — atalhos Split Compare em §7 (tick #49).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 41
-1. ~~**Idle**~~ — pytest OK; `window.py` 560 LOC; ciclos none; sem regressão (tick #50).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 42
-1. ~~**Idle**~~ — pytest OK; help-overlay i18n OK; sem bug (tick #51).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 43
-1. ~~**Idle**~~ — pytest OK; sem bug (tick #52).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 44
-1. ~~**Idle**~~ — pytest OK; sem bug (tick #53).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 45
-1. ~~**Idle**~~ — pytest OK; sem bug (tick #54).
-2. ~~**Sem extract**~~ — salvo regressão.
-
-### Loop — onda 46
-1. ~~**Idle**~~ — pytest OK; loop `sleep 180` encerrado (tick #55).
-2. ~~**Sem extract**~~ — salvo regressão.
+### Loop — inspect / prepare (pós A–E)
+1. ~~**KTX2 level0**~~ — `GetImageOffset` (mips smallest-first).
+2. ~~**skin.skeleton**~~ — `ensure_skin_skeletons` no prepare (armature F3D).
+3. ~~**Display Depth**~~ — patch F3D lineariza Z (evita branco).
+4. ~~**Normal glyphs**~~ — patch world-space + `Glyph Scale`.
+5. ~~**Skin Weights**~~ — scivis `WEIGHTS_0` + bone heat `WEIGHT_EXHIBIT`.
+6. ~~**Docs**~~ — [`INSPECT_AND_PREPARE.md`](INSPECT_AND_PREPARE.md) + README §4 + metainfo.
 
 ### Loop
-- **Parado** no tick #55 (backlog A–E + Split Compare entregues; só idle smoke).
+- Backlog A–E + Split Compare + session restore + nav/prefs + inspect/prepare + testes/docs + memory docs entregues.
 - Reiniciar manualmente se houver novo backlog.
+
+### Docs de produto
+| Doc | Conteúdo |
+|-----|----------|
+| `README.md` (raiz) | Features fork, quick start, build/test |
+| [`docs/README.md`](README.md) | Índice desta pasta |
+| [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) | Mixins + mapa de docs |
+| [`docs/TESTING.md`](TESTING.md) | Pytest host + harness RSS Flatpak |
+| [`docs/MEMORY.md`](MEMORY.md) | Prepare LRU, teardown F3D/tab, números A/B, `profile_tab_memory.py` |
+| [`docs/NAVIGATION.md`](NAVIGATION.md) | Controles, GSettings `nav-*`, aprendizados (polo, template, clamps) |
+| [`docs/SESSION_RESTORE.md`](SESSION_RESTORE.md) | Fila de open / restore de sessão |
+| [`docs/SPLIT_COMPARE.md`](SPLIT_COMPARE.md) | Dual viewport / pin / swap |
+| [`docs/RUNTIME.md`](RUNTIME.md) | EGL / loading / anim gotchas |
+| [`docs/FLATPAK.md`](FLATPAK.md) | Pins F3D/VTK, sandbox |
+| [`docs/INSPECT_AND_PREPARE.md`](INSPECT_AND_PREPARE.md) | Prepare order, KTX2 mip0, skin.skeleton, overlays |
+| `docs/MELHORIAS_A_E.md` | Plano A–E + status de ondas (este arquivo) |
+
+---
+
+## Aprendizados (pós A–E)
+
+### Memory / F3D por tab
+
+Tab close que só dava `release_prepared` **não** liberava Engine VTK → RSS ficava no peak (~1.5 GiB).
+Contrato: `release_resources` (scene + engine + anim timer), cancel warm-load, `clear_prepare_cache` na última janela.
+Residual ~100–160 MiB após o 1º engine é normal; crescimento linear por ciclo = regressão.
+Doc + números: [MEMORY.md](MEMORY.md). Harness: `tools/profile_tab_memory.py`.
+
+### Session restore paralelo
+
+Warm-load seleciona a aba alvo pro GLArea mapear. Abrir N paths em paralelo = só a última realiza; `session-files` truncava mid-restore.
+Fila sequencial + testes: [SESSION_RESTORE.md](SESSION_RESTORE.md).

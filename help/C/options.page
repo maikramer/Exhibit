@@ -149,8 +149,8 @@
             <td><p>sprite-enabled</p></td>
             <td><p>bool</p></td>
             <td><p>False</p></td>
-            <td><p>model.sprite-enabled.enable</p></td>
-            <td><p>Show sphere points sprites instead of the geometry</p></td>
+            <td><p>model.point_sprites.type</p></td>
+            <td><p>Show point sprites instead of the geometry (type none when off)</p></td>
         </tr>
         <tr>
             <td><p>point-size</p></td>
@@ -277,8 +277,8 @@
             <td><p>sprites-type</p></td>
             <td><p>string</p></td>
             <td><p>&quot;sphere&quot;</p></td>
-            <td><p>model.sprite-enabled.type</p></td>
-            <td><p>Set the sprites type when showing point sprites (can be sphere or gaussian).</p></td>
+            <td><p>model.point_sprites.type</p></td>
+            <td><p>Point sprites type: sphere, gaussian, circle, cross, stddev, or bound (F3D 3.5).</p></td>
         </tr>
         <tr>
             <td><p>volume</p></td>

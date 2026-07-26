@@ -26,4 +26,54 @@
 	<p>Try running <code>flatpak override --env=GDK_DEBUG=gl-prefer-gl io.github.nokse22.Exhibit</code> </p>
 
   </section>
+
+  <section id="restore-session">
+	<title>Restore Last Session only reopens one tab</title>
+	<p>Sidebar → Loading → <gui>Restore Last Session</gui> (on by default) saves open model paths when you close the window and reopens them on the next launch, unless you pass a file on the command line.</p>
+	<p>Tabs are restored one after another so each viewer can initialize its GL context. Turning the switch off clears the saved session list. Paths that no longer exist on disk are skipped.</p>
+  </section>
+
+  <section id="split-compare">
+	<title>What is Split Compare?</title>
+	<p>Experimental side-by-side preview in this fork: <keyseq><key>Ctrl</key><key>Shift</key><key>D</key></keyseq> opens a second F3D column. Pin a secondary model to keep it while switching tabs; <keyseq><key>Ctrl</key><key>Shift</key><key>X</key></keyseq> swaps active and pinned. The camera still follows the active tab. Column width and pin state can be remembered across launches.</p>
+	<p>To keep cameras matched across tabs without a second column, use <gui>Sync Cameras Across Tabs</gui> (<keyseq><key>Ctrl</key><key>Shift</key><key>C</key></keyseq>).</p>
+  </section>
+
+  <section id="inspect-overlays">
+	<title>Where are armature, depth, and skin-weight tools?</title>
+	<p>Sidebar → Scene → <gui>Inspect</gui>: Show Armature, Checkerboard, Normal Glyphs (+ Glyph Scale), Display Depth, Skin Weights, and Show Stats.</p>
+	<p>Display Depth and Normal Glyphs cannot stay on together (depth hides overlays). Skin Weights color by <code>WEIGHTS_0</code>, or Bone heat for one joint.</p>
+  </section>
+
+  <section id="depth-white">
+	<title>Display Depth looks all white</title>
+	<p>This fork linearizes the depth buffer so near surfaces read bright. Rebuild/reinstall the Flatpak if you still see a washed-out frame. Depth needs an opaque mesh — turn off armature X-ray translucency first.</p>
+  </section>
+
+  <section id="normal-porcupine">
+	<title>Normal Glyphs look like a porcupine</title>
+	<p>Arrows are sized from the mesh diagonal (world space). Lower <gui>Glyph Scale</gui> under Inspect for dense characters. Every vertex still gets a glyph, so high-poly LODs stay busy.</p>
+  </section>
+
+  <section id="armature-missing">
+	<title>Show Armature does nothing</title>
+	<p>The model needs glTF skins. Some packed assets omit <code>skin.skeleton</code>; this fork fills it on prepare and may reload once. A toast appears if no skins are found.</p>
+  </section>
+
+  <section id="animation-none">
+	<title>Why does Active animation start at None?</title>
+	<p>Sidebar → Scene → <gui>Active animation</gui> defaults to <gui>None</gui> so skinned models stay in bind/rest pose until you pick a clip. Play and the time scrubber stay disabled until then.</p>
+	<p>Switching clips updates the viewer in place. Choosing <gui>None</gui> again reimports the model so the skin returns to bind pose — clearing the clip alone would leave the last posed frame.</p>
+  </section>
+
+  <section id="loading-stuck">
+	<title>Opening a file stuck on Loading…</title>
+	<p>This fork needs a realized OpenGL area before creating the F3D engine (Wayland/Flatpak: <code>create_external</code> with <code>eglGetProcAddress</code>). If Loading never finishes, fully quit Exhibit and reopen, or check <file>~/.var/app/io.github.nokse22.Exhibit/data/log.txt</file> for EGL errors.</p>
+	<p>Restoring many tabs opens them one by one so each GL area can initialize — see the Restore Last Session FAQ above.</p>
+  </section>
+
+  <section id="file-modified">
+	<title>Tab title shows (modified)</title>
+	<p>Exhibit watches open files on disk. With <gui>Reload On Change</gui> on, the active tab reloads silently; other tabs show <gui>(modified)</gui> and prompt when selected. With it off, you always get Reload / Keep.</p>
+  </section>
 </page>

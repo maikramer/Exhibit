@@ -18,8 +18,11 @@
     <p>
       This fork adds multi-tab previews, recent files, optional last-session restore, open folder
       batch import, camera sync across tabs for comparing models, experimental side-by-side
-      Split Compare, packed-GLB preparation (meshopt / quantization / KTX2), and a headless
-      render CLI with optional turntable video.
+      Split Compare, packed-GLB preparation (meshopt / quantization / KTX2 / skin.skeleton),
+      Inspect overlays (armature, checkerboard, normal glyphs, linearized depth, skin-weight
+      heat maps, stats), animation defaulting to bind pose with keyframe scrubber marks,
+      in-memory part visibility, and a headless render CLI with optional turntable video.
+      Built on F3D 3.5 / VTK 9.6 with OpenEXR and WebP.
     </p>
   </description>
 
@@ -94,12 +97,15 @@
   </screenshots>
 
   <releases>
-    <release version="1.6.0" date="2026-01-21">
+    <release version="1.6.0" date="2026-07-24">
       <description translate="no">
         <ul>
-          <li>Add animation support</li>
-          <li>Update to work with the latest version of f3d</li>
-          <li>Add support for showing model armature</li>
+          <li>Gamedev fork: packed GLB prepare (meshopt, quantization, KTX2, skin.skeleton)</li>
+          <li>Multi-tab previews, session restore, Split Compare, file-change reload</li>
+          <li>Inspect: armature, checkerboard, normal glyphs, linearized depth, skin weights, stats</li>
+          <li>Animation bind-pose default, keyframe scrubber marks, in-memory part hide</li>
+          <li>Headless exhibit render CLI (PNG / video / manifest)</li>
+          <li>Flatpak stack: F3D 3.5.0, VTK 9.6.2, OpenEXR + WebP</li>
         </ul>
       </description>
     </release>
