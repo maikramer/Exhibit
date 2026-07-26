@@ -134,6 +134,80 @@ def dolly_to_cursor(
     return new_pos, new_foc
 
 
+def elevation_axis(view: Vec3, up: Vec3) -> Vec3:
+    """
+    Horizontal axis for elevation (camera-right).
+
+    Near world-up poles ``view`` aligns with ``up`` and ``cross(view, up)``
+    vanishes — use a stable fallback so elevation still works.
+    """
+    right = v_cross(view, up)
+    if v_dot(right, right) < 1e-12:
+        helper = (1.0, 0.0, 0.0) if abs(up[0]) < 0.9 else (0.0, 0.0, 1.0)
+        right = v_cross(up, helper)
+    return v_norm(right)
+
+
+def clamp_camera_polar(
+    position: Vec3,
+    pivot: Vec3,
+    up: Vec3,
+    *,
+    min_polar_deg: float = 2.0,
+) -> Vec3:
+    """
+    Keep ``position`` at least ``min_polar_deg`` away from ±up poles about ``pivot``.
+
+    Stops turntable singularity (stuck top/bottom view spinning only in azimuth).
+    """
+    up_n = v_norm(up)
+    offset = v_sub(position, pivot)
+    dist2 = v_dot(offset, offset)
+    if dist2 < 1e-18:
+        return position
+    dist = math.sqrt(dist2)
+    offset_n = v_mul(offset, 1.0 / dist)
+    cos_pol = max(-1.0, min(1.0, v_dot(offset_n, up_n)))
+    polar = math.acos(cos_pol)
+    min_pol = math.radians(max(min_polar_deg, 0.05))
+    max_pol = math.pi - min_pol
+    if min_pol <= polar <= max_pol:
+        return position
+    target = min_pol if polar < min_pol else max_pol
+    horiz = v_sub(offset, v_mul(up_n, v_dot(offset, up_n)))
+    if v_dot(horiz, horiz) < 1e-18:
+        helper = (1.0, 0.0, 0.0) if abs(up_n[0]) < 0.9 else (0.0, 0.0, 1.0)
+        horiz = v_cross(up_n, helper)
+    horiz_n = v_norm(horiz)
+    new_offset = v_add(
+        v_mul(up_n, dist * math.cos(target)),
+        v_mul(horiz_n, dist * math.sin(target)),
+    )
+    return v_add(pivot, new_offset)
+
+
+def _rotate_matching_offset(
+    point: Vec3, pivot: Vec3, old_offset: Vec3, new_offset: Vec3
+) -> Vec3:
+    """Rotate ``point`` about ``pivot`` by the rotation mapping ``old_offset`` → ``new_offset``."""
+    old_len2 = v_dot(old_offset, old_offset)
+    new_len2 = v_dot(new_offset, new_offset)
+    if old_len2 < 1e-18 or new_len2 < 1e-18:
+        return point
+    a = v_mul(old_offset, 1.0 / math.sqrt(old_len2))
+    b = v_mul(new_offset, 1.0 / math.sqrt(new_len2))
+    axis = v_cross(a, b)
+    axis_len2 = v_dot(axis, axis)
+    cos_a = max(-1.0, min(1.0, v_dot(a, b)))
+    if axis_len2 < 1e-16:
+        # Parallel (no rotation) or anti-parallel (ambiguous for tiny clamps).
+        return point if cos_a > 0.0 else point
+    angle = math.acos(cos_a)
+    if abs(angle) < 1e-12:
+        return point
+    return rotate_around_axis(point, pivot, axis, angle)
+
+
 def orbit_rig_around_pivot(
     position: Vec3,
     focal: Vec3,
@@ -143,11 +217,15 @@ def orbit_rig_around_pivot(
     elevation_deg: float,
     *,
     gimbal_ok: Callable[[Vec3, Vec3], bool] | None = None,
+    min_polar_deg: float = 2.0,
 ) -> tuple[Vec3, Vec3]:
     """
     Rotate camera position and focal around ``pivot`` (turntable).
 
-    Azimuth uses world ``up``. Elevation uses camera-right through the pivot.
+    Azimuth uses world ``up``. Elevation uses a stable horizontal axis through
+    the pivot (works at poles). Soft polar clamp avoids getting stuck at ±up.
+    When ``pivot != focal`` (orbit under cursor), the clamp rotates both ends of
+    the rig so the look vector stays coherent.
     """
     pos, foc = position, focal
     if abs(azimuth_deg) > 1e-12:
@@ -157,12 +235,21 @@ def orbit_rig_around_pivot(
 
     if abs(elevation_deg) > 1e-12:
         view = v_sub(foc, pos)
-        right = v_norm(v_cross(view, up))
+        right = elevation_axis(view, up)
         if v_dot(right, right) > 1e-12:
             if gimbal_ok is None or gimbal_ok(pos, foc):
                 el = math.radians(elevation_deg)
                 pos = rotate_around_axis(pos, pivot, right, el)
                 foc = rotate_around_axis(foc, pivot, right, el)
+
+    if min_polar_deg > 0:
+        old_pos = pos
+        new_pos = clamp_camera_polar(pos, pivot, up, min_polar_deg=min_polar_deg)
+        if p_dist(old_pos, new_pos) > 1e-12:
+            foc = _rotate_matching_offset(
+                foc, pivot, v_sub(old_pos, pivot), v_sub(new_pos, pivot)
+            )
+            pos = new_pos
 
     return pos, foc
 

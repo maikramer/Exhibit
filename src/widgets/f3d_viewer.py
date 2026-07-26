@@ -818,12 +818,8 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
                 pivot = under
 
         up = up_dirs_vector[self.settings["scene.up_direction"]]
-
-        def gimbal_ok(_pos, _foc):
-            if not self.always_point_up:
-                return True
-            return self._elevation_gimbal_allows(el)
-
+        # Soft polar clamp (not a hard elevation block): hard gimbal lock near
+        # the poles used to freeze elevation while azimuth still spun.
         new_pos, new_foc = orbit_rig_around_pivot(
             pos,
             foc,
@@ -831,7 +827,7 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
             up,
             az,
             el,
-            gimbal_ok=gimbal_ok,
+            min_polar_deg=2.0 if self.always_point_up else 0.0,
         )
         self.camera.position = new_pos
         self.camera.focal_point = new_foc

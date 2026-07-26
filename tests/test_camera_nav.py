@@ -7,10 +7,12 @@ import pytest
 
 from exhibit.camera_nav import (
     axis_delta,
+    clamp_camera_polar,
     clamp_dolly_factor,
     clamp_scroll_delta,
     clamp_sensitivity,
     dolly_to_cursor,
+    elevation_axis,
     gtk_to_display,
     is_sane_pivot,
     orbit_rig_around_pivot,
@@ -87,6 +89,52 @@ def test_classic_orbit_around_focal_keeps_focal_fixed():
     new_pos, new_foc = orbit_rig_around_pivot(pos, foc, foc, up, 45.0, 20.0)
     assert new_foc == pytest.approx(foc)
     assert p_dist(new_pos, foc) == pytest.approx(p_dist(pos, foc))
+
+
+def test_elevation_axis_stable_at_pole():
+    up = (0.0, 1.0, 0.0)
+    # Looking straight down: view parallel to -up.
+    axis = elevation_axis((0.0, -1.0, 0.0), up)
+    assert p_dist(axis, (0.0, 0.0, 0.0)) == pytest.approx(1.0)
+    assert abs(v_dot(axis, up)) == pytest.approx(0.0, abs=1e-9)
+
+
+def test_orbit_from_top_pole_can_elevate():
+    """Must not freeze when already looking from the top."""
+    foc = (0.0, 0.0, 0.0)
+    up = (0.0, 1.0, 0.0)
+    pos = (0.0, 10.0, 0.0)  # exact north pole
+    new_pos, new_foc = orbit_rig_around_pivot(
+        pos, foc, foc, up, 0.0, 15.0, min_polar_deg=2.0
+    )
+    assert new_foc == pytest.approx(foc)
+    # Left the pole — some horizontal offset appears.
+    horiz = math.sqrt(new_pos[0] ** 2 + new_pos[2] ** 2)
+    assert horiz > 0.1
+    # Soft clamp keeps a minimum polar angle.
+    clamped = clamp_camera_polar((0.0, 10.0, 0.0), foc, up, min_polar_deg=2.0)
+    assert math.sqrt(clamped[0] ** 2 + clamped[2] ** 2) > 0.0
+
+
+def test_polar_clamp_keeps_rig_when_pivot_not_focal():
+    """Orbit-under-cursor: clamp must rotate focal with position."""
+    up = (0.0, 1.0, 0.0)
+    pivot = (0.0, 0.0, 0.0)
+    # Camera above pivot looking past it (focal ≠ pivot).
+    pos = (0.0, 10.0, 0.0)
+    foc = (0.0, 0.0, -2.0)
+    view_before = v_sub(foc, pos)
+    new_pos, new_foc = orbit_rig_around_pivot(
+        pos, foc, pivot, up, 0.0, 0.0, min_polar_deg=2.0
+    )
+    # Position left the exact pole.
+    assert math.sqrt(new_pos[0] ** 2 + new_pos[2] ** 2) > 0.05
+    # Look vector length preserved; not collapsed to a point.
+    view_after = v_sub(new_foc, new_pos)
+    assert p_dist(view_after, (0.0, 0.0, 0.0)) == pytest.approx(
+        p_dist(view_before, (0.0, 0.0, 0.0)), rel=1e-6
+    )
+    assert new_foc != pytest.approx(foc) or new_pos != pytest.approx(pos)
 
 
 def test_is_sane_pivot_rejects_runaway_and_nan():
