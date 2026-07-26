@@ -11,6 +11,7 @@ from exhibit.meshopt_decompress import (
     clear_prepare_cache,
     needs_glb_prepare,
     needs_meshopt_decompress,
+    prepare_cache_stats,
     prepare_glb_for_load,
     release_prepared,
     _dequant_scalar,
@@ -123,3 +124,22 @@ def test_prepare_cache_bytes_cap_evicts(tmp_path: Path, monkeypatch: pytest.Monk
     assert len(meshopt._prepare_cache) == 1
     for load_path in load_paths:
         release_prepared(load_path)
+
+
+def test_prepare_cache_stats_empty_and_after_prepare(tmp_path: Path):
+    empty = prepare_cache_stats()
+    assert empty == {
+        "entries": 0,
+        "refs": 0,
+        "ref_keys": 0,
+        "orphans": 0,
+        "bytes": 0,
+    }
+    gltf, bin_chunk = quantized_triangle_gltf()
+    path = write_glb(tmp_path / "stats.glb", gltf, bin_chunk)
+    load_path, _ = prepare_glb_for_load(str(path))
+    stats = prepare_cache_stats()
+    assert stats["entries"] == 1
+    assert stats["refs"] >= 1
+    assert stats["bytes"] > 0
+    release_prepared(load_path)

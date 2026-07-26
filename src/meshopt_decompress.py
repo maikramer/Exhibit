@@ -13,11 +13,13 @@
 
 from __future__ import annotations
 
+import array
 import json
 import logging
 import math
 import os
 import struct
+import sys
 import tempfile
 import threading
 from collections import OrderedDict
@@ -58,6 +60,15 @@ _COMPONENT_SIZE = {
     5126: 4,  # FLOAT
 }
 _COMPONENT_STRUCT = {
+    5120: "b",
+    5121: "B",
+    5122: "h",
+    5123: "H",
+    5125: "I",
+    5126: "f",
+}
+# array.array typecodes matching glTF componentTypes (endian-native; swap if needed).
+_COMPONENT_ARRAY = {
     5120: "b",
     5121: "B",
     5122: "h",
@@ -384,6 +395,18 @@ def clear_prepare_cache() -> None:
                 os.unlink(temp_path)
             except OSError:
                 pass
+
+
+def prepare_cache_stats() -> dict[str, int]:
+    """Introspection for tests / ``tools/profile_pytest.py`` (no side effects)."""
+    with _prepare_lock:
+        return {
+            "entries": len(_prepare_cache),
+            "refs": sum(_prepare_refs.values()),
+            "ref_keys": len(_prepare_refs),
+            "orphans": len(_prepare_orphans),
+            "bytes": _prepare_cache_bytes_unlocked(),
+        }
 
 
 def _glb_bytes(gltf: dict[str, Any], bin_chunk: bytes) -> bytes:
@@ -714,7 +737,8 @@ def _accessor_stride(accessor: dict[str, Any], view: dict[str, Any]) -> int:
 
 def _read_accessor_floats(
     gltf: dict[str, Any], bin_chunk: bytes, accessor: dict[str, Any]
-) -> list[float]:
+) -> array.array:
+    """Return dequantized floats as ``array('f')`` (``.tobytes()`` for BIN)."""
     if "bufferView" not in accessor:
         raise MeshoptError("Sparse-only accessors are not supported for dequantization")
 
@@ -727,8 +751,34 @@ def _read_accessor_floats(
     fmt = _COMPONENT_STRUCT[component_type]
     stride = _accessor_stride(accessor, view)
     base = int(view.get("byteOffset") or 0) + int(accessor.get("byteOffset") or 0)
+    elem_size = ncomp * _COMPONENT_SIZE[component_type]
+    total = count * ncomp
 
-    values: list[float] = []
+    # Tightly packed: array.frombytes avoids N× unpack_from and giant fmt strings.
+    if stride == elem_size and count > 0:
+        needed = base + count * stride
+        if needed > len(bin_chunk):
+            raise MeshoptError("Accessor data is truncated")
+        typecode = _COMPONENT_ARRAY.get(component_type)
+        if typecode is None:
+            raise MeshoptError(
+                f"Unsupported quantized componentType for dequantization: "
+                f"{component_type}"
+            )
+        raw = array.array(typecode)
+        raw.frombytes(bin_chunk[base:needed])
+        if sys.byteorder != "little":
+            raw.byteswap()
+        if len(raw) != total:
+            raise MeshoptError("Accessor data is truncated")
+        if component_type == _FLOAT and not normalized:
+            return raw
+        return array.array(
+            "f",
+            (_dequant_scalar(c, component_type, normalized) for c in raw),
+        )
+
+    values = array.array("f")
     for index in range(count):
         offset = base + index * stride
         comps = struct.unpack_from("<" + fmt * ncomp, bin_chunk, offset)
@@ -803,7 +853,7 @@ def _dequant_mesh_quantization(gltf: dict[str, Any], bin_chunk: bytes) -> bytes:
     for index in sorted(dequant_accessors):
         accessor = accessors[index]
         floats = _read_accessor_floats(gltf, bin_chunk, accessor)
-        payload = struct.pack("<" + "f" * len(floats), *floats)
+        payload = floats.tobytes()
         ncomp = _TYPE_COUNT[accessor["type"]]
 
         new_view = {
