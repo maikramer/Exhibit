@@ -55,19 +55,17 @@ Synthetic assets: [`tests/glb_factory.py`](../tests/glb_factory.py) — `plain_t
 
 ### CLI `--up` and negative axes
 
-`argparse` treats a space-separated value that starts with `-` as another option:
+`normalize_cli_argv` rewrites ``--up -Y`` → ``--up=-Y`` before argparse so
+negative axes work either way:
 
 ```sh
-# Broken (SystemExit / "expected one argument")
 exhibit render model.glb -o /tmp/out --up -Y
-
-# Works
 exhibit render model.glb -o /tmp/out --up=-Y
 ```
 
 Coverage: `test_build_parser_up_choices` and
-`test_build_parser_up_space_separated_negative_is_broken` in
-`tests/test_cli_render_extended.py`. Also in the root README CLI table.
+`test_build_parser_up_space_separated_negative_works` in
+`tests/test_cli_render_extended.py`.
 
 ### CLI defaults (parity with GUI)
 

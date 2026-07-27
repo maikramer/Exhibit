@@ -131,7 +131,8 @@ Stdout prints the absolute path to `manifest.json` (one line) for piping.
 | `--views` | `front,right,back,left,top,isometric` (default: all six); can include `orbit` |
 | `--orbit N` | Add N yaw steps around the model |
 | `--size WxH` | Default `1024x1024` |
-| `--up` | Scene up: `+Y` (default), `+X`, `-X`, `+Z`, … — **use `--up=-Y` (equals form) for negative axes**; `--up -Y` is rejected by argparse |
+| `--up` | Scene up: `+Y` (default), `+X`, `-X`, `+Z`, … — ``--up -Y`` and ``--up=-Y`` both work |
+
 | `--armature` | Skeleton X-ray defaults |
 | `--checkerboard` | Replace textures with UV checkerboard |
 | `--normal-glyphs` | Draw vertex normals as arrows |

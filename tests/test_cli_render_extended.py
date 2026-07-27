@@ -168,13 +168,13 @@ def test_build_parser_up_choices(up: str):
 
 
 @pytest.mark.parametrize("up", ["-X", "-Y", "-Z"])
-def test_build_parser_up_space_separated_negative_is_broken(up: str):
-    """
-    Real CLI bug: ``--up -X`` makes argparse treat ``-X`` as a flag.
-    Users must pass ``--up=-X`` instead.
-    """
-    with pytest.raises(SystemExit):
-        build_parser().parse_args(["m.glb", "-o", "o", "--up", up])
+def test_build_parser_up_space_separated_negative_works(up: str):
+    """``normalize_cli_argv`` rewrites ``--up -X`` → ``--up=-X``."""
+    from exhibit.cli_render import normalize_cli_argv
+
+    argv = normalize_cli_argv(["m.glb", "-o", "o", "--up", up])
+    args = build_parser().parse_args(argv)
+    assert args.up == up
 
 
 @pytest.mark.parametrize(

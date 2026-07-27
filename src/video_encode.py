@@ -106,19 +106,25 @@ def encode_turntable_gif(
     except ImportError as exc:
         raise ImportError("Pillow (PIL) is required for GIF turntables") from exc
 
-    frames = [Image.open(path).convert("RGBA") for path in frame_paths]
-    duration_ms = max(1, int(round(1000.0 / float(fps))))
-    frames[0].save(
-        out_path,
-        save_all=True,
-        append_images=frames[1:],
-        duration=duration_ms,
-        loop=0,
-        optimize=True,
-        disposal=2,
-    )
-    for frame in frames:
-        frame.close()
+    frames = []
+    try:
+        frames = [Image.open(path).convert("RGBA") for path in frame_paths]
+        duration_ms = max(1, int(round(1000.0 / float(fps))))
+        frames[0].save(
+            out_path,
+            save_all=True,
+            append_images=frames[1:],
+            duration=duration_ms,
+            loop=0,
+            optimize=True,
+            disposal=2,
+        )
+    finally:
+        for frame in frames:
+            try:
+                frame.close()
+            except Exception:
+                pass
     return out_path
 
 

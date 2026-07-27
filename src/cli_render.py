@@ -73,6 +73,24 @@ def _parse_views(value: str) -> list[str]:
     return names
 
 
+def normalize_cli_argv(argv: list[str] | None) -> list[str] | None:
+    """Rewrite ``--up -Y`` → ``--up=-Y`` so negative axes are not flags."""
+    if argv is None:
+        return None
+    out: list[str] = []
+    i = 0
+    ups = set(UP_DIRS.keys())
+    while i < len(argv):
+        arg = argv[i]
+        if arg == "--up" and i + 1 < len(argv) and argv[i + 1] in ups:
+            out.append(f"--up={argv[i + 1]}")
+            i += 2
+            continue
+        out.append(arg)
+        i += 1
+    return out
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="exhibit render",
@@ -83,7 +101,8 @@ def build_parser() -> argparse.ArgumentParser:
         epilog=(
             "Flatpak: if ffmpeg is missing in the sandbox PATH, "
             "--video mp4/webm tries `flatpak-spawn --host ffmpeg`, "
-            "then falls back to GIF via Pillow."
+            "then falls back to GIF via Pillow.\n"
+            "Tip: ``--up -Y`` is accepted (normalized to ``--up=-Y``)."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
@@ -317,53 +336,49 @@ def render_model(args: argparse.Namespace) -> str:
     except Exception as exc:
         raise SystemExit(f"Failed to prepare model: {exc}") from exc
 
-    print("Collecting mesh stats", file=sys.stderr)
-    stats = collect_mesh_stats(
-        load_path, already_prepared=True, up=str(args.up)
-    )
-    overlay_text = format_overlay_for_f3d(stats) if args.overlay else None
-    options = _build_options(args, overlay_text=overlay_text)
+    # Outer finally always frees prepare retain (Engine.create / pre-add can die).
+    try:
+        print("Collecting mesh stats", file=sys.stderr)
+        stats = collect_mesh_stats(
+            load_path, already_prepared=True, up=str(args.up)
+        )
+        overlay_text = format_overlay_for_f3d(stats) if args.overlay else None
+        options = _build_options(args, overlay_text=overlay_text)
 
-    eng = f3d.Engine.create(True)
-    eng.autoload_plugins()
-    eng.options.update(options)
+        eng = f3d.Engine.create(True)
+        eng.autoload_plugins()
+        eng.options.update(options)
 
-    if not eng.scene.supports(load_path):
+        if not eng.scene.supports(load_path):
+            raise SystemExit(f"Unsupported model format: {model_path}")
+
+        try:
+            eng.scene.add(load_path)
+        except Exception as exc:
+            raise SystemExit(f"Failed to load model: {exc}") from exc
+
+        # Non-cache meshopt temp only; cache path released in finally.
         cleanup_decompressed(prepare_temp)
-        if retained:
-            release_prepared(load_path)
-        raise SystemExit(f"Unsupported model format: {model_path}")
+        prepare_temp = None
 
-    try:
-        eng.scene.add(load_path)
-    except Exception as exc:
-        cleanup_decompressed(prepare_temp)
-        if retained:
-            release_prepared(load_path)
-        raise SystemExit(f"Failed to load model: {exc}") from exc
+        width, height = args.size
+        eng.window.size = (width, height)
 
-    # Keep prepared file until after load; cache may own it (temp=None).
-    cleanup_decompressed(prepare_temp)
+        try:
+            eng.scene.load_animation_time(float(args.animation_time))
+        except Exception as exc:
+            print(f"animation time ignored: {exc}", file=sys.stderr)
 
-    width, height = args.size
-    eng.window.size = (width, height)
+        animation_names: list[str] = []
+        try:
+            animation_names = list(eng.scene.get_animation_names())
+        except Exception as exc:
+            print(f"animation names unavailable: {exc}", file=sys.stderr)
+            animation_names = []
 
-    try:
-        eng.scene.load_animation_time(float(args.animation_time))
-    except Exception as exc:
-        print(f"animation time ignored: {exc}", file=sys.stderr)
+        has_skins = glb_has_skins(model_path)
 
-    animation_names: list[str] = []
-    try:
-        animation_names = list(eng.scene.get_animation_names())
-    except Exception as exc:
-        print(f"animation names unavailable: {exc}", file=sys.stderr)
-        animation_names = []
-
-    has_skins = glb_has_skins(model_path)
-
-    view_entries: list[dict[str, Any]] = []
-    try:
+        view_entries: list[dict[str, Any]] = []
         for job in jobs:
             name = job["name"]
             if job["kind"] == "preset":
@@ -381,103 +396,104 @@ def render_model(args: argparse.Namespace) -> str:
             if "yaw_deg" in job:
                 entry["yaw_deg"] = job["yaw_deg"]
             view_entries.append(entry)
-    finally:
-        if retained:
-            release_prepared(load_path)
 
-    video_fmt = getattr(args, "video", None)
-    video_fps = int(getattr(args, "video_fps", 24) or 24)
-    video_file: str | None = None
-    if video_fmt:
-        from .video_encode import encode_turntable_video
+        video_fmt = getattr(args, "video", None)
+        video_fps = int(getattr(args, "video_fps", 24) or 24)
+        video_file: str | None = None
+        if video_fmt:
+            from .video_encode import encode_turntable_video
 
-        orbit_frames = [
-            os.path.join(out_dir, entry["file"])
-            for entry in view_entries
-            if str(entry.get("name", "")).startswith("orbit_")
-        ]
-        if len(orbit_frames) >= 2:
-            video_name = f"{stem}_turntable.{video_fmt}"
-            video_path = os.path.join(out_dir, video_name)
-            try:
-                encode_turntable_video(
-                    orbit_frames,
-                    video_path,
-                    fps=video_fps,
-                    fmt=str(video_fmt),
-                )
-                video_file = video_name
-                print(f"Wrote turntable {video_path}", file=sys.stderr)
-            except FileNotFoundError:
-                # mp4/webm without ffmpeg → GIF via Pillow when available.
-                gif_name = f"{stem}_turntable.gif"
-                gif_path = os.path.join(out_dir, gif_name)
+            orbit_frames = [
+                os.path.join(out_dir, entry["file"])
+                for entry in view_entries
+                if str(entry.get("name", "")).startswith("orbit_")
+            ]
+            if len(orbit_frames) >= 2:
+                video_name = f"{stem}_turntable.{video_fmt}"
+                video_path = os.path.join(out_dir, video_name)
                 try:
                     encode_turntable_video(
                         orbit_frames,
-                        gif_path,
+                        video_path,
                         fps=video_fps,
-                        fmt="gif",
+                        fmt=str(video_fmt),
                     )
-                    video_file = gif_name
-                    print(
-                        "ffmpeg not found; wrote GIF turntable via Pillow "
-                        f"→ {gif_path}",
-                        file=sys.stderr,
-                    )
-                except Exception as gif_exc:
-                    print(
-                        "ffmpeg not found and GIF fallback failed: "
-                        f"{gif_exc}",
-                        file=sys.stderr,
-                    )
-            except Exception as exc:
-                print(f"Turntable video failed: {exc}", file=sys.stderr)
-        else:
-            print(
-                "--video needs at least 2 orbit frames "
-                "(use --orbit N or --views orbit)",
-                file=sys.stderr,
-            )
+                    video_file = video_name
+                    print(f"Wrote turntable {video_path}", file=sys.stderr)
+                except FileNotFoundError:
+                    # mp4/webm without ffmpeg → GIF via Pillow when available.
+                    gif_name = f"{stem}_turntable.gif"
+                    gif_path = os.path.join(out_dir, gif_name)
+                    try:
+                        encode_turntable_video(
+                            orbit_frames,
+                            gif_path,
+                            fps=video_fps,
+                            fmt="gif",
+                        )
+                        video_file = gif_name
+                        print(
+                            "ffmpeg not found; wrote GIF turntable via Pillow "
+                            f"→ {gif_path}",
+                            file=sys.stderr,
+                        )
+                    except Exception as gif_exc:
+                        print(
+                            "ffmpeg not found and GIF fallback failed: "
+                            f"{gif_exc}",
+                            file=sys.stderr,
+                        )
+                except Exception as exc:
+                    print(f"Turntable video failed: {exc}", file=sys.stderr)
+            else:
+                print(
+                    "--video needs at least 2 orbit frames "
+                    "(use --orbit N or --views orbit)",
+                    file=sys.stderr,
+                )
 
-    manifest = {
-        "model": model_path,
-        "prepared": load_path != model_path,
-        "has_skins": has_skins,
-        "animation_names": animation_names,
-        "stats": stats.to_dict(),
-        "options": {
-            "armature": bool(args.armature),
-            "checkerboard": bool(args.checkerboard),
-            "normal_glyphs": bool(args.normal_glyphs),
-            "display_depth": bool(args.display_depth),
-            "opacity": options["model.color.opacity"],
-            "line_width": options["render.line_width"],
-            "edges": bool(args.edges),
-            "grid": bool(args.grid),
-            "overlay": bool(args.overlay),
-            "size": [width, height],
-            "up": args.up,
-            "bg": list(args.bg),
-            "animation_index": int(args.animation_index),
-            "animation_time": float(args.animation_time),
-            "video": video_fmt,
-            "video_fps": video_fps,
-        },
-        "views": view_entries,
-        "video": video_file,
-    }
-    manifest_path = os.path.join(out_dir, "manifest.json")
-    with open(manifest_path, "w", encoding="utf-8") as handle:
-        json.dump(manifest, handle, indent=2)
-        handle.write("\n")
+        manifest = {
+            "model": model_path,
+            "prepared": load_path != model_path,
+            "has_skins": has_skins,
+            "animation_names": animation_names,
+            "stats": stats.to_dict(),
+            "options": {
+                "armature": bool(args.armature),
+                "checkerboard": bool(args.checkerboard),
+                "normal_glyphs": bool(args.normal_glyphs),
+                "display_depth": bool(args.display_depth),
+                "opacity": options["model.color.opacity"],
+                "line_width": options["render.line_width"],
+                "edges": bool(args.edges),
+                "grid": bool(args.grid),
+                "overlay": bool(args.overlay),
+                "size": [width, height],
+                "up": args.up,
+                "bg": list(args.bg),
+                "animation_index": int(args.animation_index),
+                "animation_time": float(args.animation_time),
+                "video": video_fmt,
+                "video_fps": video_fps,
+            },
+            "views": view_entries,
+            "video": video_file,
+        }
+        manifest_path = os.path.join(out_dir, "manifest.json")
+        with open(manifest_path, "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2)
+            handle.write("\n")
 
-    return manifest_path
+        return manifest_path
+    finally:
+        cleanup_decompressed(prepare_temp)
+        if retained:
+            release_prepared(load_path)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
-    args = parser.parse_args(argv)
+    args = parser.parse_args(normalize_cli_argv(argv))
     try:
         manifest_path = render_model(args)
     except SystemExit:
