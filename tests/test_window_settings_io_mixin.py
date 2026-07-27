@@ -60,3 +60,18 @@ def test_setup_hdri_folder_is_clean():
         if isinstance(n, ast.FunctionDef) and n.name == "setup_hdri_folder"
     )
     assert (hdri.end_lineno - hdri.lineno + 1) < 25
+
+
+def test_setup_configurations_guards_bad_json_shape():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert "isinstance(configuration, dict)" in src
+    assert "isinstance(first_key_value, dict)" in src
+    assert "preset_key_from_name" in src
+    assert "commonpath" in src
+
+
+def test_preset_reloads_when_up_or_checkerboard_changes():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert "prev_up" in src
+    assert "checkerboard-enable" in src
+    assert "_reload_tab" in src

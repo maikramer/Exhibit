@@ -9,7 +9,11 @@ import os
 from gi.repository import Gio, GLib
 from wand.image import Image
 
-from .settings_compare import settings_values_equal
+from .settings_compare import (
+    formats_entry_to_pattern,
+    preset_key_from_name,
+    settings_values_equal,
+)
 from .file_patterns import allowed_extensions
 
 
@@ -22,6 +26,11 @@ class SettingsIOMixin:
             Gio.ResourceLookupFlags.NONE).get_data().decode('utf-8')
         self.configurations = json.loads(self.configurations)
 
+        required_keys = {
+            "name", "formats",
+            "view-settings", "other-settings"
+        }
+
         for filename in os.listdir(self.user_configurations_path):
             if filename.endswith('.json'):
                 filepath = os.path.join(
@@ -29,22 +38,26 @@ class SettingsIOMixin:
                 with open(filepath, 'r') as file:
                     try:
                         configuration = json.load(file)
-
-                        # Check if the loaded configurations
-                        #   has all the required keys
-                        required_keys = {
-                            "name", "formats",
-                            "view-settings", "other-settings"
-                        }
-                        first_key_value = next(iter(configuration.values()))
-                        if required_keys.issubset(first_key_value.keys()):
-                            self.configurations.update(configuration)
-                        else:
-                            self.logger.error(
-                                f"Error: {filepath} is missing required keys.")
-
                     except json.JSONDecodeError as e:
                         self.logger.error(f"Error reading {filename}: {e}")
+                        continue
+
+                    if not isinstance(configuration, dict) or not configuration:
+                        self.logger.error(
+                            f"Error: {filepath} is not a non-empty object.")
+                        continue
+
+                    first_key_value = next(iter(configuration.values()))
+                    if not isinstance(first_key_value, dict):
+                        self.logger.error(
+                            f"Error: {filepath} has invalid preset payload.")
+                        continue
+
+                    if required_keys.issubset(first_key_value.keys()):
+                        self.configurations.update(configuration)
+                    else:
+                        self.logger.error(
+                            f"Error: {filepath} is missing required keys.")
 
         item = Gio.MenuItem.new("Custom", "win.settings")
         item.set_attribute_value("target", GLib.Variant.new_string("custom"))
@@ -80,21 +93,27 @@ class SettingsIOMixin:
         name = self.save_settings_name_entry.get_text()
         formats = self.save_settings_extensions_entry.get_text()
 
-        # Format the key
-        key = name.lower().replace(' ', '_')
+        # Format the key (reject ../ and other path junk)
+        key = preset_key_from_name(name)
+        filepath = os.path.join(self.user_configurations_path, f"{key}.json")
+        configs_root = os.path.realpath(self.user_configurations_path)
+        if os.path.commonpath(
+                [os.path.realpath(filepath), configs_root]) != configs_root:
+            self.logger.error("Refusing to write preset outside configs dir")
+            return
 
         # Construct the dictionary
         settings_dict = {
             key: {
                 "name": name,
-                "formats": f".*({formats.replace(', ', '|')})",
+                "formats": formats_entry_to_pattern(formats),
                 "view-settings": view_settings,
                 "other-settings": other_settings
             }
         }
 
         # Save to JSON file
-        with open(self.user_configurations_path + key + '.json', 'w') as j_f:
+        with open(filepath, 'w') as j_f:
             json.dump(settings_dict, j_f, indent=4)
 
         # Update configurations and menu UI
@@ -141,6 +160,9 @@ class SettingsIOMixin:
         for key, value in self.configurations[name]["view-settings"].items():
             options[key] = value
 
+        prev_up = self.window_settings.get_setting("up").value
+        prev_cb = self.window_settings.get_setting("checkerboard-enable").value
+
         # Batch view emits so presets do one update_options + one queue_render
         self.window_settings.begin_view_batch()
         for tab in self._iter_tabs():
@@ -155,6 +177,18 @@ class SettingsIOMixin:
             self.window_settings.end_view_batch()
             for tab in self._iter_tabs():
                 tab.viewer.end_options_batch()
+
+        # Batch suppresses changed-view → reload up/checkerboard explicitly.
+        new_up = self.window_settings.get_setting("up").value
+        new_cb = self.window_settings.get_setting("checkerboard-enable").value
+        if new_up != prev_up or new_cb != prev_cb:
+            preserve = new_up == prev_up
+            for tab in self._iter_tabs():
+                if not getattr(tab, "loaded", False) or not tab.filepath:
+                    continue
+                self._reload_tab(tab, preserve_orientation=preserve)
+            if getattr(self, "_split_compare", False):
+                GLib.idle_add(self._load_split_compare_from_active)
 
     def check_for_options_change(self):
         if self.block_reload:

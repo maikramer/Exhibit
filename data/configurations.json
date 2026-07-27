@@ -7,7 +7,7 @@
     },
     "3d_printing": {
         "name": "3D Printing",
-        "formats": ".*(stl|3mf)",
+        "formats": ".*\\.(stl|3mf)$",
         "view-settings": {
             "up": "+Z",
             "grid": true,
@@ -18,7 +18,7 @@
     },
     "mechanical": {
         "name": "CAD Models",
-        "formats": ".*(step|stp|iges|igs|off|3ds)",
+        "formats": ".*\\.(step|stp|iges|igs|off|3ds)$",
         "view-settings": {
             "up": "+Z",
             "ambient-occlusion": false
@@ -27,7 +27,7 @@
     },
     "point_cloud": {
         "name": "Point Cloud",
-        "formats": ".*(ply)",
+        "formats": ".*\\.(ply)$",
         "view-settings": {
             "point-size": 2.0,
             "up": "-X",
@@ -43,7 +43,7 @@
     },
     "splat": {
         "name": "Splat",
-        "formats": ".*(splat)",
+        "formats": ".*\\.(splat)$",
         "view-settings": {
             "anti-aliasing": false,
             "tone-mapping": false,
