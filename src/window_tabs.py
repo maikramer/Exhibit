@@ -12,7 +12,11 @@ from gettext import gettext as _
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from .camera_sync import apply_camera_state_to_peers, iter_camera_sync_peers
-from .meshopt_decompress import cleanup_decompressed, release_prepared
+from .meshopt_decompress import (
+    cleanup_decompressed,
+    release_prepared,
+    retain_prepared,
+)
 from .warm_load import cancel_warm_load_holder, release_warm_holder_temps
 from .widgets import F3DViewer, ViewerTab
 
@@ -74,12 +78,18 @@ class TabsMixin:
         return chrome_changed
 
     def _reframe_after_chrome_change(self):
-        """Re-fit cameras after tab bar steals/returns vertical space."""
-        for tab in self._iter_tabs():
-            if not tab.loaded:
-                continue
-            viewer = tab.viewer
-            if viewer.camera is None:
+        """Re-fit visible cameras after tab bar steals/returns vertical space."""
+        # Only active (+ split) — other tabs keep their camera until selected.
+        targets = []
+        active = self._active_tab()
+        if active is not None and active.loaded:
+            targets.append(active.viewer)
+        if getattr(self, "_split_compare", False):
+            split = getattr(self, "_split_compare_viewer", None)
+            if split is not None:
+                targets.append(split)
+        for viewer in targets:
+            if viewer is None or getattr(viewer, "camera", None) is None:
                 continue
             try:
                 viewer.reset_to_bounds()
@@ -207,11 +217,13 @@ class TabsMixin:
         self._configure_tab_page(page, tab)
         tab.viewer.update_options(self.window_settings.get_view_settings())
         tab.viewer.camera_changed_cb = self._on_viewer_camera_changed
-        apply_nav = getattr(self, "_apply_nav_settings_to_viewers", None)
-        if callable(apply_nav) and hasattr(tab.viewer, "apply_nav_settings"):
+        if hasattr(tab.viewer, "apply_nav_settings"):
             tab.viewer.apply_nav_settings(
                 getattr(self, "_nav_settings_dict", lambda: {})()
             )
+        seed_point = getattr(self, "_apply_point_up_to_viewer", None)
+        if callable(seed_point):
+            seed_point(tab.viewer)
         if select:
             self.tab_view.set_selected_page(page)
             self._bind_animation_controls(tab.viewer)
@@ -325,7 +337,8 @@ class TabsMixin:
         try:
             want = bool(settings.get_boolean("split-compare-pinned"))
             path = (settings.get_string("split-compare-pin-path") or "").strip()
-        except Exception:
+        except Exception as exc:
+            self.logger.debug("split compare pin restore read failed: %s", exc)
             return False
         if not want or not path:
             return False
@@ -336,7 +349,8 @@ class TabsMixin:
             self._clear_split_compare_pin_settings()
             return False
         self._split_compare_pin_filepath = path
-        self._split_compare_pin_prepared = path
+        # Temps do not survive restart — force prepare on next secondary load.
+        self._split_compare_pin_prepared = None
         self._split_compare_pinned = True
         pin = getattr(self, "split_compare_pin_check", None)
         if pin is None:
@@ -586,6 +600,19 @@ class TabsMixin:
             viewer.update_options(self.window_settings.get_view_settings())
         except Exception as exc:
             self.logger.debug("split compare options failed: %s", exc)
+        if hasattr(viewer, "apply_nav_settings"):
+            try:
+                viewer.apply_nav_settings(
+                    getattr(self, "_nav_settings_dict", lambda: {})()
+                )
+            except Exception as exc:
+                self.logger.debug("split compare nav seed failed: %s", exc)
+        seed_point = getattr(self, "_apply_point_up_to_viewer", None)
+        if callable(seed_point):
+            try:
+                seed_point(viewer)
+            except Exception as exc:
+                self.logger.debug("split compare point-up seed failed: %s", exc)
         paned.set_end_child(viewer)
         self._split_compare_viewer = viewer
         self._size_split_compare_paned()
@@ -621,12 +648,19 @@ class TabsMixin:
         active = self._active_tab()
         if pinned and getattr(self, "_split_compare_pin_filepath", None):
             filepath = self._split_compare_pin_filepath
-            prepared = self._split_compare_pin_prepared or filepath
+            prepared = getattr(self, "_split_compare_pin_prepared", None)
         else:
             if active is None or not active.loaded or not active.filepath:
                 return False
             filepath = active.filepath
-            prepared = active.viewer.get_prepared_path() or active.filepath
+            prepared = active.viewer.get_prepared_path()
+        # Only reuse a distinct prepared temp that still exists; else prepare.
+        if (
+            not prepared
+            or prepared == filepath
+            or not os.path.isfile(prepared)
+        ):
+            prepared = None
 
         label = getattr(self, "split_compare_primary_label", None)
         if label is not None:
@@ -644,18 +678,45 @@ class TabsMixin:
             else:
                 label.set_label(_("Following: {}").format(name))
 
+        retained = False
         try:
+            # Secondary GLArea must realize + initialize before load_file.
+            if viewer.engine is None:
+                if not viewer.get_realized():
+                    attempts = int(
+                        getattr(self, "_split_load_realize_attempts", 0)
+                    )
+                    if attempts < 120:
+                        self._split_load_realize_attempts = attempts + 1
+                        GLib.timeout_add(16, self._load_split_compare_from_active)
+                    else:
+                        self._split_load_realize_attempts = 0
+                        self.logger.warning(
+                            "split compare: secondary viewer never realized"
+                        )
+                    return False
+                viewer.initialize()
+            self._split_load_realize_attempts = 0
+
             already = getattr(viewer, "_loaded_filepath", None)
             need_load = already not in (filepath, prepared)
             if need_load:
                 viewer.update_options(self.window_settings.get_view_settings())
+                # Secondary shares primary prepared temp. retain_prepared bumps
+                # refs; on success viewer keeps it via _prepared_path; on False
+                # return load_file already released the shared path.
+                if prepared and prepared != filepath:
+                    retained = bool(retain_prepared(prepared))
                 viewer.load_file(filepath, prepared_path=prepared)
+                retained = False
             # Camera always follows the active tab when available.
             if active is not None and active.loaded:
                 state = active.viewer.get_camera_state()
                 if state is not None:
                     viewer.set_camera_state(state)
         except Exception as exc:
+            if retained and prepared:
+                release_prepared(prepared)
             self.logger.warning("split compare load failed: %s", exc)
             send = getattr(self, "send_toast", None)
             if callable(send):
@@ -746,6 +807,10 @@ class TabsMixin:
             return
         self._switching_tab = True
         try:
+            # Skin-weights heat is window-global — restore owner tab first.
+            handoff = getattr(self, "_handoff_skin_weights_on_tab_change", None)
+            if callable(handoff):
+                handoff()
             self._bind_animation_controls(tab.viewer)
             self._sync_window_from_tab(tab)
             if tab.loaded:
@@ -784,6 +849,9 @@ class TabsMixin:
         if cancel_warm_load_holder(holder) is None:
             return
         self._release_warm_holder_temps(holder)
+        unblock = getattr(self, "_unblock_reload_if_idle", None)
+        if callable(unblock):
+            unblock()
 
     def on_tab_close_page(self, tab_view, page):
         tab = page.get_child()
@@ -800,8 +868,15 @@ class TabsMixin:
             self.tab_view.close_page_finish(page, True)
             if isinstance(tab, ViewerTab):
                 self._cancel_warm_load(tab)
-                # Drop window-owned skin-weight heat pointer (viewer unlinks file).
-                if was_selected and getattr(self, "_skin_weights_heat_temp", None):
+                # Drop window-owned heat pointer if this tab owns it (or is active).
+                heat = getattr(self, "_skin_weights_heat_temp", None)
+                owns_heat = False
+                if heat:
+                    try:
+                        owns_heat = tab.viewer.get_prepared_path() == heat
+                    except Exception as exc:
+                        self.logger.debug("tab close heat probe: %s", exc)
+                if was_selected or owns_heat:
                     self._skin_weights_heat_temp = None
                     self._skin_weights_base_path = None
                 try:

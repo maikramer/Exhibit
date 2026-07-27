@@ -67,13 +67,11 @@ class Viewer3dApplication(Adw.Application):
 
         self.create_action(
             "open-hdri-folder",
-            lambda *_: webbrowser.open(self.props.active_window.hdri_path),
+            self._on_open_hdri_folder,
         )
         self.create_action(
             "open-configs-folder",
-            lambda *_: webbrowser.open(
-                self.props.active_window.user_configurations_path
-            ),
+            self._on_open_configs_folder,
         )
 
         self.create_action(
@@ -83,7 +81,7 @@ class Viewer3dApplication(Adw.Application):
         )
         self.create_action(
             "open-external",
-            lambda *_: self.props.active_window.open_with_external_app(),
+            self._on_open_external,
             ["<primary><shift>e"],
         )
 
@@ -108,6 +106,24 @@ class Viewer3dApplication(Adw.Application):
         theme_action.connect("change-state", self.on_theme_setting_changed)
         self.update_theme()
         self.add_action(theme_action)
+
+    def _on_open_hdri_folder(self, *_args):
+        win = self.props.active_window
+        if win is None:
+            return
+        webbrowser.open(win.hdri_path)
+
+    def _on_open_configs_folder(self, *_args):
+        win = self.props.active_window
+        if win is None:
+            return
+        webbrowser.open(win.user_configurations_path)
+
+    def _on_open_external(self, *_args):
+        win = self.props.active_window
+        if win is None:
+            return
+        win.open_with_external_app()
 
     def do_startup(self):
         Adw.Application.do_startup(self)
@@ -154,22 +170,23 @@ class Viewer3dApplication(Adw.Application):
             )
 
     def do_open(self, files, n_files, hint):
-        win = self.props.active_window
-        if win is None:
-            first = files[0].get_path() if n_files else None
-            win = Viewer3dWindow(application=self, startup_filepath=first)
-            win.present()
-            # Remaining files open as extra tabs.
-            for i in range(1, n_files):
-                path = files[i].get_path()
-                if path:
-                    win.load_file(filepath=path)
-            return
-        win.present()
+        paths = []
         for i in range(n_files):
             path = files[i].get_path()
             if path:
-                win.load_file(filepath=path)
+                paths.append(path)
+        if not paths:
+            return
+        win = self.props.active_window
+        if win is None:
+            win = Viewer3dWindow(application=self, startup_filepath=paths[0])
+            win.present()
+            # Rest join the sequential open queue (warm-load / realize safe).
+            if len(paths) > 1:
+                win._open_model_paths(paths[1:])
+            return
+        win.present()
+        win._open_model_paths(paths)
 
     def show_image_external(self, _action, image_path: GLib.Variant, *args):
         try:

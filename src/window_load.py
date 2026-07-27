@@ -4,7 +4,6 @@
 from __future__ import annotations
 
 import os
-import re
 import threading
 
 from gettext import gettext as _, ngettext
@@ -24,6 +23,7 @@ from .session_files import (
     collect_session_paths,
     session_paths_to_restore,
 )
+from .settings_compare import formats_pattern_matches
 from .warm_load import new_warm_load_holder
 from .widgets import ViewerTab
 from .file_patterns import allowed_extensions, image_patterns
@@ -97,6 +97,19 @@ class LoadMixin:
             model_paths = model_paths[:limit]
         if not model_paths:
             return
+        pending = list(getattr(self, "_pending_open_paths", None) or [])
+        in_flight = bool(getattr(self, "block_reload", False)) or (
+            hasattr(self, "_warm_load_in_flight") and self._warm_load_in_flight()
+        )
+        if in_flight or pending:
+            # Mid-batch / mid-load: append — never drop the existing queue.
+            self._pending_open_paths = pending + list(model_paths)
+            self.logger.info(
+                "queued %d model(s); pending now %d",
+                len(model_paths),
+                len(self._pending_open_paths),
+            )
+            return
         self._pending_open_paths = list(model_paths[1:])
         self.load_file(filepath=model_paths[0])
 
@@ -138,8 +151,8 @@ class LoadMixin:
         if model_paths:
             self._open_model_paths(model_paths)
             return
-        for filepath in paths:
-            self.load_file(filepath=filepath)
+        # Folders / unsupported picks: do not call load_file on raw paths.
+        self.send_toast(_("No supported models in selection"), timeout=4)
 
     def load_file(self, **kwargs):
         tab_hint = kwargs.get("_tab")
@@ -198,9 +211,14 @@ class LoadMixin:
         self.block_reload = True
 
         # Fresh opens start in bind pose; reloads keep the selected clip.
+        # Batch view so changed-no-ui-update does not stomp sibling tabs' clips.
         if not kwargs.get("override") and not kwargs.get("preserve_orientation"):
-            self.window_settings.set_setting("animation-index", None, False)
             tab.viewer.update_options({"animation-index": None}, queue_render=False)
+            self.window_settings.begin_view_batch()
+            try:
+                self.window_settings.set_setting("animation-index", None, False)
+            finally:
+                self.window_settings.end_view_batch()
 
         # Capture camera on the main thread before async prepare.
         if kwargs.get("preserve_orientation") and tab.viewer.engine is not None:
@@ -217,6 +235,22 @@ class LoadMixin:
     def _resolve_readable_path(filepath: str) -> str | None:
         """Return a path the sandbox can read (follow home→/media symlinks)."""
         return resolve_readable_path(filepath)
+
+    def _warm_load_in_flight(self) -> bool:
+        """True while any tab still has an unfinished warm-load holder."""
+        for tab in self._iter_tabs():
+            holder = getattr(tab, "_warm_load_holder", None)
+            if not holder:
+                continue
+            if holder.get("cancelled") or holder.get("finished"):
+                continue
+            return True
+        return False
+
+    def _unblock_reload_if_idle(self) -> None:
+        """Clear window-wide ``block_reload`` when no warm load remains."""
+        if not self._warm_load_in_flight():
+            self.block_reload = False
 
     def _start_warm_load(self, tab: ViewerTab, kwargs: dict):
         """Overlap GLB prepare (worker) with F3D engine create (main)."""
@@ -263,6 +297,7 @@ class LoadMixin:
             self._release_warm_holder_temps(holder)
             if tab._warm_load_holder is holder:
                 tab._warm_load_holder = None
+            self._unblock_reload_if_idle()
             return GLib.SOURCE_REMOVE
         if holder.get("finished"):
             return GLib.SOURCE_REMOVE
@@ -315,6 +350,7 @@ class LoadMixin:
     def _warm_prepare_finished(self, tab: ViewerTab, kwargs: dict, holder: dict):
         if holder.get("cancelled"):
             self._release_warm_holder_temps(holder)
+            self._unblock_reload_if_idle()
             return GLib.SOURCE_REMOVE
         if holder.get("_temps_released"):
             return GLib.SOURCE_REMOVE
@@ -338,6 +374,7 @@ class LoadMixin:
         camera_state = kwargs.get("_camera_state")
 
         self.change_checker.stop()
+        load_ok = False
 
         if (not skip_auto_best
                 and self.window_settings.get_setting("auto-best").value
@@ -345,17 +382,16 @@ class LoadMixin:
             self.logger.debug("choosing best settings")
             settings = "general"
             for key, value in self.configurations.items():
-                pattern = value["formats"]
-                if pattern == ".*()":
-                    continue
-                if re.search(pattern, filepath):
+                if formats_pattern_matches(value.get("formats", ""), filepath):
                     settings = key
+                    break
             self.logger.debug(f"best settings is {settings}")
             self.change_setting_state(GLib.Variant("s", settings))
 
         try:
             if holder.get("cancelled"):
                 self._release_warm_holder_temps(holder)
+                self._unblock_reload_if_idle()
                 return GLib.SOURCE_REMOVE
             if not viewer.supports(load_path):
                 holder["_temps_released"] = True
@@ -374,6 +410,7 @@ class LoadMixin:
             if not ok:
                 self.on_file_not_opened(filepath, tab)
                 return GLib.SOURCE_REMOVE
+            load_ok = True
         except Exception as exc:
             self.logger.error(f"Error while loading into viewer: {exc}")
             holder["_temps_released"] = True
@@ -383,10 +420,21 @@ class LoadMixin:
             return GLib.SOURCE_REMOVE
         finally:
             cleanup_decompressed(meshopt_temp)
+            # Fail/cancel left the watcher stopped; resume for remaining docs.
+            # Success path: on_file_opened calls run() — skip duplicate here.
+            if not load_ok and any(
+                getattr(t, "loaded", False) for t in self._iter_tabs()
+            ):
+                try:
+                    self.change_checker.run()
+                except Exception as exc:
+                    self.logger.debug("change_checker restart failed: %s", exc)
 
         if preserve_orientation and camera_state is not None:
             try:
                 viewer.set_camera_state(camera_state)
+                # on_file_opened schedules done() — do not clobber restored cam.
+                viewer._fit_camera_on_done = False
             except Exception as exc:
                 self.logger.debug("preserve camera restore failed: %s", exc)
 
@@ -495,6 +543,8 @@ class LoadMixin:
         if mtime is not None:
             tab.loaded_mtime = mtime
             tab.seen_disk_mtime = mtime
+        # This tab's open consumed disk state; keep peak only on sibling tabs.
+        tab._blocked_peak_mtime = None
         tab.externally_modified = False
         if page is not None:
             self._configure_tab_page(page, tab)
@@ -521,9 +571,10 @@ class LoadMixin:
         self.update_background_color()
         self._remember_recent_file(tab.filepath)
         self._persist_session_files()
-        self._advance_open_queue()
-
-        self.block_reload = False
+        # Advance may start the next warm-load (sets block_reload again).
+        started_next = self._advance_open_queue()
+        if not started_next:
+            self.block_reload = False
         # Paint model first; sidebar extras can wait one idle tick.
         GLib.idle_add(self._post_open_sidebar_refresh)
 
@@ -584,12 +635,18 @@ class LoadMixin:
 
         self.update_background_color()
         self.refresh_object_tree()
-        self._mesh_stats = None
+        # Do not wipe window stats while sibling tabs still show a model.
+        if self.no_file_loaded or not any(
+            getattr(t, "loaded", False) for t in self._iter_tabs()
+        ):
+            self._mesh_stats = None
+        elif hasattr(self, "_refresh_mesh_stats"):
+            self._refresh_mesh_stats()
         self._update_tab_bar_visibility()
 
-        self.block_reload = False
-        # A failed batch item must not stall the remaining queued opens.
-        self._advance_open_queue()
+        started_next = self._advance_open_queue()
+        if not started_next:
+            self.block_reload = False
         return GLib.SOURCE_REMOVE
 
     @Gtk.Template.Callback("on_open_button_clicked")

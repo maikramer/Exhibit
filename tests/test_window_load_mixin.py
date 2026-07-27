@@ -19,6 +19,8 @@ EXPECTED = {
     "on_open_files_response",
     "load_file",
     "_resolve_readable_path",
+    "_warm_load_in_flight",
+    "_unblock_reload_if_idle",
     "_start_warm_load",
     "_warm_load_tick",
     "_warm_prepare_finished",
@@ -75,3 +77,9 @@ def test_resolve_readable_path_delegates_to_path_utils():
     body = ast.get_source_segment(src, fn)
     assert body is not None
     assert "return resolve_readable_path(filepath)" in body
+
+
+def test_auto_best_uses_formats_pattern_matches():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert "formats_pattern_matches" in src
+    assert "No supported models in selection" in src

@@ -246,6 +246,29 @@ def test_open_and_failure_paths_advance_the_queue():
     assert "_advance_open_queue" in _calls_in(
         _method_source("on_file_not_opened")
     )
+    # Must not clear block_reload after starting the next queued load.
+    for name in ("on_file_opened", "on_file_not_opened"):
+        body = ast.get_source_segment(
+            (ROOT / "src" / "window_load.py").read_text(encoding="utf-8"),
+            _method_source(name),
+        )
+        assert body is not None
+        assert "started_next" in body
+
+
+def test_open_model_paths_appends_when_in_flight():
+    src = (ROOT / "src" / "window_load.py").read_text(encoding="utf-8")
+    tree = ast.parse(src)
+    mixin = next(n for n in tree.body if isinstance(n, ast.ClassDef))
+    fn = next(
+        n
+        for n in mixin.body
+        if isinstance(n, ast.FunctionDef) and n.name == "_open_model_paths"
+    )
+    body = ast.get_source_segment(src, fn)
+    assert body is not None
+    assert "pending + list(model_paths)" in body
+    assert "queued" in body
 
 
 def test_open_model_paths_does_not_start_parallel_loads():

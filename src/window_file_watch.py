@@ -12,6 +12,16 @@ class FileWatchMixin:
     def periodic_check_for_file_change(self):
         """Watch every loaded tab for external edits; never title a tab Nothing."""
         if self.block_reload:
+            # Still track peak mtime so a mid-load edit is not baselined away.
+            for tab in self._iter_tabs():
+                if not tab.loaded or not tab.filepath:
+                    continue
+                disk_mtime = self._file_mtime(tab.filepath)
+                if disk_mtime is None:
+                    continue
+                peak = getattr(tab, "_blocked_peak_mtime", None)
+                if peak is None or disk_mtime > peak:
+                    tab._blocked_peak_mtime = disk_mtime
             return any(t.loaded and t.filepath for t in self._iter_tabs())
 
         active = self._active_tab()
@@ -23,6 +33,22 @@ class FileWatchMixin:
             disk_mtime = self._file_mtime(tab.filepath)
             if disk_mtime is None:
                 continue
+            peak = getattr(tab, "_blocked_peak_mtime", None)
+            if peak is not None:
+                tab._blocked_peak_mtime = None
+                if peak > (tab.loaded_mtime or 0) and peak >= disk_mtime:
+                    # Edit landed while block_reload; surface it now.
+                    tab.seen_disk_mtime = peak
+                    if auto and tab is active:
+                        self.logger.debug(
+                            "auto-reload after blocked window: %s", tab.filepath
+                        )
+                        self._reload_tab(tab, preserve_orientation=True)
+                        continue
+                    self._mark_tab_externally_modified(tab, peak)
+                    if tab is active:
+                        GLib.idle_add(self._prompt_reload_if_modified, tab)
+                    continue
             if not tab.loaded_mtime:
                 # First stamp after open — baseline, not a user edit.
                 tab.loaded_mtime = disk_mtime

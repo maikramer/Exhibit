@@ -304,6 +304,21 @@ def release_prepared(path: str | None) -> None:
         _try_unlink_temp(path)
 
 
+def retain_prepared(path: str | None) -> bool:
+    """Extra retain for a shared prepared temp (e.g. Split Compare secondary)."""
+    if not path:
+        return False
+    with _prepare_lock:
+        if (
+            path not in _prepare_refs
+            and path not in _prepare_orphans
+            and path not in _prepare_cache.values()
+        ):
+            return False
+        _retain_temp(path)
+        return True
+
+
 def _prepare_cache_bytes_unlocked() -> int:
     """Sum on-disk size of temps currently in the prepare cache."""
     total = 0
