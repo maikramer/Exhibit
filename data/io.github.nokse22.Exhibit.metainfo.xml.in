@@ -105,7 +105,7 @@
           <li>Inspect: armature, checkerboard, normal glyphs, linearized depth, skin weights, stats</li>
           <li>Animation bind-pose default, keyframe scrubber marks, in-memory part hide</li>
           <li>Headless exhibit render CLI (PNG / video / manifest)</li>
-          <li>Flatpak stack: F3D 3.5.0, VTK 9.6.2, OpenEXR + WebP</li>
+          <li>Flatpak stack: GNOME 50 runtime, F3D 3.5.0, VTK 9.6.2, OpenEXR + WebP</li>
         </ul>
       </description>
     </release>

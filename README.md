@@ -272,7 +272,7 @@ flatpak run --filesystem=host --command=python3 io.github.nokse22.Exhibit \
 
 ## Build (Flatpak, local)
 
-Needs `org.flatpak.Builder`, GNOME 49 SDK/Platform, and Flathub remotes.
+Needs `org.flatpak.Builder`, GNOME 50 SDK/Platform, and Flathub remotes.
 
 ```sh
 git clone https://github.com/maikramer/Exhibit.git

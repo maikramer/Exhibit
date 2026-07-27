@@ -10,6 +10,7 @@ Manifest: [`build-aux/io.github.nokse22.Exhibit.json`](../build-aux/io.github.no
 
 | Component | Version / note |
 |-----------|----------------|
+| Runtime / SDK | **org.gnome.Platform/Sdk //50** (Flathub stable; CI image `gnome-50`) |
 | F3D | **v3.5.0** (`bcfa8d525cec…`), `disable-lfs` |
 | VTK | **9.6.2** |
 | Modules | EXR **ON**, WebP **ON**, ImGui UI **OFF** |
