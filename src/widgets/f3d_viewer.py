@@ -396,41 +396,38 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
         self.get_distance()
         self._finalize_camera_nav()
 
-    def front_view(self, *args):
-        apply_view(self.camera, "front", self.settings["scene.up_direction"])
+    def _scene_up_key(self) -> str:
+        """Safe ``scene.up_direction`` string for camera presets."""
+        key = "+Y"
+        if self.settings:
+            key = self.settings.get("scene.up_direction", "+Y") or "+Y"
+        return key if key in up_dirs_vector else "+Y"
+
+    def _apply_named_view(self, name: str) -> None:
+        if self.camera is None:
+            return
+        apply_view(self.camera, name, self._scene_up_key())
         self.get_distance()
         self.queue_render()
         self._notify_camera_changed()
+
+    def front_view(self, *args):
+        self._apply_named_view("front")
 
     def right_view(self, *args):
-        apply_view(self.camera, "right", self.settings["scene.up_direction"])
-        self.get_distance()
-        self.queue_render()
-        self._notify_camera_changed()
+        self._apply_named_view("right")
 
     def back_view(self, *args):
-        apply_view(self.camera, "back", self.settings["scene.up_direction"])
-        self.get_distance()
-        self.queue_render()
-        self._notify_camera_changed()
+        self._apply_named_view("back")
 
     def left_view(self, *args):
-        apply_view(self.camera, "left", self.settings["scene.up_direction"])
-        self.get_distance()
-        self.queue_render()
-        self._notify_camera_changed()
+        self._apply_named_view("left")
 
     def top_view(self, *args):
-        apply_view(self.camera, "top", self.settings["scene.up_direction"])
-        self.get_distance()
-        self.queue_render()
-        self._notify_camera_changed()
+        self._apply_named_view("top")
 
     def isometric_view(self, *args):
-        apply_view(self.camera, "isometric", self.settings["scene.up_direction"])
-        self.get_distance()
-        self.queue_render()
-        self._notify_camera_changed()
+        self._apply_named_view("isometric")
 
     def _map_setting_to_f3d(self, key, value):
         """Translate Exhibit settings to current F3D option names/values."""
@@ -511,10 +508,14 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
 
 
     def render_image(self):
-        self.get_context().make_current()
-        img = self.window.render_to_image()
-        # print(img.to_terminal_text())
-        return img
+        """Capture the current frame; ``None`` if GL/F3D is not ready yet."""
+        if self.window is None:
+            return None
+        ctx = self.get_context()
+        if ctx is None:
+            return None
+        ctx.make_current()
+        return self.window.render_to_image()
 
 
 
@@ -536,7 +537,10 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
             self.engine.options.update({"render.hdri.ambient": True})
             self.queue_render()
 
-        self.reset_to_bounds()
+        # Skip fit when reload preserved the camera (auto-reload / preserve_or).
+        if getattr(self, "_fit_camera_on_done", True):
+            self.reset_to_bounds()
+        self._fit_camera_on_done = True
         return GLib.SOURCE_REMOVE
 
     def on_resize(self, gl_area, width, height):
@@ -550,8 +554,14 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
         self.window.render()
         return True
 
+    def _scene_up_vector(self):
+        """Resolve ``scene.up_direction``; fall back to ``+Y`` if invalid."""
+        return up_dirs_vector[self._scene_up_key()]
+
     def get_camera_to_focal_distance(self):
-        up = up_dirs_vector[self.settings["scene.up_direction"]]
+        if self.camera is None:
+            return 0.0, 1
+        up = self._scene_up_vector()
         pos = self.camera.position
         foc = self.camera.focal_point
 
@@ -574,9 +584,13 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
         return self.distance / 10
 
     def get_distance(self):
+        if self.camera is None:
+            return
         self.distance = p_dist(self.camera.position, self.camera.focal_point)
 
     def pan(self, x, y, z):
+        if self.camera is None:
+            return
         val = self.distance / 40
         self.camera.pan(x * val, y * val, z * val)
         self.queue_render()
@@ -588,6 +602,8 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
         self.tilt(direction)
 
     def tilt(self, direction):
+        if self.camera is None:
+            return
         val = self.distance / 40
 
         focal_point = self.camera.focal_point
@@ -615,8 +631,7 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
                     self.camera.focal_point = focal_point
 
         if self.always_point_up:
-            up = up_dirs_vector[self.settings["scene.up_direction"]]
-            self.camera.view_up = up
+            self.camera.view_up = self._scene_up_vector()
 
         self.queue_render()
 
@@ -817,7 +832,7 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
             if under is not None:
                 pivot = under
 
-        up = up_dirs_vector[self.settings["scene.up_direction"]]
+        up = self._scene_up_vector()
         # Soft polar clamp (not a hard elevation block): hard gimbal lock near
         # the poles used to freeze elevation while azimuth still spun.
         new_pos, new_foc = orbit_rig_around_pivot(
@@ -911,8 +926,7 @@ class F3DViewer(F3DLoadMixin, Gtk.GLArea):
 
     def _finalize_camera_nav(self):
         if self.always_point_up:
-            up = up_dirs_vector[self.settings["scene.up_direction"]]
-            self.camera.view_up = up
+            self.camera.view_up = self._scene_up_vector()
         self.queue_render()
         self._notify_camera_changed()
 

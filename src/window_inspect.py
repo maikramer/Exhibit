@@ -108,6 +108,19 @@ class InspectMixin:
 
         tab = self._active_tab()
         if enabled:
+            # Probe before xray — otherwise no-skin models stay translucent.
+            probe = self.f3d_viewer.get_prepared_path() or self.filepath
+            has_skins = glb_has_skins(probe) if probe else None
+            if has_skins is False:
+                self.send_toast(_("No armature found in this model"))
+                self.window_settings.begin_view_batch()
+                try:
+                    self.window_settings.set_setting("armature-enable", False, False)
+                finally:
+                    self.window_settings.end_view_batch()
+                self.f3d_viewer.update_options({"armature-enable": False})
+                return
+
             if self.window_settings.get_setting("display-depth").value:
                 self.window_settings.set_setting("display-depth", False)
 
@@ -151,12 +164,6 @@ class InspectMixin:
                     split.update_options(armature_opts)
                 except Exception as exc:
                     self.logger.debug("split armature options failed: %s", exc)
-
-            probe = self.f3d_viewer.get_prepared_path() or self.filepath
-            has_skins = glb_has_skins(probe) if probe else None
-            if has_skins is False:
-                self.send_toast(_("No armature found in this model"))
-                return
 
             # Actors are created at load; missing skin.skeleton → empty overlay.
             if self._prepared_needs_skeleton_fix():
@@ -291,6 +298,63 @@ class InspectMixin:
         self._skin_weights_heat_temp = None
         cleanup_skin_weight_temp(heat)
 
+    def _handoff_skin_weights_on_tab_change(self) -> None:
+        """Clear window-global skin-weight heat when the active tab changes.
+
+        Restores base geometry on whichever tab still has the heat temp loaded
+        (not the newly selected tab's ``f3d_viewer``).
+        """
+        heat = getattr(self, "_skin_weights_heat_temp", None)
+        base = getattr(self, "_skin_weights_base_path", None)
+        skin_on = bool(self.window_settings.get_setting("skin-weights").value)
+        if not heat and not skin_on:
+            return
+
+        if heat:
+            owner = None
+            for tab in self._iter_tabs():
+                try:
+                    if tab.viewer.get_prepared_path() == heat:
+                        owner = tab
+                        break
+                except Exception as exc:
+                    self.logger.debug("skin-weights handoff probe: %s", exc)
+            self._skin_weights_heat_temp = None
+            self._skin_weights_base_path = None
+            restored = False
+            if (
+                owner is not None
+                and base
+                and os.path.isfile(base)
+                and owner.filepath
+            ):
+                cam = None
+                try:
+                    cam = owner.viewer.get_camera_state()
+                except Exception as exc:
+                    self.logger.debug("inspect swallow: %s", exc)
+                ok = owner.viewer.load_file(
+                    owner.filepath, prepared_path=base
+                )
+                if ok:
+                    restored = True
+                    restore_hdri = getattr(
+                        owner.viewer, "_restore_hdri_ambient", None
+                    )
+                    if callable(restore_hdri):
+                        restore_hdri()
+                    if cam is not None:
+                        try:
+                            owner.viewer.set_camera_state(cam)
+                        except Exception as exc:
+                            self.logger.debug("inspect swallow: %s", exc)
+            if not restored:
+                cleanup_skin_weight_temp(heat)
+
+        if skin_on:
+            # Turns setting off and restores scivis via _apply_skin_weights_mode.
+            self.window_settings.set_setting("skin-weights", False)
+
     def _reload_skin_weights_base(self, base: str | None) -> None:
         """Reload base prepared GLB after a bone-heat temp (before unlinking it)."""
         tab = self._active_tab()
@@ -307,7 +371,15 @@ class InspectMixin:
             cam = self.f3d_viewer.get_camera_state()
         except Exception as exc:
             self.logger.debug("inspect swallow: %s", exc)
-        self.f3d_viewer.load_file(tab.filepath, prepared_path=base)
+        ok = self.f3d_viewer.load_file(tab.filepath, prepared_path=base)
+        if not ok:
+            self.logger.warning(
+                "inspect: failed to reload base after skin-weights temp"
+            )
+            send = getattr(self, "send_toast", None)
+            if callable(send):
+                send(_("Couldn't restore model after skin weights"), timeout=3)
+            return
         if cam is not None:
             try:
                 self.f3d_viewer.set_camera_state(cam)
@@ -373,7 +445,8 @@ class InspectMixin:
             "scalar-bar": True,
             "model-opacity": 1.0,
         }
-        self._update_all_viewers_options(opts)
+        # Only the active viewer (heat mesh / WEIGHTS_0) — not sibling tabs.
+        self.f3d_viewer.update_options(opts)
         # Clear base-color texture influence for a clean heat map when possible.
         if self.f3d_viewer.engine:
             try:
@@ -482,6 +555,10 @@ class InspectMixin:
                 self.send_toast(_("Can't load skin weight view"))
                 self.window_settings.set_setting("skin-weights", False)
                 return
+            # load_file success skips done() — re-enable ambient ourselves.
+            restore = getattr(self.f3d_viewer, "_restore_hdri_ambient", None)
+            if callable(restore):
+                restore()
             if cam is not None:
                 try:
                     self.f3d_viewer.set_camera_state(cam)

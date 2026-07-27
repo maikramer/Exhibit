@@ -18,6 +18,7 @@ EXPECTED = {
     "_apply_normal_glyphs_mode",
     "_apply_skin_weights_mode",
     "_refresh_skin_weights_joint_combo",
+    "_handoff_skin_weights_on_tab_change",
 }
 
 
@@ -56,3 +57,4 @@ def test_armature_and_stats_bodies_intact():
     assert "HEAT_ATTR" in src
     assert "write_skin_weight_heat_temp" in src
     assert "normal-glyphs-scale" in src
+    assert "_handoff_skin_weights_on_tab_change" in src

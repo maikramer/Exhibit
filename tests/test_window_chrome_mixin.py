@@ -41,3 +41,9 @@ def test_window_uses_chrome_without_duplicates():
     src = WINDOW.read_text(encoding="utf-8")
     assert "ChromeMixin" in src
     assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+
+
+def test_open_external_guards_empty_filepath():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert 'if not path' in src
+    assert '_("No file to open")' in src

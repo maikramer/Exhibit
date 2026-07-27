@@ -40,3 +40,31 @@ def test_save_toast_is_translatable():
     src = MIXIN.read_text(encoding="utf-8")
     assert '_("Image Saved")' in src
     assert '_("Open")' in src
+
+
+def test_save_response_guards_missing_local_path():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert "if not file_path" in src
+    assert '_("Could not save image")' in src
+
+
+def test_save_as_image_handles_render_none():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert "if img is None" in src
+    assert "return False" in src
+    assert "img.save(filepath)" in src
+    assert "save image failed" in src
+    viewer = (ROOT / "src" / "widgets" / "f3d_viewer.py").read_text(
+        encoding="utf-8"
+    )
+    assert "if self.window is None" in viewer
+    assert "if ctx is None" in viewer
+
+
+def test_pan_tilt_guard_camera_none():
+    viewer = (ROOT / "src" / "widgets" / "f3d_viewer.py").read_text(
+        encoding="utf-8"
+    )
+    for name in ("def pan(", "def tilt(", "def get_camera_to_focal_distance("):
+        chunk = viewer.split(name)[1][:180]
+        assert "if self.camera is None" in chunk, name

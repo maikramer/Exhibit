@@ -14,6 +14,8 @@ EXPECTED = {
     "on_internal_setting_changed",
     "change_setting_state",
     "get_gimble_limit",
+    "_apply_point_up_to_viewer",
+    "_apply_point_up_to_viewers",
 }
 
 
@@ -49,3 +51,5 @@ def test_react_uses_shared_up_dirs():
     assert 'setting.name == "display-depth"' in src
     assert 'setting.name == "normal-glyphs"' in src
     assert 'setting.name == "skin-weights"' in src
+    assert "_apply_point_up_to_viewers" in src
+    assert "_split_compare_viewer" in src

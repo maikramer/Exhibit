@@ -131,7 +131,12 @@ class AnimationMixin:
             return
 
         index = self._animation_index_from_combo()
-        self.window_settings.set_setting("animation-index", index)
+        # Batch so changed-view does not push animation-index onto sibling tabs.
+        self.window_settings.begin_view_batch()
+        try:
+            self.window_settings.set_setting("animation-index", index)
+        finally:
+            self.window_settings.end_view_batch()
         self.f3d_viewer.update_options({"animation-index": index})
         self.f3d_viewer.playing = False
         # Clip switches via scene.animation.indices. Returning to None needs a

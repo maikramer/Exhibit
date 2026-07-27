@@ -16,6 +16,8 @@ EXPECTED = {
     "supports",
     "_prepare_filepath",
     "_resolve_load_path",
+    "_release_load_path",
+    "_restore_hdri_ambient",
     "_release_prepared_path",
     "release_resources",
     "load_file",
@@ -70,3 +72,18 @@ def test_reload_prefers_native_visibility_hook():
     src = ast.get_source_segment(MIXIN.read_text(encoding="utf-8"), reload)
     assert src is not None
     assert "_try_native_part_visibility" in src
+
+
+def test_load_file_restores_scene_on_add_failure():
+    text = MIXIN.read_text(encoding="utf-8")
+    tree = ast.parse(text)
+    mixin = next(n for n in tree.body if isinstance(n, ast.ClassDef))
+    load = next(
+        n
+        for n in mixin.body
+        if isinstance(n, ast.FunctionDef) and n.name == "load_file"
+    )
+    src = ast.get_source_segment(text, load)
+    assert src is not None
+    assert "restore after add failed" in src
+    assert "previous_loaded" in src

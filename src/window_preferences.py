@@ -96,7 +96,8 @@ class PreferencesMixin:
                 self.window_settings.set_setting(
                     key, settings.get_boolean(key), False
                 )
-            except Exception:
+            except Exception as exc:
+                self.logger.debug("nav gschema bool %s: %s", key, exc)
                 self.window_settings.set_setting(
                     key, NAV_SETTING_DEFAULTS[key], False
                 )
@@ -105,7 +106,8 @@ class PreferencesMixin:
                 self.window_settings.set_setting(
                     key, float(settings.get_double(key)), False
                 )
-            except Exception:
+            except Exception as exc:
+                self.logger.debug("nav gschema float %s: %s", key, exc)
                 self.window_settings.set_setting(
                     key, NAV_SETTING_DEFAULTS[key], False
                 )
@@ -118,15 +120,15 @@ class PreferencesMixin:
                 settings.set_boolean(
                     key, bool(self.window_settings.get_setting(key).value)
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("nav gschema persist bool %s: %s", key, exc)
         for key in _NAV_FLOAT_KEYS:
             try:
                 settings.set_double(
                     key, float(self.window_settings.get_setting(key).value)
                 )
-            except Exception:
-                pass
+            except Exception as exc:
+                self.logger.debug("nav gschema persist float %s: %s", key, exc)
 
     def _nav_settings_dict(self) -> dict:
         out = {}
@@ -143,3 +145,6 @@ class PreferencesMixin:
             viewer = getattr(tab, "viewer", None)
             if viewer is not None and hasattr(viewer, "apply_nav_settings"):
                 viewer.apply_nav_settings(opts)
+        split = getattr(self, "_split_compare_viewer", None)
+        if split is not None and hasattr(split, "apply_nav_settings"):
+            split.apply_nav_settings(opts)

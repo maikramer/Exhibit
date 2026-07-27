@@ -37,6 +37,19 @@ class F3DLoadMixin:
         else:
             release_prepared(path)
 
+    def _restore_hdri_ambient(self) -> None:
+        """Re-enable ambient after a load path that temporarily disabled it."""
+        if not self.engine or not self.settings:
+            return
+        if not self.settings.get("render.hdri.ambient"):
+            return
+        try:
+            self.engine.options.update({"render.hdri.ambient": True})
+            self.queue_render()
+        except Exception as exc:
+            if self.logger:
+                self.logger.debug("restore hdri.ambient failed: %s", exc)
+
     def _clear_force_reader(self) -> None:
         """Unset optional ``scene.force_reader`` (Python lacks options.reset)."""
         if not self.engine:
@@ -93,6 +106,8 @@ class F3DLoadMixin:
             self._clear_force_reader()
 
     def supports(self, filepath):
+        if self.scene is None:
+            return False
         return self.scene.supports(filepath)
 
     def _prepare_filepath(self, filepath):
@@ -112,6 +127,11 @@ class F3DLoadMixin:
         previous = self._prepared_path
         self._prepared_path = None
         self._release_load_path(previous)
+        extras = getattr(self, "_extra_prepared_paths", None) or []
+        self._extra_prepared_paths = []
+        for path in extras:
+            if path and path != previous:
+                self._release_load_path(path)
 
     def release_resources(self) -> None:
         """Stop timers, clear scene, drop engine + prepare temps (tab close)."""
@@ -155,80 +175,131 @@ class F3DLoadMixin:
         hdri_ambient = bool(self.settings.get("render.hdri.ambient"))
         if hdri_ambient and self.engine:
             self.engine.options.update({"render.hdri.ambient": False})
+        ok = False
 
-        # prepare_glb_for_load retains cache temps; drop duplicate if we already hold it.
-        if (
-            prepared_path
-            and prepared_path == self._prepared_path
-            and prepared_path != filepath
-        ):
-            self._release_load_path(prepared_path)
-
-        previous_prepared = self._prepared_path
-        self.scene.clear()
-        self._hidden_part_indices = set()
-
-        load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
-        if load_path is None:
-            self._loaded_filepath = None
-            self._prepared_path = None
-            self._release_load_path(previous_prepared)
+        if self.scene is None:
+            if self.logger:
+                self.logger.debug("load_file: scene not ready (not initialized)")
+            if hdri_ambient and self.engine:
+                self._restore_hdri_ambient()
             return False
 
         try:
-            self.scene.add(load_path)
-        except Exception as e:
-            self.logger.error(f"Error while loading file: {e}")
-            self._loaded_filepath = None
-            self._prepared_path = None
+            # prepare_glb_for_load retains cache temps; drop duplicate if we already hold it.
+            if (
+                prepared_path
+                and prepared_path == self._prepared_path
+                and prepared_path != filepath
+            ):
+                self._release_load_path(prepared_path)
+
+            previous_prepared = self._prepared_path
+            previous_loaded = self._loaded_filepath
+            self.scene.clear()
+            self._hidden_part_indices = set()
+
+            load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
+            if load_path is None:
+                self._loaded_filepath = None
+                self._prepared_path = None
+                restore = previous_prepared or previous_loaded
+                if restore:
+                    try:
+                        self.scene.add(restore)
+                        self._loaded_filepath = previous_loaded
+                        self._prepared_path = previous_prepared
+                    except Exception as restore_exc:
+                        self.logger.warning(
+                            "load_file: restore after prepare miss failed: %s",
+                            restore_exc,
+                        )
+                        self._release_load_path(previous_prepared)
+                else:
+                    self._release_load_path(previous_prepared)
+                return False
+
+            try:
+                self.scene.add(load_path)
+            except Exception as e:
+                self.logger.error(f"Error while loading file: {e}")
+                self._loaded_filepath = None
+                self._prepared_path = None
+                restored = False
+                restore = previous_prepared or previous_loaded
+                if restore:
+                    try:
+                        self.scene.add(restore)
+                        self._loaded_filepath = previous_loaded
+                        self._prepared_path = previous_prepared
+                        restored = True
+                    except Exception as restore_exc:
+                        self.logger.warning(
+                            "load_file: restore after add failed: %s", restore_exc
+                        )
+                # Drop failed load temp unless it is the restored previous retain.
+                if load_path and load_path != filepath:
+                    if not restored or load_path != previous_prepared:
+                        self._release_load_path(load_path)
+                if not restored and previous_prepared and previous_prepared != load_path:
+                    self._release_load_path(previous_prepared)
+                return False
+            finally:
+                cleanup_decompressed(meshopt_temp)
+
+            self._loaded_filepath = filepath
+            self._prepared_path = load_path
             if previous_prepared and previous_prepared != load_path:
                 self._release_load_path(previous_prepared)
-            if load_path != filepath and load_path != previous_prepared:
-                self._release_load_path(load_path)
-            return False
+            self.notify("lower-time-range")
+            self.notify("upper-time-range")
+            self.queue_render()
+            ok = True
+            return True
         finally:
-            cleanup_decompressed(meshopt_temp)
-
-        self._loaded_filepath = filepath
-        self._prepared_path = load_path
-        if previous_prepared and previous_prepared != load_path:
-            self._release_load_path(previous_prepared)
-        self.notify("lower-time-range")
-        self.notify("upper-time-range")
-        self.queue_render()
-
-        return True
+            # Success path: done() re-enables ambient. Fail: restore here.
+            if hdri_ambient and not ok:
+                self._restore_hdri_ambient()
 
     def add_file(self, filepath, prepared_path=None):
-        if self.settings.get("render.hdri.ambient") and self.engine:
+        hdri_ambient = bool(self.settings.get("render.hdri.ambient"))
+        if hdri_ambient and self.engine:
             self.engine.options.update({"render.hdri.ambient": False})
 
-        load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
-        if load_path is None:
-            return False
-
         try:
-            self.scene.add(load_path)
-        except Exception as e:
-            self.logger.error(f"Error while loading file: {e}")
-            if load_path != filepath:
-                self._release_load_path(load_path)
-            return False
+            load_path, meshopt_temp = self._resolve_load_path(filepath, prepared_path)
+            if load_path is None:
+                return False
+
+            try:
+                self.scene.add(load_path)
+            except Exception as e:
+                self.logger.error(f"Error while loading file: {e}")
+                if load_path != filepath:
+                    self._release_load_path(load_path)
+                return False
+            finally:
+                cleanup_decompressed(meshopt_temp)
+
+            previous_prepared = self._prepared_path
+            self._loaded_filepath = filepath
+            self._prepared_path = load_path
+            # add_file keeps prior meshes in the scene — do not release their temps.
+            if previous_prepared and previous_prepared != load_path:
+                extras = getattr(self, "_extra_prepared_paths", None)
+                if extras is None:
+                    self._extra_prepared_paths = extras = []
+                if previous_prepared not in extras:
+                    extras.append(previous_prepared)
+            self.notify("lower-time-range")
+            self.notify("upper-time-range")
+
+            self.get_distance()
+            self.queue_render()
+            return True
         finally:
-            cleanup_decompressed(meshopt_temp)
-
-        previous_prepared = self._prepared_path
-        self._loaded_filepath = filepath
-        self._prepared_path = load_path
-        if previous_prepared and previous_prepared != load_path:
-            self._release_load_path(previous_prepared)
-        self.notify("lower-time-range")
-        self.notify("upper-time-range")
-
-        self.get_distance()
-        self.queue_render()
-
-        return True
+            # add_file has no done() — always restore ambient when we disabled it.
+            if hdri_ambient:
+                self._restore_hdri_ambient()
 
     def get_scene_parts(self) -> list[ScenePart]:
         path = self._prepared_path or self._loaded_filepath
@@ -375,90 +446,100 @@ class F3DLoadMixin:
         if hdri_ambient and self.engine:
             self.engine.options.update({"render.hdri.ambient": False})
 
-        # Options (incl. empty animation indices) must be current before add.
-        if self.engine and self.settings:
-            try:
-                self.engine.options.update(self.settings)
-            except Exception as exc:
-                if self.logger:
-                    self.logger.warning(
-                        "part visibility: options.update failed: %s", exc
-                    )
-
-        restore_path = prepared or filepath
-        load_buffer: bytes | None = None
-        load_path: str | None = None
-        # Prepare retain applied only after a successful scene.add.
-        pending_prepare: str | None = None
         try:
-            if self._hidden_part_indices:
-                load_buffer = build_glb_hiding_nodes_bytes(
-                    filepath,
-                    self._hidden_part_indices,
-                    prepared_path=prepared,
-                )
-            else:
-                # Restore full scene from the prepared path (no re-prepare).
-                if prepared:
-                    load_path = prepared
-                else:
-                    load_path, _prep_temp = self._prepare_filepath(filepath)
-                    if load_path is None:
-                        return False
-                    pending_prepare = load_path
-
-            # Build filtered GLB before clearing so a failure keeps the scene.
-            self.scene.clear()
-            try:
-                if load_buffer is not None:
-                    self._add_scene_buffer(load_buffer)
-                else:
-                    self.scene.add(load_path)
-            except Exception:
-                # Best-effort restore of the previous full scene.
+            # Options (incl. empty animation indices) must be current before add.
+            if self.engine and self.settings:
                 try:
-                    self.scene.add(restore_path)
-                except Exception as restore_exc:
+                    self.engine.options.update(self.settings)
+                except Exception as exc:
                     if self.logger:
                         self.logger.warning(
-                            "part visibility: restore scene failed: %s",
-                            restore_exc,
+                            "part visibility: options.update failed: %s", exc
                         )
-                raise
-        except Exception as e:
-            if pending_prepare:
-                release_prepared(pending_prepare)
-            self.logger.error(f"Error while updating part visibility: {e}")
-            return False
 
-        if pending_prepare:
-            previous = self._prepared_path
-            self._prepared_path = pending_prepare
-            if previous and previous != pending_prepare:
-                release_prepared(previous)
-
-        self.notify("lower-time-range")
-        self.notify("upper-time-range")
-
-        if restore_animation_time:
-            lower = self.lower_time_range
-            upper = self.upper_time_range
-            if anim_time < lower or anim_time > upper:
-                anim_time = lower
-            self.animation_time = anim_time
-
-        if camera_state is not None:
+            restore_path = prepared or filepath
+            load_buffer: bytes | None = None
+            load_path: str | None = None
+            # Prepare retain applied only after a successful scene.add.
+            pending_prepare: str | None = None
             try:
-                self.set_camera_state(camera_state)
-            except Exception as exc:
-                if self.logger:
-                    self.logger.warning(
-                        "part visibility: restore camera failed: %s", exc
+                if self._hidden_part_indices:
+                    load_buffer = build_glb_hiding_nodes_bytes(
+                        filepath,
+                        self._hidden_part_indices,
+                        prepared_path=prepared,
                     )
+                else:
+                    # Restore full scene from the prepared path (no re-prepare).
+                    if prepared:
+                        load_path = prepared
+                    else:
+                        load_path, _prep_temp = self._prepare_filepath(filepath)
+                        if load_path is None:
+                            return False
+                        pending_prepare = load_path
 
-        if was_playing and restore_animation_time:
-            self.playing = True
+                # Build filtered GLB before clearing so a failure keeps the scene.
+                self.scene.clear()
+                try:
+                    if load_buffer is not None:
+                        self._add_scene_buffer(load_buffer)
+                    else:
+                        self.scene.add(load_path)
+                except Exception:
+                    # Best-effort restore of the previous full scene.
+                    try:
+                        self.scene.add(restore_path)
+                    except Exception as restore_exc:
+                        if self.logger:
+                            self.logger.warning(
+                                "part visibility: restore scene failed: %s",
+                                restore_exc,
+                            )
+                    raise
+            except Exception as e:
+                if pending_prepare:
+                    release_prepared(pending_prepare)
+                self.logger.error(f"Error while updating part visibility: {e}")
+                return False
 
-        self.queue_render()
-        return True
+            if pending_prepare:
+                previous = self._prepared_path
+                self._prepared_path = pending_prepare
+                if previous and previous != pending_prepare:
+                    release_prepared(previous)
+
+            self.notify("lower-time-range")
+            self.notify("upper-time-range")
+
+            if restore_animation_time:
+                lower = self.lower_time_range
+                upper = self.upper_time_range
+                if anim_time < lower or anim_time > upper:
+                    anim_time = lower
+                self.animation_time = anim_time
+
+            if camera_state is not None:
+                try:
+                    self.set_camera_state(camera_state)
+                except Exception as exc:
+                    if self.logger:
+                        self.logger.warning(
+                            "part visibility: restore camera failed: %s", exc
+                        )
+
+            self.queue_render()
+            return True
+        finally:
+            if was_playing and restore_animation_time:
+                self.playing = True
+            if hdri_ambient and self.engine:
+                try:
+                    self.engine.options.update({"render.hdri.ambient": True})
+                except Exception as exc:
+                    if self.logger:
+                        self.logger.debug(
+                            "part visibility: restore hdri.ambient failed: %s",
+                            exc,
+                        )
 

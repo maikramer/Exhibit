@@ -28,14 +28,20 @@ class ChromeMixin:
             not self.window_settings.get_setting("orthographic").value)
 
     def open_with_external_app(self):
+        path = getattr(self, "filepath", None) or ""
+        if not path:
+            send = getattr(self, "send_toast", None)
+            if callable(send):
+                send(_("No file to open"))
+            return
         try:
-            file = Gio.File.new_for_path(self.filepath)
+            file = Gio.File.new_for_path(path)
         except Exception:
             self.logger.error("Failed to construct a new Gio.File from path.")
-        else:
-            launcher = Gtk.FileLauncher.new(file)
-            launcher.set_always_ask(True)
-            launcher.launch(self, None, None)
+            return
+        launcher = Gtk.FileLauncher.new(file)
+        launcher.set_always_ask(True)
+        launcher.launch(self, None, None)
 
     def on_play_button_clicked(self, btn):
         if self.window_settings.get_setting("animation-index").value is None:
