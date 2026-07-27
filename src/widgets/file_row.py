@@ -106,7 +106,12 @@ class FileRow(Adw.PreferencesRow):
         self.emit("delete-file")
 
     def on_drop_received(self, drop, value, x, y):
-        filepath = value.get_files()[0].get_path()
+        files = value.get_files()
+        if not files:
+            return
+        filepath = files[0].get_path()
+        if not filepath:
+            return
         extension = os.path.splitext(filepath)[1][1:].lower()
         if extension in self.file_patterns:
             self.emit("file-added", filepath)
@@ -145,9 +150,15 @@ class FileRow(Adw.PreferencesRow):
         dialog.open(self.window, None, self.on_open_file_dialog_file_response)
 
     def on_open_file_dialog_file_response(self, dialog, response):
-        file = dialog.open_finish(response)
+        try:
+            file = dialog.open_finish(response)
+        except Exception:
+            return
 
-        if file:
-            filepath = file.get_path()
-            self.set_filename(filepath)
-            self.emit("file-added", filepath)
+        if not file:
+            return
+        filepath = file.get_path()
+        if not filepath:
+            return
+        self.set_filename(filepath)
+        self.emit("file-added", filepath)
