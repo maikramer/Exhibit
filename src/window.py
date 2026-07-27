@@ -32,7 +32,7 @@ from .settings_manager import WindowSettings
 from .window_tabs import TabsMixin
 from .window_animation import AnimationMixin
 from .window_object_tree import ObjectTreeItem, ObjectTreeMixin
-from .window_settings_ui import SettingsUIMixin, list_to_rgb, rgb_to_list, up_dir_n_to_string, up_dir_string_to_n
+from .window_settings_ui import SettingsUIMixin, up_dir_n_to_string, up_dir_string_to_n
 from .file_patterns import allowed_extensions, image_patterns
 
 from gettext import gettext as _

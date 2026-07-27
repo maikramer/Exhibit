@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from gi.repository import Gdk
 
+from .color_parse import list_to_rgb, rgb_to_list
+
 up_dir_n_to_string = {
     0: "-X",
     1: "+X",
@@ -27,15 +29,6 @@ up_dir_string_to_n = {
 }
 
 
-def list_to_rgb(lst):
-    return f"rgb({int(lst[0] * 255)},{int(lst[1] * 255)},{int(lst[2] * 255)})"
-
-
-def rgb_to_list(rgb):
-    values = tuple(int(x) / 255 for x in rgb[4:-1].split(","))
-    return values
-
-
 class SettingsUIMixin:
     _SPRITE_TYPES = ("sphere", "gaussian", "circle", "cross", "stddev", "bound")
 
@@ -52,7 +45,15 @@ class SettingsUIMixin:
         spin.set_value(setting.value)
 
     def set_up_direction_combo(self, *args):
-        val = up_dir_string_to_n[self.window_settings.get_setting("up").value]
+        raw = self.window_settings.get_setting("up").value
+        val = up_dir_string_to_n.get(raw)
+        if val is None:
+            self.logger.warning(
+                "Invalid up direction %r; correcting setting to +Y", raw
+            )
+            # Coerce stored value so view/preset paths see a valid up.
+            self.window_settings.set_setting("up", "+Y", update=False)
+            val = up_dir_string_to_n["+Y"]
         self.logger.info(f"Setting up direction combo to {val}")
         self.up_direction_combo.set_selected(val)
 
@@ -94,7 +95,10 @@ class SettingsUIMixin:
         self.window_settings.set_setting(setting, color_list)
 
     def on_up_direction_combo_changed(self, combo, *args):
-        direction = up_dir_n_to_string[combo.get_selected()]
+        selected = combo.get_selected()
+        direction = up_dir_n_to_string.get(selected)
+        if direction is None:
+            return
         self.window_settings.set_setting("up", direction)
 
     def on_scivis_component_combo_changed(self, *args):
