@@ -1,4 +1,9 @@
-  <object class="AdwDialog" id="save_dialog">
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <requires lib="Adw" version="1.0"/>
+  <requires lib="Gdk" version="1.0"/>
+  <template class="ExhibitSettingsDialog" parent="AdwDialog">
     <property name="content-height">360</property>
     <property name="content-width">360</property>
     <property name="title">Save Settings</property>
@@ -101,4 +106,5 @@
         </child>
       </object>
     </child>
-  </object>
+  </template>
+</interface>

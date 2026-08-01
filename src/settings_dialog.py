@@ -17,10 +17,12 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
-from gi.repository import Adw
+from gi.repository import Gtk, Adw
 
 
-class SettingsDialog(Adw.Dialog)
+@Gtk.Template(resource_path='/io/github/nokse22/Exhibit/settings_dialog.ui')
+class ExhibitSettingsDialog(Adw.Dialog):
+    __gtype_name__ = "ExhibitSettingsDialog"
 
     settings_column_view = Gtk.Template.Child()
     settings_column_view_name_column = Gtk.Template.Child()
@@ -111,4 +113,4 @@ class SettingsDialog(Adw.Dialog)
 
         if all(ext in allowed_extensions for ext in entered_exts):
             entry.remove_css_class("error")
-        else:
+        # else:
