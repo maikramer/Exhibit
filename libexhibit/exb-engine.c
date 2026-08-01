@@ -1648,7 +1648,7 @@ exb_engine_load_file (ExbEngine *self,
     {
       EXB_RETURN (dex_future_new_for_error (g_error_new (G_IO_ERROR,
                                                          G_IO_ERROR_FAILED,
-                                                         "Coudn't load file: '%s'",
+                                                         "Couldn't load file: '%s'",
                                                          file_path)));
     }
 
