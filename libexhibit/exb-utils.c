@@ -69,12 +69,12 @@ exb_direction_to_graphene_vec3 (ExbDirection direction)
     }
 }
 
-const char *
+const gchar *
 exb_f3d_options_get_as_string (f3d_options_t *options,
-                               const char    *name)
+                               const gchar    *name)
 {
-  const char *f3d_str = NULL;
-  const char *result = NULL;
+  const gchar *f3d_str = NULL;
+  const gchar *result = NULL;
 
   f3d_str = f3d_options_get_as_string_representation (options, name);
 
@@ -87,13 +87,13 @@ exb_f3d_options_get_as_string (f3d_options_t *options,
   return result;
 }
 
-const char *
+const gchar *
 exb_f3d_options_get_closest_option (f3d_options_t *options,
-                                    const char    *f3d_key,
+                                    const gchar    *f3d_key,
                                     unsigned int  *distance)
 {
-  char *f3d_closest_key = NULL;
-  const char *result = NULL;
+  gchar *f3d_closest_key = NULL;
+  const gchar *result = NULL;
   unsigned int local_distance = 0;
 
   if (!distance)

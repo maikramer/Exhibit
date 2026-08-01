@@ -51,16 +51,16 @@ void        exb_engine_play_animation    (ExbEngine *self);
 GdkTexture *exb_engine_render_texture    (ExbEngine *self);
 gboolean    exb_engine_render            (ExbEngine *self);
 void        exb_engine_zoom              (ExbEngine *self,
-                                          double     factor);
+                                          gdouble     factor);
 void        exb_engine_pan               (ExbEngine *self,
-                                          double     dx,
-                                          double     dy);
+                                          gdouble     dx,
+                                          gdouble     dy);
 void        exb_engine_rotate            (ExbEngine *self,
-                                          double     dx,
-                                          double     dy);
+                                          gdouble     dx,
+                                          gdouble     dy);
 void        exb_engine_rotate_with_limit (ExbEngine *self,
-                                          double     dx,
-                                          double     dy);
+                                          gdouble     dx,
+                                          gdouble     dy);
 void        exb_engine_reset_camera      (ExbEngine *self);
 void        exb_engine_apply_preset      (ExbEngine *self,
                                           ExbPreset *preset);

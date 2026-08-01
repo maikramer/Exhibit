@@ -31,8 +31,8 @@ struct _ExbPreset
 {
   GObject parent_instance;
 
-  char *name;
-  char *formats;
+  gchar *name;
+  gchar *formats;
   GHashTable *properties;
 };
 
@@ -139,8 +139,8 @@ static void
 exb_preset_load_from_key_file (ExbPreset  *self,
                                GKeyFile   *key_file)
 {
-  g_autofree char *name = NULL;
-  g_autofree char *formats = NULL;
+  g_autofree gchar *name = NULL;
+  g_autofree gchar *formats = NULL;
   g_auto(GStrv) keys = NULL;
   gsize n_keys = 0;
 
@@ -170,7 +170,7 @@ exb_preset_load_from_key_file (ExbPreset  *self,
     GValue value = G_VALUE_INIT;
     GValue *heap_value = NULL;
     GType type = G_TYPE_INVALID;
-    g_autofree char *str_val = NULL;
+    g_autofree gchar *str_val = NULL;
 
     klass = g_type_class_ref (EXB_TYPE_ENGINE);
     pspec = g_object_class_find_property (klass, keys[i]);
@@ -264,7 +264,7 @@ ExbPreset *
 exb_preset_new_from_file (GFile *file)
 {
   ExbPreset *self;
-  g_autofree char *path = NULL;
+  g_autofree gchar *path = NULL;
   g_autoptr (GError) error = NULL;
   g_autoptr (GKeyFile) key_file = NULL;
 
@@ -289,7 +289,7 @@ exb_preset_new_from_file (GFile *file)
 
 ExbPreset *
 exb_preset_new_from_engine (ExbEngine  *engine,
-                            const char *name)
+                            const gchar *name)
 {
   g_return_val_if_fail (EXB_IS_ENGINE (engine), NULL);
   g_return_val_if_fail (name != NULL, NULL);
@@ -297,7 +297,7 @@ exb_preset_new_from_engine (ExbEngine  *engine,
   return NULL;
 }
 
-const char *
+const gchar *
 exb_preset_get_name (ExbPreset *self)
 {
   g_return_val_if_fail (EXB_IS_PRESET (self), NULL);
@@ -307,7 +307,7 @@ exb_preset_get_name (ExbPreset *self)
 
 void
 exb_preset_set_name (ExbPreset  *self,
-                     const char *name)
+                     const gchar *name)
 {
   g_return_if_fail (EXB_IS_PRESET (self));
 
@@ -315,7 +315,7 @@ exb_preset_set_name (ExbPreset  *self,
     g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_NAME]);
 }
 
-const char *
+const gchar *
 exb_preset_get_formats (ExbPreset *self)
 {
   g_return_val_if_fail (EXB_IS_PRESET (self), NULL);
@@ -325,7 +325,7 @@ exb_preset_get_formats (ExbPreset *self)
 
 void
 exb_preset_set_formats (ExbPreset  *self,
-                        const char *formats)
+                        const gchar *formats)
 {
   g_return_if_fail (EXB_IS_PRESET (self));
 
@@ -334,7 +334,7 @@ exb_preset_set_formats (ExbPreset  *self,
 }
 
 static void
-apply_preset_property (const char *key,
+apply_preset_property (const gchar *key,
                        GValue     *value,
                        ExbEngine  *engine)
 {

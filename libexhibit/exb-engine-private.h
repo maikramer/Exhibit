@@ -26,7 +26,7 @@
 G_BEGIN_DECLS
 
 gboolean _exb_engine_load_file  (ExbEngine  *self,
-                                 const char *filepath);
+                                 const gchar *filepath);
 
 void     _exb_engine_initialize (ExbEngine *self);
 void     _exb_engine_finalize   (ExbEngine *self);

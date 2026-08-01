@@ -131,8 +131,8 @@ static guint signals[N_SIGNALS];
 
 typedef struct
 {
-  const char *prop_name;
-  const char *f3d_key;
+  const gchar *prop_name;
+  const gchar *f3d_key;
 } OptionMap;
 
 static const OptionMap option_maps[] = {
@@ -187,7 +187,7 @@ static const OptionMap option_maps[] = {
 
 static const gsize option_maps_len = G_N_ELEMENTS(option_maps);
 
-static const char *overridable_options[] = {"model-color"};
+static const gchar *overridable_options[] = {"model-color"};
 
 static const gsize overridable_options_len = G_N_ELEMENTS(overridable_options);
 
@@ -209,8 +209,8 @@ void
 update_animations_data (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  double min_time;
-  double max_time;
+  gdouble min_time;
+  gdouble max_time;
 
   EXB_ENTRY;
 
@@ -259,7 +259,7 @@ exb_engine_load_file_thread_func (gpointer user_data)
   ExbEngine *self;
   ExbEnginePrivate *priv;
   LoadFileData *data = user_data;
-  g_autofree char *file_path = NULL;
+  g_autofree gchar *file_path = NULL;
 
   EXB_ENTRY;
 
@@ -385,7 +385,7 @@ exb_engine_set_animation_adjustment (ExbEngine     *self,
 
 static void
 add_value_to_hash_table (GHashTable   *hash_table,
-                         const char   *key,
+                         const gchar  *key,
                          const GValue *value)
 {
   GValue *new_value = g_new0 (GValue, 1);
@@ -441,11 +441,11 @@ flush_pending_option (gpointer key,
 }
 
 static bool
-f3d_has_option (ExbEngine  *self,
-                const char *f3d_key)
+f3d_has_option (ExbEngine   *self,
+                const gchar *f3d_key)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *f3d_closest_key = NULL;
+  g_autofree const gchar *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
 
   EXB_ENTRY;
@@ -464,11 +464,11 @@ f3d_has_option (ExbEngine  *self,
   EXB_RETURN (TRUE);
 }
 
-static const char *
-f3d_options_map_lookup (ExbEngine  *self,
-                        const char *option_id)
+static const gchar *
+f3d_options_map_lookup (ExbEngine   *self,
+                        const gchar *option_id)
 {
-  g_autofree const char *f3d_option_id = NULL;
+  g_autofree const gchar *f3d_option_id = NULL;
 
   EXB_ENTRY;
 
@@ -494,11 +494,11 @@ f3d_options_map_lookup (ExbEngine  *self,
 
 static bool
 f3d_get_rgb_option (ExbEngine  *self,
-                    const char *f3d_key,
+                    const gchar *f3d_key,
                     GdkRGBA    *rgba_out)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *rgba_string = NULL;
+  g_autofree const gchar *rgba_string = NULL;
   f3d_options_t *options = NULL;
   g_auto (GStrv) parts = NULL;
 
@@ -533,11 +533,11 @@ f3d_get_rgb_option (ExbEngine  *self,
 
 static bool
 f3d_set_rgb_option (ExbEngine  *self,
-                    const char *f3d_key,
+                    const gchar *f3d_key,
                     GdkRGBA    *rgba)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *rgba_string = NULL;
+  g_autofree const gchar *rgba_string = NULL;
   f3d_options_t *options = NULL;
 
   EXB_ENTRY;
@@ -555,7 +555,7 @@ f3d_set_rgb_option (ExbEngine  *self,
 
 static bool
 copy_from_hash_table (GHashTable *hash_table,
-                      const char *prop_name,
+                      const gchar *prop_name,
                       GValue     *value)
 {
   GValue *stored_value;
@@ -580,12 +580,12 @@ copy_from_hash_table (GHashTable *hash_table,
 static bool
 f3d_get_option (ExbEngine  *self,
                 GValue     *value,
-                const char *option_id,
+                const gchar *option_id,
                 GType       type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *f3d_key = NULL;
-  g_autofree const char *f3d_closest_key = NULL;
+  g_autofree const gchar *f3d_key = NULL;
+  g_autofree const gchar *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
 
   EXB_ENTRY;
@@ -647,7 +647,7 @@ f3d_get_option (ExbEngine  *self,
     }
   else if (type == GDK_TYPE_RGBA)
     {
-      g_autofree const char *rgba_string = NULL;
+      g_autofree const gchar *rgba_string = NULL;
       GdkRGBA rgba;
 
       if (!f3d_get_rgb_option (self, f3d_key, &rgba))
@@ -657,7 +657,7 @@ f3d_get_option (ExbEngine  *self,
     }
   else if (type == G_TYPE_FILE)
     {
-      g_autofree const char *filepath = NULL;
+      g_autofree const gchar *filepath = NULL;
 
       filepath = exb_f3d_options_get_as_string (options, f3d_key);
 
@@ -676,8 +676,8 @@ f3d_get_option (ExbEngine  *self,
            (type == EXB_TYPE_SPRITES) ||
            (type == EXB_TYPE_DIRECTION))
     {
-      g_autofree const char *option_value = NULL;
-      g_autofree const char *final_option_value = NULL;
+      g_autofree const gchar *option_value = NULL;
+      g_autofree const gchar *final_option_value = NULL;
       g_autoptr (GEnumClass) enum_class = NULL;
       GEnumValue *enum_value = NULL;
 
@@ -685,7 +685,7 @@ f3d_get_option (ExbEngine  *self,
 
       if (type == EXB_TYPE_DIRECTION)
         {
-          g_autofree const char *lowercase_axis = NULL;
+          g_autofree const gchar *lowercase_axis = NULL;
 
           if (g_str_has_prefix(option_value, "+"))
             {
@@ -728,12 +728,12 @@ f3d_get_option (ExbEngine  *self,
 static bool
 f3d_set_option (ExbEngine    *self,
                 const GValue *value,
-                const char   *option_id,
+                const gchar   *option_id,
                 GType         type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *f3d_closest_key = NULL;
-  g_autofree const char *f3d_key = NULL;
+  g_autofree const gchar *f3d_closest_key = NULL;
+  g_autofree const gchar *f3d_key = NULL;
   f3d_options_t *options = NULL;
 
   EXB_ENTRY;
@@ -799,7 +799,7 @@ f3d_set_option (ExbEngine    *self,
 
       if (file)
         {
-          g_autofree char *filepath = g_file_get_path (file);
+          g_autofree gchar *filepath = g_file_get_path (file);
           f3d_options_set_as_string_representation (options, f3d_key, filepath);
         }
       else
@@ -812,8 +812,8 @@ f3d_set_option (ExbEngine    *self,
            (type == EXB_TYPE_SPRITES) ||
            (type == EXB_TYPE_DIRECTION))
     {
-      const char *enum_nick = NULL;
-      g_autofree const char *option_value = NULL;
+      const gchar *enum_nick = NULL;
+      g_autofree const gchar *option_value = NULL;
       g_autoptr (GEnumClass) enum_class = NULL;
       GEnumValue *enum_value = NULL;
 
@@ -853,7 +853,7 @@ f3d_get_distance (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   graphene_vec3_t camera_position;
-  double f3d_camera_position[3];
+  gdouble f3d_camera_position[3];
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), 0);
   g_return_val_if_fail (priv->camera, 0);
@@ -866,12 +866,12 @@ f3d_get_distance (ExbEngine *self)
 
 static bool
 exb_engine_unoverride_option (ExbEngine  *self,
-                              const char *option_id,
+                              const gchar *option_id,
                               GType       type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *f3d_closest_key = NULL;
-  g_autofree const char *f3d_key = NULL;
+  g_autofree const gchar *f3d_closest_key = NULL;
+  g_autofree const gchar *f3d_key = NULL;
   f3d_options_t *options = NULL;
   g_auto (GValue) value = G_VALUE_INIT;
 
@@ -909,12 +909,12 @@ exb_engine_unoverride_option (ExbEngine  *self,
 
 static bool
 exb_engine_override_option (ExbEngine  *self,
-                            const char *option_id,
+                            const gchar *option_id,
                             GType       type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const char *f3d_closest_key = NULL;
-  g_autofree const char *f3d_key = NULL;
+  g_autofree const gchar *f3d_closest_key = NULL;
+  g_autofree const gchar *f3d_key = NULL;
   gpointer stored_value;
   g_auto (GValue) value = G_VALUE_INIT;
 
@@ -1177,7 +1177,7 @@ exb_engine_init (ExbEngine *self)
 
   for (gsize i = 0; i < overridable_options_len; i++)
     {
-      const char *option_id = g_strdup (overridable_options[i]);
+      const gchar *option_id = g_strdup (overridable_options[i]);
       g_hash_table_insert (priv->original_options, (gpointer)option_id, NULL);
     }
 
@@ -1631,7 +1631,7 @@ exb_engine_load_file (ExbEngine *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   LoadFileData *data = g_new0 (LoadFileData, 1);
-  g_autofree char *file_path = NULL;
+  g_autofree gchar *file_path = NULL;
   DexFuture *future;
 
   EXB_ENTRY;
@@ -1746,7 +1746,7 @@ exb_engine_render_texture (ExbEngine *self)
  */
 void
 exb_engine_zoom (ExbEngine *self,
-                 double     factor)
+                 gdouble     factor)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
@@ -1776,11 +1776,11 @@ exb_engine_zoom (ExbEngine *self,
  */
 void
 exb_engine_pan (ExbEngine *self,
-                double     dx,
-                double     dy)
+                gdouble     dx,
+                gdouble     dy)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  double factor;
+  gdouble factor;
   float distance;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
@@ -1804,12 +1804,12 @@ exb_engine_pan (ExbEngine *self,
  */
 void
 exb_engine_rotate (ExbEngine *self,
-                   double     dx,
-                   double     dy)
+                   gdouble     dx,
+                   gdouble     dy)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  double elevation;
-  double azimuth;
+  gdouble elevation;
+  gdouble azimuth;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
@@ -1853,8 +1853,8 @@ exb_engine_reset_camera (ExbEngine *self)
  */
 void
 exb_engine_rotate_with_limit (ExbEngine *self,
-                              double     dx,
-                              double     dy)
+                              gdouble     dx,
+                              gdouble     dy)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   ExbDirection up_direction;
@@ -1863,15 +1863,15 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   graphene_vec3_t difference;
   graphene_vec3_t diff_normalized;
   graphene_vec3_t world_up;
-  double f3d_camera_position[3];
-  double f3d_focal_point[3];
-  double f3d_up_dir[3];
+  gdouble f3d_camera_position[3];
+  gdouble f3d_focal_point[3];
+  gdouble f3d_up_dir[3];
   float f_camera_position[3];
   float f_focal_point[3];
-  double elevation;
-  double azimuth;
-  double dot;
-  double angle;
+  gdouble elevation;
+  gdouble azimuth;
+  gdouble dot;
+  gdouble angle;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
   g_return_if_fail (priv->camera);

@@ -39,9 +39,9 @@ typedef struct
   bool always_point_up;
   bool interactive;
 
-  double prev_scale;
-  double drag_prev_x;
-  double drag_prev_y;
+  gdouble prev_scale;
+  gdouble drag_prev_x;
+  gdouble drag_prev_y;
 
   bool engine_is_initialized;
 
@@ -49,16 +49,14 @@ typedef struct
 
 G_DEFINE_FINAL_TYPE_WITH_PRIVATE (ExbView, exb_view, GTK_TYPE_GL_AREA)
 
-enum
+typedef enum
 {
-  PROP_0,
-  PROP_ENGINE,
+  PROP_ENGINE = 1,
   PROP_ALWAYS_POINT_UP,
   PROP_INTERACTIVE,
-  N_PROPS
-};
+} ExbViewProps;
 
-static GParamSpec *properties[N_PROPS];
+static GParamSpec *props[PROP_INTERACTIVE + 1];
 
 void exb_view_set_engine (ExbView *self, ExbEngine *engine);
 
@@ -285,7 +283,7 @@ on_drag_update (ExbView        *self,
                 GtkGestureDrag *gesture)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
-  double dx, dy;
+  gdouble dx, dy;
   guint button;
 
   g_return_if_fail (EXB_IS_VIEW (self));
@@ -378,25 +376,25 @@ exb_view_class_init (ExbViewClass *klass)
   object_class->set_property = exb_view_set_property;
   widget_class->snapshot = exb_view_snapshot;
 
-  properties[PROP_ENGINE] =
+  props[PROP_ENGINE] =
       g_param_spec_object ("engine",
                            NULL, NULL,
                            EXB_TYPE_ENGINE,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_ALWAYS_POINT_UP] =
+  props[PROP_ALWAYS_POINT_UP] =
       g_param_spec_boolean ("always-point-up",
                             NULL, NULL,
                             TRUE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_INTERACTIVE] =
+  props[PROP_INTERACTIVE] =
       g_param_spec_boolean ("interactive",
                             NULL, NULL,
                             TRUE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  g_object_class_install_properties (object_class, N_PROPS, properties);
+  g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 }
 
 /**

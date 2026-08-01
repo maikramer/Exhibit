@@ -32,11 +32,11 @@ G_BEGIN_DECLS
 G_DECLARE_FINAL_TYPE (ExbPresets, exb_presets, EXB, PRESETS, GObject)
 
 ExbPresets *exb_presets_new             (void);
-ExbPresets *exb_presets_new_with_paths  (const char * const *paths);
+ExbPresets *exb_presets_new_with_paths  (const gchar * const *paths);
 
 ExbPreset  *exb_presets_lookup          (ExbPresets  *self,
-                                         const char  *name);
+                                         const gchar  *name);
 ExbPreset  *exb_presets_get_default_for (ExbPresets  *self,
-                                         const char  *filename);
+                                         const gchar  *filename);
 
 G_END_DECLS

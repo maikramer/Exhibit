@@ -31,11 +31,11 @@ G_BEGIN_DECLS
 
 graphene_vec3_t exb_direction_to_graphene_vec3     (ExbDirection direction);
 
-const char *    exb_f3d_options_get_as_string      (f3d_options_t *options,
-                                                    const char    *name);
+const gchar *    exb_f3d_options_get_as_string      (f3d_options_t *options,
+                                                    const gchar    *name);
 
-const char *    exb_f3d_options_get_closest_option (f3d_options_t *options,
-                                                    const char    *f3d_key,
+const gchar *    exb_f3d_options_get_closest_option (f3d_options_t *options,
+                                                    const gchar    *f3d_key,
                                                     unsigned int  *distance);
 
 G_END_DECLS

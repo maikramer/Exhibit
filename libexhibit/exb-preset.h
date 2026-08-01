@@ -32,11 +32,11 @@ G_DECLARE_FINAL_TYPE (ExbPreset, exb_preset, EXB, PRESET, GObject)
 
 ExbPreset  *exb_preset_new_from_file   (GFile        *file);
 
-const char *exb_preset_get_name        (ExbPreset    *self);
+const gchar *exb_preset_get_name        (ExbPreset    *self);
 void        exb_preset_set_name        (ExbPreset    *self,
-                                        const char   *name);
-const char *exb_preset_get_formats     (ExbPreset    *self);
+                                        const gchar   *name);
+const gchar *exb_preset_get_formats     (ExbPreset    *self);
 void        exb_preset_set_formats     (ExbPreset    *self,
-                                        const char   *formats);
+                                        const gchar   *formats);
 
 G_END_DECLS

@@ -183,7 +183,7 @@ exb_presets_new (void)
  * Returns: (transfer full): (type ExbPresets) A new #ExbPresets.
  */
 ExbPresets *
-exb_presets_new_with_paths (const char * const *paths)
+exb_presets_new_with_paths (const gchar * const *paths)
 {
   ExbPresets *presets = g_object_new (EXB_TYPE_PRESETS, NULL);
 
@@ -205,7 +205,7 @@ exb_presets_new_with_paths (const char * const *paths)
  */
 ExbPreset *
 exb_presets_lookup (ExbPresets *self,
-                    const char *name)
+                    const gchar *name)
 {
   g_return_val_if_fail (EXB_IS_PRESETS (self), NULL);
   g_return_val_if_fail (name != NULL, NULL);
@@ -214,7 +214,7 @@ exb_presets_lookup (ExbPresets *self,
     {
       g_autoptr (ExbPreset) preset = g_list_model_get_item (G_LIST_MODEL (self->store), i);
       g_autoptr (GString) cmp_name = NULL;
-      const char *preset_name;
+      const gchar *preset_name;
 
       preset_name = exb_preset_get_name (preset);
 
@@ -239,7 +239,7 @@ exb_presets_lookup (ExbPresets *self,
  */
 ExbPreset *
 exb_presets_get_default_for (ExbPresets *self,
-                             const char *filename)
+                             const gchar *filename)
 {
   g_return_val_if_fail (EXB_IS_PRESETS (self), NULL);
   g_return_val_if_fail (filename != NULL, NULL);
@@ -248,7 +248,7 @@ exb_presets_get_default_for (ExbPresets *self,
     {
       g_autoptr (ExbPreset) preset = g_list_model_get_item (G_LIST_MODEL (self->store), i);
       g_autoptr (GRegex) match_regex = NULL;
-      const char *preset_formats;
+      const gchar *preset_formats;
 
       preset_formats = exb_preset_get_formats (preset);
 
