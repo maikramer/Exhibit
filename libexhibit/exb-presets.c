@@ -39,7 +39,7 @@ G_DEFINE_FINAL_TYPE_WITH_CODE (ExbPresets, exb_presets, G_TYPE_OBJECT,
                                                       exb_presets_list_model_init))
 
 static GType
-exb_presets_get_item_type (GListModel *model)
+exb_presets_get_item_type (GListModel *model G_GNUC_UNUSED)
 {
   return EXB_TYPE_PRESET;
 }
@@ -128,10 +128,9 @@ static void
 on_store_items_changed (GListModel *model,
                         guint       position,
                         guint       removed,
-                        guint       added,
-                        ExbPresets *self)
+                        guint       added)
 {
-  g_list_model_items_changed (G_LIST_MODEL (self), position, removed, added);
+  g_list_model_items_changed (model, position, removed, added);
 }
 
 static void
@@ -160,7 +159,7 @@ exb_presets_init (ExbPresets *self)
   g_signal_connect_object (self->store,
                            "items-changed",
                            G_CALLBACK (on_store_items_changed),
-                           self,
+                           NULL,
                            G_CONNECT_DEFAULT);
 }
 
