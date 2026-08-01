@@ -1131,9 +1131,9 @@ exb_engine_set_property (GObject      *object,
     case PROP_SCIVIS_COMPONENT:
     case PROP_SCIVIS_CELLS:
     default:
-      if (!f3d_set_option (self, value, pspec->name, pspec->value_type))
+      if (f3d_set_option (self, value, pspec->name, pspec->value_type))
         {
-          G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+          g_object_notify_by_pspec (G_OBJECT (self), pspec);
         }
     }
 
