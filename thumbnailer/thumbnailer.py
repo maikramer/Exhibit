@@ -40,6 +40,9 @@ if __name__ == '__main__':
     async def main():
         file = Gio.File.new_for_path(arguments.input)
         engine = Exb.Engine.new_standalone()
+        presets = Exb.Presets.new()
+        preset = presets.get_default_for(file.get_path())
+        engine.apply_preset(preset)
         await engine.load_file(file)
         engine.set_size(arguments.size, arguments.size)
         texture = engine.render_texture()
