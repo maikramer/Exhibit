@@ -1,7 +1,7 @@
 {
     "id" : "io.github.nokse22.Exhibit",
     "runtime" : "org.gnome.Platform",
-    "runtime-version" : "50",
+    "runtime-version" : "master",
     "sdk" : "org.gnome.Sdk",
     "command" : "exhibit",
     "finish-args" : [
@@ -46,7 +46,7 @@
             "name" : "exhibit",
             "buildsystem" : "meson",
             "config-opts" : [
-                "-Ddocs=true",
+                "-Ddocs=true"
             ],
             "sources" : [
                 {
