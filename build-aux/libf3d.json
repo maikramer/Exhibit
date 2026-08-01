@@ -37,7 +37,8 @@
         {
             "type": "git",
             "url": "https://github.com/f3d-app/f3d",
-            "commit": "ce014b1f30d56d284dfd989a1631ff7fbb8ddc6b"
+            "commit": "ce014b1f30d56d284dfd989a1631ff7fbb8ddc6b",
+            "disable-lfs": true
         }
     ],
     "modules": [
