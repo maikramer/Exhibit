@@ -26,6 +26,7 @@
 #include "exb-global.h"
 #include "exb-preset.h"
 #include "exb-preset-private.h"
+#include "exb-engine-private.h"
 #include "exb-engine.h"
 
 #include "math.h"
@@ -205,7 +206,7 @@ load_file_data_free (LoadFileData *data)
   g_free (data);
 }
 
-void
+static void
 update_animations_data (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
@@ -297,9 +298,9 @@ static gboolean
 advance_animation (gpointer self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  float pre_value;
-  float max_value;
-  float new_value;
+  gfloat pre_value;
+  gfloat max_value;
+  gfloat new_value;
 
   EXB_ENTRY;
 
@@ -335,7 +336,7 @@ exb_engine_play_animation (ExbEngine *self)
   EXB_EXIT;
 }
 
-void
+static void
 on_animation_adjustment_value_changed (ExbEngine     *self,
                                        GtkAdjustment *adj)
 {
@@ -848,7 +849,7 @@ f3d_set_option (ExbEngine    *self,
   EXB_RETURN (TRUE);
 }
 
-static float
+static gfloat
 f3d_get_distance (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
@@ -859,7 +860,7 @@ f3d_get_distance (ExbEngine *self)
   g_return_val_if_fail (priv->camera, 0);
 
   f3d_camera_get_position (priv->camera, f3d_camera_position);
-  graphene_vec3_init_from_float (&camera_position, (float *) f3d_camera_position);
+  graphene_vec3_init_from_float (&camera_position, (gfloat *) f3d_camera_position);
 
   return graphene_vec3_length (&camera_position);
 }
@@ -983,9 +984,54 @@ exb_engine_get_property (GObject    *object,
       g_value_set_boolean (value, priv->is_loading);
       break;
 
+    case PROP_UP:
+    case PROP_ORTHOGRAPHIC:
+    case PROP_SHOW_GRID:
+    case PROP_GRID_ABSOLUTE:
+    case PROP_GRID_UNIT:
+    case PROP_GRID_COLOR:
+    case PROP_GRID_SUBDIVISIONS:
+    case PROP_BLENDING:
+    case PROP_TONE_MAPPING:
+    case PROP_AMBIENT_OCCLUSION:
+    case PROP_ANTI_ALIASING:
+    case PROP_DISPLAY_DEPTH:
+    case PROP_HDRI_AMBIENT:
+    case PROP_HDRI_SKYBOX:
+    case PROP_HDRI_FILE:
+    case PROP_BLUR_BACKGROUND:
+    case PROP_BLUR_COC:
+    case PROP_LIGHT_INTENSITY:
+    case PROP_BACKGROUND_COLOR:
+    case PROP_SHOW_EDGES:
+    case PROP_EDGES_WIDTH:
+    case PROP_POINT_SIZE:
+    case PROP_SHOW_ARMATURE:
+    case PROP_FINAL_SHADER:
+    case PROP_MODEL_COLOR:
+    case PROP_MODEL_METALLIC:
+    case PROP_MODEL_ROUGHNESS:
+    case PROP_MODEL_OPACITY:
+    case PROP_MODEL_CHECKERBOARD:
+    case PROP_MODEL_UNLIT:
+    case PROP_TEXTURE_MATCAP:
+    case PROP_TEXTURE_BASE_COLOR:
+    case PROP_TEXTURE_EMISSIVE:
+    case PROP_TEXTURE_MATERIAL:
+    case PROP_NORMAL_SCALE:
+    case PROP_VOLUME_RENDERING:
+    case PROP_VOLUME_INVERSE_OPACITY:
+    case PROP_SPRITES_SIZE:
+    case PROP_SPRITES:
+    case PROP_ANIMATION_INDEX:
+    case PROP_SCIVIS:
+    case PROP_SCIVIS_COMPONENT:
+    case PROP_SCIVIS_CELLS:
     default:
       if (!f3d_get_option (self, value, pspec->name, pspec->value_type))
-        G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+        {
+          G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+        }
     }
 
   EXB_EXIT;
@@ -1004,8 +1050,6 @@ exb_engine_set_property (GObject      *object,
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
-  g_message ("Setting `%s`", pspec->name);
-
   switch ((ExbEngineProps) prop_id)
     {
     case PROP_WIDTH:
@@ -1014,6 +1058,16 @@ exb_engine_set_property (GObject      *object,
 
     case PROP_HEIGHT:
       exb_engine_set_size (self, priv->width, g_value_get_uint (value));
+      break;
+
+    case PROP_FILE:
+      g_set_object (&priv->file, g_value_get_object (value));
+      break;
+
+    case PROP_STANDALONE:
+    case PROP_ANIMATIONS_N:
+    case PROP_LOADING_FILE:
+      g_warning ("Trying to set read-only property: %s", pspec->name);
       break;
 
     case PROP_OVERRIDE_MODEL_COLOR:
@@ -1033,6 +1087,49 @@ exb_engine_set_property (GObject      *object,
       exb_engine_set_animation_adjustment (self, g_value_get_object (value));
       break;
 
+    case PROP_UP:
+    case PROP_ORTHOGRAPHIC:
+    case PROP_SHOW_GRID:
+    case PROP_GRID_ABSOLUTE:
+    case PROP_GRID_UNIT:
+    case PROP_GRID_COLOR:
+    case PROP_GRID_SUBDIVISIONS:
+    case PROP_BLENDING:
+    case PROP_TONE_MAPPING:
+    case PROP_AMBIENT_OCCLUSION:
+    case PROP_ANTI_ALIASING:
+    case PROP_DISPLAY_DEPTH:
+    case PROP_HDRI_AMBIENT:
+    case PROP_HDRI_SKYBOX:
+    case PROP_HDRI_FILE:
+    case PROP_BLUR_BACKGROUND:
+    case PROP_BLUR_COC:
+    case PROP_LIGHT_INTENSITY:
+    case PROP_BACKGROUND_COLOR:
+    case PROP_SHOW_EDGES:
+    case PROP_EDGES_WIDTH:
+    case PROP_POINT_SIZE:
+    case PROP_SHOW_ARMATURE:
+    case PROP_FINAL_SHADER:
+    case PROP_MODEL_COLOR:
+    case PROP_MODEL_METALLIC:
+    case PROP_MODEL_ROUGHNESS:
+    case PROP_MODEL_OPACITY:
+    case PROP_MODEL_CHECKERBOARD:
+    case PROP_MODEL_UNLIT:
+    case PROP_TEXTURE_MATCAP:
+    case PROP_TEXTURE_BASE_COLOR:
+    case PROP_TEXTURE_EMISSIVE:
+    case PROP_TEXTURE_MATERIAL:
+    case PROP_NORMAL_SCALE:
+    case PROP_VOLUME_RENDERING:
+    case PROP_VOLUME_INVERSE_OPACITY:
+    case PROP_SPRITES_SIZE:
+    case PROP_SPRITES:
+    case PROP_ANIMATION_INDEX:
+    case PROP_SCIVIS:
+    case PROP_SCIVIS_COMPONENT:
+    case PROP_SCIVIS_CELLS:
     default:
       if (!f3d_set_option (self, value, pspec->name, pspec->value_type))
         {
@@ -1139,18 +1236,6 @@ _exb_engine_finalize (ExbEngine *self)
   g_clear_pointer (&priv->engine, f3d_engine_delete);
 
   EXB_EXIT;
-}
-
-bool
-_exb_engine_is_loading (ExbEngine *self)
-{
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-
-  EXB_ENTRY;
-
-  g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
-
-  EXB_RETURN (priv->is_loading);
 }
 
 static void
@@ -1781,7 +1866,7 @@ exb_engine_pan (ExbEngine *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   gdouble factor;
-  float distance;
+  gfloat distance;
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
@@ -1866,8 +1951,8 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   gdouble f3d_camera_position[3];
   gdouble f3d_focal_point[3];
   gdouble f3d_up_dir[3];
-  float f_camera_position[3];
-  float f_focal_point[3];
+  gfloat f_camera_position[3];
+  gfloat f_focal_point[3];
   gdouble elevation;
   gdouble azimuth;
   gdouble dot;

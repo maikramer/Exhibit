@@ -20,6 +20,7 @@
  */
 
 #include "exb-enums.h"
+#include "exb-utils-private.h"
 #include "exb-utils.h"
 #include "exb-global.h"
 #include "graphene.h"

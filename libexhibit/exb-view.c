@@ -58,8 +58,6 @@ typedef enum
 
 static GParamSpec *props[PROP_INTERACTIVE + 1];
 
-void exb_view_set_engine (ExbView *self, ExbEngine *engine);
-
 static void
 exb_view_get_property (GObject    *object,
                        guint       prop_id,
@@ -71,7 +69,7 @@ exb_view_get_property (GObject    *object,
 
   g_return_if_fail (EXB_IS_VIEW (self));
 
-  switch (prop_id)
+  switch ((ExbViewProps) prop_id)
     {
     case PROP_ENGINE:
       g_value_set_object (value, exb_view_get_engine (self));
@@ -101,7 +99,7 @@ exb_view_set_property (GObject      *object,
 
   g_return_if_fail (EXB_IS_VIEW (self));
 
-  switch (prop_id)
+  switch ((ExbViewProps) prop_id)
     {
     case PROP_ALWAYS_POINT_UP:
       priv->always_point_up = g_value_get_boolean (value);

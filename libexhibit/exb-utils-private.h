@@ -29,7 +29,7 @@
 
 G_BEGIN_DECLS
 
-graphene_vec3_t exb_direction_to_graphene_vec3     (ExbDirection direction);
+graphene_vec3_t  exb_direction_to_graphene_vec3     (ExbDirection direction);
 
 const gchar *    exb_f3d_options_get_as_string      (f3d_options_t *options,
                                                     const gchar    *name);

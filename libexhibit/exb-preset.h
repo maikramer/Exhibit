@@ -24,6 +24,8 @@
 #include <glib-object.h>
 #include <gio/gio.h>
 
+// #include "exb-engine.h"
+
 G_BEGIN_DECLS
 
 #define EXB_TYPE_PRESET (exb_preset_get_type ())
@@ -32,11 +34,13 @@ G_DECLARE_FINAL_TYPE (ExbPreset, exb_preset, EXB, PRESET, GObject)
 
 ExbPreset  *exb_preset_new_from_file   (GFile        *file);
 
-const gchar *exb_preset_get_name        (ExbPreset    *self);
+const gchar *exb_preset_get_name       (ExbPreset    *self);
 void        exb_preset_set_name        (ExbPreset    *self,
                                         const gchar   *name);
-const gchar *exb_preset_get_formats     (ExbPreset    *self);
+const gchar *exb_preset_get_formats    (ExbPreset    *self);
 void        exb_preset_set_formats     (ExbPreset    *self,
                                         const gchar   *formats);
+// ExbPreset  *exb_preset_new_from_engine (ExbEngine   *engine,
+//                                         const gchar *name);
 
 G_END_DECLS

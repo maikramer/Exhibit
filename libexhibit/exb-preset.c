@@ -19,6 +19,7 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include "exb-preset-private.h"
 #include "exb-preset.h"
 #include "exb-engine.h"
 #include "exb-debug.h"
@@ -290,15 +291,17 @@ exb_preset_new_from_file (GFile *file)
   EXB_RETURN (self);
 }
 
-ExbPreset *
-exb_preset_new_from_engine (ExbEngine  *engine,
-                            const gchar *name)
-{
-  g_return_val_if_fail (EXB_IS_ENGINE (engine), NULL);
-  g_return_val_if_fail (name != NULL, NULL);
+/* static ExbPreset * */
+/* exb_preset_new_from_engine (ExbEngine   *engine, */
+/*                             const gchar *name) */
+/* { */
+/*   g_return_val_if_fail (EXB_IS_ENGINE (engine), NULL); */
+/*   g_return_val_if_fail (name != NULL, NULL); */
 
-  return NULL;
-}
+  /* TODO implement */
+
+/*   return NULL; */
+/* } */
 
 const gchar *
 exb_preset_get_name (ExbPreset *self)
