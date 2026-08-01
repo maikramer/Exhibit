@@ -40,11 +40,7 @@
         {
             "type": "git",
             "url": "https://github.com/f3d-app/f3d",
-            "commit": "e87b826d72c6420b831acd1176147eb06c8ff074"
-        },
-        {
-            "type": "patch",
-            "path": "./0001-Fix-rendering-backend-detection.patch"
+            "commit": "ce014b1f30d56d284dfd989a1631ff7fbb8ddc6b"
         }
     ],
     "modules": [
