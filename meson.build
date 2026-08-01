@@ -17,6 +17,10 @@ subdir('po')
 subdir('help')
 subdir('libexhibit')
 
+if get_option('docs')
+    subdir('docs')
+endif
+
 if get_option('thumbnailer')
     subdir('thumbnailer')
 endif

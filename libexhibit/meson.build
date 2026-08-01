@@ -73,7 +73,7 @@ libexhibit_dep = declare_dependency(
   sources: libexhibit_headers,
 )
 
-gnome.generate_gir(
+libexhibit_gir = gnome.generate_gir(
   libexhibit,
   sources: libexhibit_sources + libexhibit_headers + libexhibit_enums,
   namespace: 'Exb',

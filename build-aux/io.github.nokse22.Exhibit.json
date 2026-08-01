@@ -46,7 +46,7 @@
             "name" : "exhibit",
             "buildsystem" : "meson",
             "config-opts" : [
-                "--libdir=lib"
+                "-Ddocs=true",
             ],
             "sources" : [
                 {
