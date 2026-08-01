@@ -6,7 +6,7 @@
         "-DCMAKE_INSTALL_PREFIX=/app",
         "-DCMAKE_PREFIX_PATH=/app",
         "-DCMAKE_BUILD_TYPE=Release",
-        "-DF3D_BUILD_APPLICATION=ON",
+        "-DF3D_BUILD_APPLICATION=OFF",
         "-DF3D_MODULE_UI=OFF",
         "-DF3D_MODULE_RAYTRACING=OFF",
         "-DF3D_MODULE_EXR=ON",
@@ -31,10 +31,7 @@
         "printf '%s\n' \"prefix=/app\" \"exec_prefix=/app\" \"libdir=/app/lib\" \"includedir=/app/include\" \"\" \"Name: libf3d_c_api\" \"Description: F3D C API bindings\" \"Version: 3.3.0\" \"Libs: -L/app/lib -lf3d_c_api -lf3d\" \"Cflags: -I/app/include\" \"Requires: libf3d\" > /app/lib/pkgconfig/libf3d_c_api.pc"
     ],
     "build-commands": [
-        "cmake --install . --component library",
-        "cmake --install . --component sdk",
-        "cmake --install . --component plugin_sdk",
-        "cmake --install . --component dependencies"
+        "cmake --install . --component sdk"
     ],
     "sources": [
         {
