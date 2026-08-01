@@ -624,7 +624,7 @@ f3d_get_option (ExbEngine  *self,
 
   if (g_str_equal (option_id, "animation-index"))
     {
-      int values[] = {};
+      gint values[] = {};
       size_t size;
       f3d_options_get_as_int_vector (options, f3d_key, values, &size);
       g_value_set_int (value, values[0]);
@@ -767,7 +767,7 @@ f3d_set_option (ExbEngine    *self,
     {
       if (g_value_get_int (value) <= (gint)f3d_scene_available_animations (priv->scene))
         {
-          const int values[] = { g_value_get_int (value) };
+          const gint values[] = { g_value_get_int (value) };
           f3d_options_set_as_int_vector (options, f3d_key, values, 1);
           f3d_scene_load_animation_time (priv->scene, 0);
         }
@@ -1604,7 +1604,7 @@ int
 exb_engine_get_animations_n (ExbEngine *self)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  int animations;
+  gint animations;
 
   EXB_ENTRY;
 
@@ -1705,7 +1705,7 @@ exb_engine_render_texture (ExbEngine *self)
   g_autoptr (f3d_image_t) img = NULL;
   g_autoptr (GdkTexture) texture = NULL;
   g_autoptr (GBytes) bytes = NULL;
-  unsigned int width, height, channels;
+  guint width, height, channels;
   void *data = NULL;
 
   EXB_ENTRY;

@@ -89,12 +89,12 @@ exb_f3d_options_get_as_string (f3d_options_t *options,
 
 const gchar *
 exb_f3d_options_get_closest_option (f3d_options_t *options,
-                                    const gchar    *f3d_key,
-                                    unsigned int  *distance)
+                                    const gchar   *f3d_key,
+                                    guint         *distance)
 {
   gchar *f3d_closest_key = NULL;
   const gchar *result = NULL;
-  unsigned int local_distance = 0;
+  guint local_distance = 0;
 
   if (!distance)
     distance = &local_distance;

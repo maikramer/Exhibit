@@ -34,7 +34,7 @@ exb_get_allowed_extensions (void)
 {
   g_autofree f3d_reader_info_t *readers = NULL;
   GPtrArray *array;
-  int count = 0;
+  gint count = 0;
 
   f3d_engine_autoload_plugins ();
 

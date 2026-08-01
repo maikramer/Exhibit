@@ -36,6 +36,6 @@ const gchar *    exb_f3d_options_get_as_string      (f3d_options_t *options,
 
 const gchar *    exb_f3d_options_get_closest_option (f3d_options_t *options,
                                                     const gchar    *f3d_key,
-                                                    unsigned int  *distance);
+                                                    guint          *distance);
 
 G_END_DECLS
