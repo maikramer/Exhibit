@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Exhibit\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-02-26 21:13+0100\n"
+"POT-Creation-Date: 2026-08-01 19:11+0200\n"
 "PO-Revision-Date: 2024-08-10 13:03+0400\n"
 "Last-Translator: Egor <petruhin-enot@yandex.ru>\n"
 "Language-Team: \n"
@@ -18,9 +18,8 @@ msgstr ""
 "X-Generator: Poedit 3.4.4\n"
 
 #: data/io.github.nokse22.Exhibit.desktop.in:2
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:7 src/window.py:937
-#: data/ui/window.ui:11 data/ui/window.ui:53 data/ui/window.ui:90
-#: data/ui/window.ui:206
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:7 src/window.py:444
+#: src/window.ui:11 src/window.ui:53 src/window.ui:90 src/window.ui:173
 msgid "Exhibit"
 msgstr "Exhibit"
 
@@ -34,7 +33,7 @@ msgstr "Просмотрщик 3D моделей"
 msgid "fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;pbr;rendering;3d-model;3d-viewer;"
 msgstr "fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;pbr;rendering;3d-model;"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:8 data/ui/window.ui:86
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:8 src/window.ui:86
 msgid "Preview your 3D models"
 msgstr "Предварительный просмотр ваших 3D-моделей"
 
@@ -66,464 +65,461 @@ msgstr ""
 "добиться идеального рендера. В качестве фона можно использовать HDRI-"
 "изображение или пользовательский цвет."
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:46
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:50
 #, fuzzy
 #| msgid "Bechy"
 msgid "3D Benchy"
 msgstr "Bechy"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:51
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:56
 #, fuzzy
 #| msgid "Retro Computer Setup with a HDRI background"
 msgid "Retro Computer Setup with a HDRI skybox"
 msgstr "Ретро компьютер с HDRI фоном"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:56
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:62
 msgid "Green Metallic Suzanne"
 msgstr "Зеленая металлическая Сюзанна"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:61
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:68
 #, fuzzy
 #| msgid "Cow with a HDRI background in dark theme"
 msgid "Cow with an HDRI background and dark theme"
 msgstr "Корова с HDRI фоном и темная тема"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:66
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:74
 #, fuzzy
 #| msgid "Vase 3d scan with HDRI"
 msgid "Vase 3d scan with HDRI skybox"
 msgstr "3D-скан вазы с HDRI"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:71
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:80
 msgid "Point cloud of a boat with dark theme"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:76
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:86
 #, fuzzy
 #| msgid "Nissan Fairlady in dark theme"
 msgid "Rigged model showing armature with dark theme"
 msgstr "Nissan Fairlady и темная тема"
 
-#: src/main.py:129
+#: src/main.py:124
 msgid "Checkout F3D"
 msgstr "Проверить F3D"
 
-#: src/main.py:131
+#: src/main.py:126
 msgid "Donate with Ko-Fi"
 msgstr ""
 
-#: src/main.py:132
+#: src/main.py:127
 msgid "Donate with Github"
 msgstr ""
 
-#: src/window.py:817
+#: src/window.py:373
 msgid "All supported formats"
 msgstr ""
 
-#: src/window.py:826
+#: src/window.py:384
 msgid "Open File"
 msgstr "Открыть файл"
 
-#: src/window.py:847
-#, fuzzy
+#: src/window.py:417
+#, fuzzy, python-brace-format
 #| msgid "Loading"
 msgid "Loading {}"
 msgstr "Загрузка"
 
-#: src/window.py:917
-#, fuzzy
+#: src/window.py:427
+#, fuzzy, python-brace-format
 #| msgid "Exhibit"
 msgid "Exhibit - {}"
 msgstr "Exhibit"
 
-#: src/window.py:942
+#: src/window.py:449
 msgid "Can't open"
 msgstr "Невозможно открыть"
 
-#: src/window.py:958
+#: src/window.py:463
 msgid "Save File"
 msgstr "Сохранить файл"
 
-#: src/window.py:1065
+#: src/window.py:569
 msgid "Stop"
 msgstr ""
 
-#: src/window.py:1068
+#: src/window.py:572
 msgid "Start"
 msgstr ""
 
-#: data/ui/window.ui:63 data/ui/window.ui:223 data/ui/window.ui:230
-#: data/ui/window.ui:838
+#: src/window.ui:63 src/window.ui:190 src/window.ui:197 src/window.ui:804
 msgid "Menu"
 msgstr "Меню"
 
-#: data/ui/window.ui:82
+#: src/window.ui:82
 msgid "Load"
 msgstr "Открыть"
 
-#: data/ui/window.ui:110
+#: src/window.ui:110
 msgid "Try Another"
 msgstr "Попробовать другой"
 
-#: data/ui/window.ui:114
+#: src/window.ui:114
 msgid "Couldn't load the file"
 msgstr "Невозможно открыть файл"
 
-#: data/ui/window.ui:118
+#: src/window.ui:118
 msgid "Error Loading File"
 msgstr "Ошибка открытия файла"
 
-#: data/ui/window.ui:216
+#: src/window.ui:183
 msgid "Close Sidebar"
 msgstr "Закрыть боковую панель"
 
-#: data/ui/window.ui:253
+#: src/window.ui:220
 msgid "Render"
 msgstr "Рендер"
 
-#: data/ui/window.ui:267
+#: src/window.ui:234
 msgid "Rendering"
 msgstr "Рендеринг"
 
-#: data/ui/window.ui:272
+#: src/window.ui:239
 msgid "Translucency"
 msgstr "Полупрозрачность"
 
-#: data/ui/window.ui:279
+#: src/window.ui:247
 msgid "Tone Mapping"
 msgstr "Тональное отображение"
 
-#: data/ui/window.ui:280
+#: src/window.ui:248
 msgid "Map colors properly to the monitor colors"
 msgstr "Правильное отображение цветов на мониторе"
 
-#: data/ui/window.ui:287
+#: src/window.ui:256
 msgid "Ambient Occlusion"
 msgstr "Окружающее затенение"
 
-#: data/ui/window.ui:288
+#: src/window.ui:257
 msgid "Provides approximate shadows"
 msgstr "Предоставляет приблизительные тени"
 
-#: data/ui/window.ui:295
+#: src/window.ui:265
 msgid "Anti Aliasing"
 msgstr "Сглаживание"
 
-#: data/ui/window.ui:302
+#: src/window.ui:273
 msgid "Light with HDRI"
 msgstr "Свет с HDRI"
 
-#: data/ui/window.ui:303
+#: src/window.ui:274
 msgid "Light the scene using a the loaded HDRI or the default"
 msgstr "Освещение сцены с помощью загруженного HDRI"
 
-#: data/ui/window.ui:318
+#: src/window.ui:290
 msgid "Light Intensity"
 msgstr "Интенсивность света"
 
-#: data/ui/window.ui:327
+#: src/window.ui:299
 msgid "Model Rendering"
 msgstr "Рендеринг модели"
 
-#: data/ui/window.ui:332
+#: src/window.ui:304
 msgid "Show All Edges"
 msgstr "Показывать все грани"
 
-#: data/ui/window.ui:339
+#: src/window.ui:312
 msgid "Edges Width"
 msgstr "Ширина граней"
 
-#: data/ui/window.ui:359
+#: src/window.ui:332
 #, fuzzy
 #| msgid "Show Spheres"
 msgid "Show Point Sprites"
 msgstr "Показывать вершины"
 
-#: data/ui/window.ui:364
+#: src/window.ui:338
 #, fuzzy
 #| msgid "Points Size"
 msgid "Point Sprites Type"
 msgstr "Размер точек"
 
-#: data/ui/window.ui:368
+#: src/window.ui:342
 #, fuzzy
 #| msgid "Show Spheres"
 msgid "Sphere"
 msgstr "Показывать вершины"
 
-#: data/ui/window.ui:369
+#: src/window.ui:343
 msgid "Gaussian"
 msgstr ""
 
-#: data/ui/window.ui:377
+#: src/window.ui:351
 #, fuzzy
 #| msgid "Points Size"
 msgid "Sprite Size"
 msgstr "Размер точек"
 
-#: data/ui/window.ui:390
+#: src/window.ui:364
 msgid "Points Size"
 msgstr "Размер точек"
 
-#: data/ui/window.ui:413
+#: src/window.ui:387
 msgid "Model"
 msgstr "Модель"
 
-#: data/ui/window.ui:427
+#: src/window.ui:401
 msgid "Material"
 msgstr "Материал"
 
-#: data/ui/window.ui:432
+#: src/window.ui:406
 msgid "Model Metallic"
 msgstr "Металлизация модели"
 
-#: data/ui/window.ui:448
+#: src/window.ui:422
 msgid "Model Roughness"
 msgstr "Шероховатость модели"
 
-#: data/ui/window.ui:465
+#: src/window.ui:439
 msgid "Model Opacity"
 msgstr "Непрозрачность модели"
 
-#: data/ui/window.ui:483
+#: src/window.ui:457
 msgid "Color"
 msgstr "Цвет"
 
-#: data/ui/window.ui:489
+#: src/window.ui:463
 msgid "Coloration"
 msgstr "Окраска"
 
-#: data/ui/window.ui:493
+#: src/window.ui:467
 msgid "Custom"
 msgstr "Своя"
 
-#: data/ui/window.ui:494
+#: src/window.ui:468
 msgid "Normal"
 msgstr "Обычная"
 
-#: data/ui/window.ui:495
+#: src/window.ui:469
 msgid "Magnitude"
 msgstr "Величина"
 
-#: data/ui/window.ui:496
+#: src/window.ui:470
 msgid "Direct"
 msgstr "Прямая"
 
-#: data/ui/window.ui:506 data/ui/window.ui:513
+#: src/window.ui:480 src/window.ui:487
 msgid "Model Color"
 msgstr "Цвет модели"
 
-#: data/ui/window.ui:527
+#: src/window.ui:501
 msgid "Show Armature"
 msgstr ""
 
-#: data/ui/window.ui:542
+#: src/window.ui:517
 msgid "Scene"
 msgstr "Сцена"
 
-#: data/ui/window.ui:556
+#: src/window.ui:531
 msgid "Grid"
 msgstr "Сетка"
 
-#: data/ui/window.ui:561
+#: src/window.ui:536
 msgid "View Grid"
 msgstr "Отображать сетку"
 
-#: data/ui/window.ui:568
+#: src/window.ui:544
 msgid "Grid Absolute"
 msgstr "Абсолютное позиционирование сетки"
 
-#: data/ui/window.ui:577
+#: src/window.ui:554
 msgid "Background"
 msgstr "Фон"
 
-#: data/ui/window.ui:582
+#: src/window.ui:559
 msgid "HDRI as Background"
 msgstr "HDRI как фон"
 
-#: data/ui/window.ui:583
+#: src/window.ui:560
 msgid "Use the loaded HDRI or the default one as a background"
 msgstr "Использовать загруженный HDRI или один из стандартных как фон"
 
-#: data/ui/window.ui:590
+#: src/window.ui:568
 msgid "HDRI Image"
 msgstr "HDRI изображение"
 
-#: data/ui/window.ui:597
+#: src/window.ui:576
 msgid "Blur Background"
 msgstr "Размывать фон"
 
-#: data/ui/window.ui:604
+#: src/window.ui:584
 msgid "Blur Circle Of Confusion"
 msgstr "Сила размытия"
 
-#: data/ui/window.ui:626
+#: src/window.ui:606
 msgid "Use Custom Color"
 msgstr "Использовать свой цвет"
 
-#: data/ui/window.ui:627
+#: src/window.ui:607
 msgid "HDRI background takes priority over this"
 msgstr "HDRI фон имеет приоритет над этим"
 
-#: data/ui/window.ui:634 data/ui/window.ui:641
+#: src/window.ui:614 src/window.ui:621
 msgid "Background Color"
 msgstr "Цвет фона"
 
-#: data/ui/window.ui:661
+#: src/window.ui:641
 msgid "More"
 msgstr "Еще"
 
-#: data/ui/window.ui:675
+#: src/window.ui:655
 msgid "Navigation"
 msgstr "Ориентация"
 
-#: data/ui/window.ui:680
+#: src/window.ui:660
 msgid "Always Point Up"
 msgstr "Всегда направлять вверх"
 
-#: data/ui/window.ui:687
+#: src/window.ui:668
 msgid "Up Direction"
 msgstr "Вертикальное направление"
 
-#: data/ui/window.ui:688
+#: src/window.ui:669
 msgid "Changing it will reload the file"
 msgstr "При изменении файл будет перезагружен"
 
-#: data/ui/window.ui:692
-msgid "- X"
-msgstr "- X"
-
-#: data/ui/window.ui:693
-msgid "+ X"
-msgstr "+ X"
-
-#: data/ui/window.ui:694
-msgid "- Y"
-msgstr "- Y"
-
-#: data/ui/window.ui:695
-msgid "+ Y"
-msgstr "+ Y"
-
-#: data/ui/window.ui:696
-msgid "- Z"
-msgstr "- Z"
-
-#: data/ui/window.ui:697
-msgid "+ Z"
-msgstr "+ Z"
-
-#: data/ui/window.ui:707
+#: src/window.ui:676
 #, fuzzy
 #| msgid "Navigation"
 msgid "Animation"
 msgstr "Ориентация"
 
-#: data/ui/window.ui:710
+#: src/window.ui:679
 msgid "Animation Index"
 msgstr ""
 
-#: data/ui/window.ui:731
+#: src/window.ui:701
 msgid "Play"
 msgstr ""
 
-#: data/ui/window.ui:756
+#: src/window.ui:722
 msgid "Loading"
 msgstr "Загрузка"
 
-#: data/ui/window.ui:761
+#: src/window.ui:727
 msgid "Automatic Settings"
 msgstr "Автоматические настройки"
 
-#: data/ui/window.ui:762
+#: src/window.ui:728
 msgid "When loading choose the best presets for the file"
 msgstr "При загрузке выбирает лучшие настройки для файла"
 
-#: data/ui/window.ui:775
+#: src/window.ui:741
 msgid "Reload On Change"
 msgstr "Перезагрузить при изменении"
 
-#: data/ui/window.ui:776
+#: src/window.ui:742
 msgid "Check for file change"
 msgstr "Проверять файл на изменения"
 
-#: data/ui/window.ui:826
+#: src/window.ui:792
 msgid "Reveal Sidebar"
 msgstr "Развернуть боковую панель"
 
-#: data/ui/window.ui:849
+#: src/window.ui:815
 msgid "Reset to Bounds"
 msgstr "Сброс"
 
-#: data/ui/window.ui:911
+#: src/window.ui:889
 msgid "Follow System"
 msgstr "Системная тема"
 
-#: data/ui/window.ui:916
+#: src/window.ui:894
 msgid "Light Theme"
 msgstr "Светлая тема"
 
-#: data/ui/window.ui:921
+#: src/window.ui:899
 msgid "Dark Theme"
 msgstr "Темная тема"
 
-#: data/ui/window.ui:926 data/ui/window.ui:990
+#: src/window.ui:904 src/window.ui:968
 msgid "_New Window"
 msgstr "_Новое окно"
 
-#: data/ui/window.ui:930
+#: src/window.ui:908
 msgid "_Load New File"
 msgstr "_Открыть новый файл"
 
-#: data/ui/window.ui:938
+#: src/window.ui:912
+msgid "_Add File to Scene"
+msgstr ""
+
+#: src/window.ui:916
 msgid "_Export Image"
 msgstr "_Экспортировать изображение"
 
-#: data/ui/window.ui:942
+#: src/window.ui:920
 #, fuzzy
 #| msgid "Open With External App"
 msgid "_Open In External App"
 msgstr "Открыть через стороннее приложение"
 
-#: data/ui/window.ui:948 data/ui/window.ui:996
+#: src/window.ui:926 src/window.ui:974
 msgid "_Help"
 msgstr "_Cправка"
 
-#: data/ui/window.ui:952 data/ui/window.ui:1000
+#: src/window.ui:930 src/window.ui:978
 msgid "_Keyboard Shortcuts"
 msgstr "_Сочетания клавиш"
 
-#: data/ui/window.ui:956 data/ui/window.ui:1004
+#: src/window.ui:934 src/window.ui:982
 msgid "_About Exhibit"
 msgstr "_О Exhibit"
 
-#: data/ui/window.ui:966
+#: src/window.ui:944
 msgid "Save Current Settings"
 msgstr "Сохранить текущие настройки"
 
-#: data/ui/window.ui:972
+#: src/window.ui:950
 #, fuzzy
 #| msgid "Toggle Orthographic"
 msgid "Orthonographic"
 msgstr "Ортографический режим"
 
-#: data/ui/window.ui:978
+#: src/window.ui:956
 msgid "Open HDRI Folder"
 msgstr "Открыть директорию HDRI"
 
-#: data/ui/window.ui:982
+#: src/window.ui:960
 msgid "Open Configurations Folder"
 msgstr ""
 
-#: data/ui/window.ui:1037
-msgid "Comma separated list of the supported extensions"
-msgstr ""
-
-#: data/ui/file_row.ui:83
+#: src/file_row.ui:83
 #, fuzzy
 #| msgid "Open HDRI Folder"
 msgid "Open HDRI"
 msgstr "Открыть директорию HDRI"
+
+#: src/settings_dialog.ui:34
+msgid "Comma separated list of the supported extensions"
+msgstr ""
+
+#~ msgid "- X"
+#~ msgstr "- X"
+
+#~ msgid "+ X"
+#~ msgstr "+ X"
+
+#~ msgid "- Y"
+#~ msgstr "- Y"
+
+#~ msgid "+ Y"
+#~ msgstr "+ Y"
+
+#~ msgid "- Z"
+#~ msgstr "- Z"
+
+#~ msgid "+ Z"
+#~ msgstr "+ Z"
 
 #~ msgid "Load type"
 #~ msgstr "Тип загрузки"

@@ -7,7 +7,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Exhibit\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-02-26 21:13+0100\n"
+"POT-Creation-Date: 2026-08-01 19:11+0200\n"
 "PO-Revision-Date: 2024-06-23 20:19-0300\n"
 "Last-Translator: Tiago Lucas Flach <tiagolucas9830@gmail.com>\n"
 "Language-Team: \n"
@@ -18,9 +18,8 @@ msgstr ""
 "X-Generator: Poedit 3.4.4\n"
 
 #: data/io.github.nokse22.Exhibit.desktop.in:2
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:7 src/window.py:937
-#: data/ui/window.ui:11 data/ui/window.ui:53 data/ui/window.ui:90
-#: data/ui/window.ui:206
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:7 src/window.py:444
+#: src/window.ui:11 src/window.ui:53 src/window.ui:90 src/window.ui:173
 msgid "Exhibit"
 msgstr "Exhibit"
 
@@ -34,7 +33,7 @@ msgstr "Visualizador de Modelos 3D"
 msgid "fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;pbr;rendering;3d-model;3d-viewer;"
 msgstr "fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;pbr;renderização,modelo-3d;"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:8 data/ui/window.ui:86
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:8 src/window.ui:86
 msgid "Preview your 3D models"
 msgstr "Visualize seus modelos 3D"
 
@@ -63,484 +62,481 @@ msgstr ""
 "oclusão de ambiente, anti-aliasing e muito mais. Você pode usar uma imagem "
 "HDRI ou uma cor personalizada como plano de fundo."
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:46
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:50
 msgid "3D Benchy"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:51
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:56
 #, fuzzy
 #| msgid "Retro Computer Setup with a HDRI background"
 msgid "Retro Computer Setup with a HDRI skybox"
 msgstr "Configuração de Computador Retrô com fundo HDRI"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:56
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:62
 msgid "Green Metallic Suzanne"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:61
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:68
 msgid "Cow with an HDRI background and dark theme"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:66
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:74
 msgid "Vase 3d scan with HDRI skybox"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:71
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:80
 #, fuzzy
 #| msgid "Benchy with dark theme"
 msgid "Point cloud of a boat with dark theme"
 msgstr "Banco com tema escuro"
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:76
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:86
 #, fuzzy
 #| msgid "Benchy with dark theme"
 msgid "Rigged model showing armature with dark theme"
 msgstr "Banco com tema escuro"
 
-#: src/main.py:129
+#: src/main.py:124
 msgid "Checkout F3D"
 msgstr "Checkout F3DCheckout F3D"
 
-#: src/main.py:131
+#: src/main.py:126
 msgid "Donate with Ko-Fi"
 msgstr ""
 
-#: src/main.py:132
+#: src/main.py:127
 msgid "Donate with Github"
 msgstr ""
 
-#: src/window.py:817
+#: src/window.py:373
 msgid "All supported formats"
 msgstr ""
 
-#: src/window.py:826
+#: src/window.py:384
 msgid "Open File"
 msgstr "Abrir arquivo"
 
-#: src/window.py:847
-#, fuzzy
+#: src/window.py:417
+#, fuzzy, python-brace-format
 #| msgid "Load"
 msgid "Loading {}"
 msgstr "Carregar"
 
-#: src/window.py:917
-#, fuzzy
+#: src/window.py:427
+#, fuzzy, python-brace-format
 #| msgid "Exhibit"
 msgid "Exhibit - {}"
 msgstr "Exhibit"
 
-#: src/window.py:942
+#: src/window.py:449
 msgid "Can't open"
 msgstr "Não foi possível abrir"
 
-#: src/window.py:958
+#: src/window.py:463
 msgid "Save File"
 msgstr "Salvar Arquivo"
 
-#: src/window.py:1065
+#: src/window.py:569
 msgid "Stop"
 msgstr ""
 
-#: src/window.py:1068
+#: src/window.py:572
 msgid "Start"
 msgstr ""
 
-#: data/ui/window.ui:63 data/ui/window.ui:223 data/ui/window.ui:230
-#: data/ui/window.ui:838
+#: src/window.ui:63 src/window.ui:190 src/window.ui:197 src/window.ui:804
 msgid "Menu"
 msgstr "Menu"
 
-#: data/ui/window.ui:82
+#: src/window.ui:82
 msgid "Load"
 msgstr "Carregar"
 
-#: data/ui/window.ui:110
+#: src/window.ui:110
 msgid "Try Another"
 msgstr "Tentar Outro"
 
-#: data/ui/window.ui:114
+#: src/window.ui:114
 msgid "Couldn't load the file"
 msgstr "Não foi possível carregar o arquivo"
 
-#: data/ui/window.ui:118
+#: src/window.ui:118
 msgid "Error Loading File"
 msgstr "Erro ao Carregar Arquivo"
 
-#: data/ui/window.ui:216
+#: src/window.ui:183
 msgid "Close Sidebar"
 msgstr "Fechar Barra Lateral"
 
-#: data/ui/window.ui:253
+#: src/window.ui:220
 msgid "Render"
 msgstr "Renderizar"
 
-#: data/ui/window.ui:267
+#: src/window.ui:234
 msgid "Rendering"
 msgstr "Renderizando"
 
-#: data/ui/window.ui:272
+#: src/window.ui:239
 msgid "Translucency"
 msgstr "Translucidez"
 
-#: data/ui/window.ui:279
+#: src/window.ui:247
 msgid "Tone Mapping"
 msgstr "Mapeamento de Tons"
 
-#: data/ui/window.ui:280
+#: src/window.ui:248
 msgid "Map colors properly to the monitor colors"
 msgstr "Mapeie as cores corretamente para as cores do monitor"
 
-#: data/ui/window.ui:287
+#: src/window.ui:256
 msgid "Ambient Occlusion"
 msgstr "Oclusão de Ambiente"
 
-#: data/ui/window.ui:288
+#: src/window.ui:257
 msgid "Provides approximate shadows"
 msgstr "Fornece Sombras Aproximadas"
 
-#: data/ui/window.ui:295
+#: src/window.ui:265
 msgid "Anti Aliasing"
 msgstr "Anti-aliasing"
 
-#: data/ui/window.ui:302
+#: src/window.ui:273
 msgid "Light with HDRI"
 msgstr "Iluminação com HDRI"
 
-#: data/ui/window.ui:303
+#: src/window.ui:274
 msgid "Light the scene using a the loaded HDRI or the default"
 msgstr "Ilumine a cena usando o HDRI carregado ou o padrão"
 
-#: data/ui/window.ui:318
+#: src/window.ui:290
 msgid "Light Intensity"
 msgstr "Intensidade da Luz"
 
-#: data/ui/window.ui:327
+#: src/window.ui:299
 #, fuzzy
 #| msgid "Rendering"
 msgid "Model Rendering"
 msgstr "Renderizando"
 
-#: data/ui/window.ui:332
+#: src/window.ui:304
 #, fuzzy
 #| msgid "Show Edges"
 msgid "Show All Edges"
 msgstr "Mostrar Arestas"
 
-#: data/ui/window.ui:339
+#: src/window.ui:312
 msgid "Edges Width"
 msgstr "Largura das Arestas"
 
-#: data/ui/window.ui:359
+#: src/window.ui:332
 #, fuzzy
 #| msgid "Show Points"
 msgid "Show Point Sprites"
 msgstr "Mostrar Pontos"
 
-#: data/ui/window.ui:364
+#: src/window.ui:338
 #, fuzzy
 #| msgid "Points Radius"
 msgid "Point Sprites Type"
 msgstr "Raio dos Pontos"
 
-#: data/ui/window.ui:368
+#: src/window.ui:342
 #, fuzzy
 #| msgid "Show Edges"
 msgid "Sphere"
 msgstr "Mostrar Arestas"
 
-#: data/ui/window.ui:369
+#: src/window.ui:343
 msgid "Gaussian"
 msgstr ""
 
-#: data/ui/window.ui:377
+#: src/window.ui:351
 #, fuzzy
 #| msgid "Points Radius"
 msgid "Sprite Size"
 msgstr "Raio dos Pontos"
 
-#: data/ui/window.ui:390
+#: src/window.ui:364
 #, fuzzy
 #| msgid "Points Radius"
 msgid "Points Size"
 msgstr "Raio dos Pontos"
 
-#: data/ui/window.ui:413
+#: src/window.ui:387
 msgid "Model"
 msgstr "Modelo"
 
-#: data/ui/window.ui:427
+#: src/window.ui:401
 msgid "Material"
 msgstr "Material"
 
-#: data/ui/window.ui:432
+#: src/window.ui:406
 msgid "Model Metallic"
 msgstr "Modelo Metálico"
 
-#: data/ui/window.ui:448
+#: src/window.ui:422
 msgid "Model Roughness"
 msgstr "Rugosidade do Modelo"
 
-#: data/ui/window.ui:465
+#: src/window.ui:439
 msgid "Model Opacity"
 msgstr "Opacidade do Modelo"
 
-#: data/ui/window.ui:483
+#: src/window.ui:457
 #, fuzzy
 #| msgid "Model Color"
 msgid "Color"
 msgstr "Cor do Modelo"
 
-#: data/ui/window.ui:489
+#: src/window.ui:463
 msgid "Coloration"
 msgstr ""
 
-#: data/ui/window.ui:493
+#: src/window.ui:467
 msgid "Custom"
 msgstr ""
 
-#: data/ui/window.ui:494
+#: src/window.ui:468
 msgid "Normal"
 msgstr ""
 
-#: data/ui/window.ui:495
+#: src/window.ui:469
 msgid "Magnitude"
 msgstr ""
 
-#: data/ui/window.ui:496
+#: src/window.ui:470
 #, fuzzy
 #| msgid "Up Direction"
 msgid "Direct"
 msgstr "Direção Para Cima"
 
-#: data/ui/window.ui:506 data/ui/window.ui:513
+#: src/window.ui:480 src/window.ui:487
 msgid "Model Color"
 msgstr "Cor do Modelo"
 
-#: data/ui/window.ui:527
+#: src/window.ui:501
 msgid "Show Armature"
 msgstr ""
 
-#: data/ui/window.ui:542
+#: src/window.ui:517
 msgid "Scene"
 msgstr "Cena"
 
-#: data/ui/window.ui:556
+#: src/window.ui:531
 msgid "Grid"
 msgstr "Grade"
 
-#: data/ui/window.ui:561
+#: src/window.ui:536
 msgid "View Grid"
 msgstr "Ver Grade"
 
-#: data/ui/window.ui:568
+#: src/window.ui:544
 msgid "Grid Absolute"
 msgstr "Grade Absoluta"
 
-#: data/ui/window.ui:577
+#: src/window.ui:554
 msgid "Background"
 msgstr "Plano de fundo"
 
-#: data/ui/window.ui:582
+#: src/window.ui:559
 #, fuzzy
 #| msgid "HDRI as Backgound"
 msgid "HDRI as Background"
 msgstr "HDRI como plano de fundo"
 
-#: data/ui/window.ui:583
+#: src/window.ui:560
 msgid "Use the loaded HDRI or the default one as a background"
 msgstr "Use o HDRI carregado ou o padrão como plano de fundo"
 
-#: data/ui/window.ui:590
+#: src/window.ui:568
 msgid "HDRI Image"
 msgstr "Imagem HDRI"
 
-#: data/ui/window.ui:597
+#: src/window.ui:576
 msgid "Blur Background"
 msgstr "Desfocar Fundo"
 
-#: data/ui/window.ui:604
+#: src/window.ui:584
 msgid "Blur Circle Of Confusion"
 msgstr "Desfocar Círculo de Confusão"
 
-#: data/ui/window.ui:626
+#: src/window.ui:606
 msgid "Use Custom Color"
 msgstr "Usar Cor Personalizada"
 
-#: data/ui/window.ui:627
+#: src/window.ui:607
 msgid "HDRI background takes priority over this"
 msgstr "O plano de fundo HDRI tem prioridade sobre isso"
 
-#: data/ui/window.ui:634 data/ui/window.ui:641
+#: src/window.ui:614 src/window.ui:621
 msgid "Background Color"
 msgstr "Cor de Fundo"
 
-#: data/ui/window.ui:661
+#: src/window.ui:641
 msgid "More"
 msgstr "Mais"
 
-#: data/ui/window.ui:675
+#: src/window.ui:655
 msgid "Navigation"
 msgstr "Navegação"
 
-#: data/ui/window.ui:680
+#: src/window.ui:660
 msgid "Always Point Up"
 msgstr "Sempre Apontar Para Cima"
 
-#: data/ui/window.ui:687
+#: src/window.ui:668
 msgid "Up Direction"
 msgstr "Direção Para Cima"
 
-#: data/ui/window.ui:688
+#: src/window.ui:669
 msgid "Changing it will reload the file"
 msgstr "Alterá-lo irá recarregar o arquivo"
 
-#: data/ui/window.ui:692
-msgid "- X"
-msgstr "- X"
-
-#: data/ui/window.ui:693
-msgid "+ X"
-msgstr "- X"
-
-#: data/ui/window.ui:694
-msgid "- Y"
-msgstr "- Y"
-
-#: data/ui/window.ui:695
-msgid "+ Y"
-msgstr "+ Y"
-
-#: data/ui/window.ui:696
-msgid "- Z"
-msgstr "- Z"
-
-#: data/ui/window.ui:697
-msgid "+ Z"
-msgstr "+ Z"
-
-#: data/ui/window.ui:707
+#: src/window.ui:676
 #, fuzzy
 #| msgid "Navigation"
 msgid "Animation"
 msgstr "Navegação"
 
-#: data/ui/window.ui:710
+#: src/window.ui:679
 msgid "Animation Index"
 msgstr ""
 
-#: data/ui/window.ui:731
+#: src/window.ui:701
 msgid "Play"
 msgstr ""
 
-#: data/ui/window.ui:756
+#: src/window.ui:722
 #, fuzzy
 #| msgid "Load"
 msgid "Loading"
 msgstr "Carregar"
 
-#: data/ui/window.ui:761
+#: src/window.ui:727
 #, fuzzy
 #| msgid "Automatic Up Direction"
 msgid "Automatic Settings"
 msgstr "Direção Automática Para Cima"
 
-#: data/ui/window.ui:762
+#: src/window.ui:728
 #, fuzzy
 #| msgid "When loading choose the best up direction"
 msgid "When loading choose the best presets for the file"
 msgstr "Ao carregar, escolha a melhor direção para cima"
 
-#: data/ui/window.ui:775
+#: src/window.ui:741
 msgid "Reload On Change"
 msgstr ""
 
-#: data/ui/window.ui:776
+#: src/window.ui:742
 msgid "Check for file change"
 msgstr ""
 
-#: data/ui/window.ui:826
+#: src/window.ui:792
 msgid "Reveal Sidebar"
 msgstr "Revelar Barra Lateral"
 
-#: data/ui/window.ui:849
+#: src/window.ui:815
 msgid "Reset to Bounds"
 msgstr "Redefinir para Limites"
 
-#: data/ui/window.ui:911
+#: src/window.ui:889
 msgid "Follow System"
 msgstr "Seguir o Sistema"
 
-#: data/ui/window.ui:916
+#: src/window.ui:894
 msgid "Light Theme"
 msgstr "Tema Claro"
 
-#: data/ui/window.ui:921
+#: src/window.ui:899
 msgid "Dark Theme"
 msgstr "Tema Escuro"
 
-#: data/ui/window.ui:926 data/ui/window.ui:990
+#: src/window.ui:904 src/window.ui:968
 #, fuzzy
 #| msgid "_Open New Window"
 msgid "_New Window"
 msgstr "_Abrir Nova Janela"
 
-#: data/ui/window.ui:930
+#: src/window.ui:908
 #, fuzzy
 #| msgid "_Load New Model"
 msgid "_Load New File"
 msgstr "_Carregar Novo Modelo"
 
-#: data/ui/window.ui:938
+#: src/window.ui:912
+msgid "_Add File to Scene"
+msgstr ""
+
+#: src/window.ui:916
 msgid "_Export Image"
 msgstr ""
 
-#: data/ui/window.ui:942
+#: src/window.ui:920
 msgid "_Open In External App"
 msgstr ""
 
-#: data/ui/window.ui:948 data/ui/window.ui:996
+#: src/window.ui:926 src/window.ui:974
 msgid "_Help"
 msgstr ""
 
-#: data/ui/window.ui:952 data/ui/window.ui:1000
+#: src/window.ui:930 src/window.ui:978
 msgid "_Keyboard Shortcuts"
 msgstr "_Atalhos do Teclado"
 
-#: data/ui/window.ui:956 data/ui/window.ui:1004
+#: src/window.ui:934 src/window.ui:982
 msgid "_About Exhibit"
 msgstr "_Sobre o Exhibit"
 
-#: data/ui/window.ui:966
+#: src/window.ui:944
 #, fuzzy
 #| msgid "Save Settings"
 msgid "Save Current Settings"
 msgstr "Salvar Configurações"
 
-#: data/ui/window.ui:972
+#: src/window.ui:950
 #, fuzzy
 #| msgid "Toggle Orthographic"
 msgid "Orthonographic"
 msgstr "Alternar Ortográfica"
 
-#: data/ui/window.ui:978
+#: src/window.ui:956
 #, fuzzy
 #| msgid "Open File"
 msgid "Open HDRI Folder"
 msgstr "Abrir arquivo"
 
-#: data/ui/window.ui:982
+#: src/window.ui:960
 msgid "Open Configurations Folder"
 msgstr ""
 
-#: data/ui/window.ui:1037
-msgid "Comma separated list of the supported extensions"
-msgstr ""
-
-#: data/ui/file_row.ui:83
+#: src/file_row.ui:83
 #, fuzzy
 #| msgid "Open File"
 msgid "Open HDRI"
 msgstr "Abrir arquivo"
+
+#: src/settings_dialog.ui:34
+msgid "Comma separated list of the supported extensions"
+msgstr ""
+
+#~ msgid "- X"
+#~ msgstr "- X"
+
+#~ msgid "+ X"
+#~ msgstr "- X"
+
+#~ msgid "- Y"
+#~ msgstr "- Y"
+
+#~ msgid "+ Y"
+#~ msgstr "+ Y"
+
+#~ msgid "- Z"
+#~ msgstr "- Z"
+
+#~ msgid "+ Z"
+#~ msgstr "+ Z"
 
 #, fuzzy
 #~| msgid "Benchy with dark theme"
