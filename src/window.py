@@ -33,6 +33,10 @@ from gettext import gettext as _
 
 GObject.type_register(Exb.View)
 GObject.type_register(Exb.Engine)
+GObject.type_register(Exb.Blending)
+GObject.type_register(Exb.Sprites)
+GObject.type_register(Exb.AntiAliasing)
+GObject.type_register(Exb.Direction)
 GObject.type_register(ExhibitSettingsDialog)
 
 log = logging.getLogger(__name__)
@@ -603,6 +607,10 @@ class ExbWindow(Adw.ApplicationWindow):
             img.save(filename=thumbnail_filepath)
 
         return thumbnail_filepath
+
+    @Gtk.Template.Callback("enum_name")
+    def enum_name (self, item):
+        return item.get_nick().title().replace("-", " ")
 
     @Gtk.Template.Callback("on_close_request")
     def on_close_request(self, window):
