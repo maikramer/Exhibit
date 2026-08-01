@@ -20,8 +20,8 @@
             "sources": [
                 {
                     "type": "archive",
-                    "url": "https://imagemagick.org/archive/releases/ImageMagick-6.9.12-96.tar.xz",
-                    "sha256": "570419d87cc8f22d36a038b4a91de349b181d3c23cfbedc241f89789564402b0"
+                    "url": "https://github.com/ImageMagick/ImageMagick/archive/refs/tags/7.1.2-29.tar.gz",
+                    "sha256": "b05924ad73c6932ba62c9b32f338f0619b90b767162c8b767f3566556187a284"
                 }
             ]
         }
