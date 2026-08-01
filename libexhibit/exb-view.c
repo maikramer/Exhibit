@@ -78,14 +78,17 @@ exb_view_get_property (GObject    *object,
     case PROP_ENGINE:
       g_value_set_object (value, exb_view_get_engine (self));
       break;
+
     case PROP_ALWAYS_POINT_UP:
       g_value_set_boolean (value, priv->always_point_up);
       break;
+
     case PROP_INTERACTIVE:
       g_value_set_boolean (value, priv->interactive);
       break;
+
     default:
-      break;
+      g_assert_not_reached ();
     }
 }
 
@@ -105,14 +108,17 @@ exb_view_set_property (GObject      *object,
     case PROP_ALWAYS_POINT_UP:
       priv->always_point_up = g_value_get_boolean (value);
       break;
+
     case PROP_INTERACTIVE:
       priv->interactive = g_value_get_boolean (value);
       break;
+
     case PROP_ENGINE:
       exb_view_set_engine (self, g_value_get_object (value));
       break;
+
     default:
-      break;
+      g_assert_not_reached ();
     }
 }
 
@@ -132,6 +138,23 @@ exb_view_dispose (GObject *object)
 }
 
 static void
+exb_view_realize (GtkWidget *widget)
+{
+  ExbView *self = EXB_VIEW (widget);
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  EXB_ENTRY;
+
+  if (!priv->engine_is_initialized)
+    {
+      _exb_engine_initialize (priv->engine);
+      priv->engine_is_initialized = TRUE;
+    }
+
+  EXB_EXIT;
+}
+
+static void
 exb_view_unrealize (GtkWidget *widget)
 {
   ExbView *self = EXB_VIEW (widget);
@@ -140,6 +163,7 @@ exb_view_unrealize (GtkWidget *widget)
   EXB_ENTRY;
 
   _exb_engine_finalize (priv->engine);
+  priv->engine_is_initialized = FALSE;
 
   g_signal_connect_object (priv->engine, "changed",
                            G_CALLBACK (gtk_gl_area_queue_render), GTK_GL_AREA (self), G_CONNECT_SWAPPED);
@@ -161,17 +185,11 @@ exb_view_render (GtkGLArea    *gl_area,
 
   gtk_gl_area_make_current (gl_area);
 
-  if (!priv->engine_is_initialized)
-    {
-      _exb_engine_initialize (priv->engine);
-      priv->engine_is_initialized = TRUE;
-    }
-
   width = gtk_widget_get_width (GTK_WIDGET (gl_area));
   height = gtk_widget_get_height (GTK_WIDGET (gl_area));
 
-  exb_engine_set_size(priv->engine, width, height);
-  exb_engine_render(priv->engine);
+  exb_engine_set_size (priv->engine, width, height);
+  exb_engine_render (priv->engine);
 
   EXB_RETURN (TRUE);
 }
@@ -180,13 +198,24 @@ static void
 exb_view_snapshot (GtkWidget   *widget,
                    GtkSnapshot *snapshot)
 {
-  GdkRGBA color = { 0.0f, 0.0f, 0.0f, 1.0f };
+  ExbView *self = EXB_VIEW (widget);
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  GdkRGBA color;
+
+  if (priv->engine_is_initialized && !exb_engine_get_loading_file (priv->engine))
+    {
+       color = (GdkRGBA){ 0.0f, 0.0f, 0.0f, 1.0f };
+    }
+  else
+    {
+       color = (GdkRGBA){ 1.0f, 1.0f, 1.0f, 1.0f };
+    }
 
   gtk_snapshot_append_color (snapshot,
-                              &color,
-                              &GRAPHENE_RECT_INIT (0, 0,
-                                                   gtk_widget_get_width (widget),
-                                                   gtk_widget_get_height (widget)));
+                             &color,
+                             &GRAPHENE_RECT_INIT (0, 0,
+                                                  gtk_widget_get_width (widget),
+                                                  gtk_widget_get_height (widget)));
 
   GTK_WIDGET_CLASS (exb_view_parent_class)->snapshot (widget, snapshot);
 }
@@ -277,7 +306,7 @@ on_drag_update (ExbView        *self,
         exb_engine_rotate (priv->engine, dx, dy);
       else
         exb_engine_rotate_with_limit (priv->engine, dx, dy);
-  }
+    }
   else if (button == 2)
     {
       exb_engine_pan (priv->engine, dx, dy);
@@ -305,6 +334,8 @@ exb_view_init (ExbView *self)
   gtk_gl_area_set_has_depth_buffer (GTK_GL_AREA (self), TRUE);
   gtk_gl_area_set_auto_render (GTK_GL_AREA (self), TRUE);
 
+  g_signal_connect_object (self, "realize",
+                           G_CALLBACK (exb_view_realize), NULL, G_CONNECT_DEFAULT);
   g_signal_connect_object (self, "unrealize",
                            G_CALLBACK (exb_view_unrealize), NULL, G_CONNECT_DEFAULT);
   g_signal_connect_object (self, "render",
