@@ -1440,7 +1440,7 @@ exb_engine_class_init (ExbEngineClass *klass)
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_SPRITES] =
-      g_param_spec_enum ("sprites-type",
+      g_param_spec_enum ("sprites",
                          NULL, NULL,
                          EXB_TYPE_SPRITES,
                          EXB_SPRITES_NONE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
