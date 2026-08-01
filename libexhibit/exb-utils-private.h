@@ -29,21 +29,7 @@
 
 G_BEGIN_DECLS
 
-const char *    exb_direction_to_string            (ExbDirection direction);
-gboolean        exb_direction_from_string          (const char   *str,
-                                                    ExbDirection *out);
 graphene_vec3_t exb_direction_to_graphene_vec3     (ExbDirection direction);
-const char *    exb_sprite_type_to_string          (ExbSpriteType type);
-gboolean        exb_sprite_type_from_string        (const char    *str,
-                                                    ExbSpriteType *out);
-
-const char *    exb_blending_mode_to_string        (ExbBlendingMode mode);
-gboolean        exb_blending_mode_from_string      (const char      *str,
-                                                    ExbBlendingMode *out);
-
-const char *    exb_anti_aliasing_mode_to_string   (ExbAntiAliasingMode mode);
-gboolean        exb_anti_aliasing_mode_from_string (const char          *str,
-                                                    ExbAntiAliasingMode *out);
 
 const char *    exb_f3d_options_get_as_string      (f3d_options_t *options,
                                                     const char    *name);
