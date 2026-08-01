@@ -241,6 +241,8 @@ ExbPreset *
 exb_presets_get_default_for (ExbPresets *self,
                              const gchar *filename)
 {
+  EXB_ENTRY;
+
   g_return_val_if_fail (EXB_IS_PRESETS (self), NULL);
   g_return_val_if_fail (filename != NULL, NULL);
 
@@ -257,8 +259,10 @@ exb_presets_get_default_for (ExbPresets *self,
       match_regex = g_regex_new (preset_formats, G_REGEX_DEFAULT, G_REGEX_MATCH_DEFAULT, NULL);
 
       if (match_regex && g_regex_match (match_regex, filename, 0, NULL))
-        return preset;
+        {
+          EXB_RETURN (preset);
+        }
     }
 
-  return NULL;
+  EXB_RETURN (NULL);
 }
