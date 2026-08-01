@@ -122,40 +122,6 @@
                                 <property name="name">error_page</property>
                               </object>
                             </child>
-                            <child>
-                              <object class="GtkStackPage">
-                                <property name="child">
-                                  <object class="GtkBox">
-                                    <property name="margin-bottom">12</property>
-                                    <property name="margin-end">12</property>
-                                    <property name="margin-start">12</property>
-                                    <property name="margin-top">12</property>
-                                    <property name="orientation">vertical</property>
-                                    <property name="spacing">12</property>
-                                    <property name="valign">center</property>
-                                    <property name="vexpand">True</property>
-                                    <child>
-                                      <object class="AdwSpinner">
-                                        <property name="height-request">50</property>
-                                        <property name="width-request">50</property>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="GtkLabel" id="loading_label">
-                                        <property name="justify">center</property>
-                                        <property name="label">Loading some_file_with_a_very_very_long_filename.stl</property>
-                                        <property name="wrap">True</property>
-                                        <property name="wrap-mode">word-char</property>
-                                        <style>
-                                          <class name="dim-label"/>
-                                        </style>
-                                      </object>
-                                    </child>
-                                  </object>
-                                </property>
-                                <property name="name">loading_page</property>
-                              </object>
-                            </child>
                           </object>
                         </property>
                       </object>
@@ -199,6 +165,7 @@
                   <object class="AdwToolbarView">
                     <property name="top-bar-style">flat</property>
                     <property name="bottom-bar-style">flat</property>
+                    <property name="sensitive" bind-source="engine" bind-property="loading-file" bind-flags="invert-boolean">False</property>
                     <child type="top">
                       <object class="AdwHeaderBar">
                         <property name="title-widget">
@@ -700,14 +667,6 @@
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">Up Direction</property>
                                             <property name="subtitle" translatable="yes">Changing it will reload the file</property>
-                                            <property name="model">
-                                              <object class="AdwEnumListModel">
-                                                <property name="enum-type">ExbDirection</property>
-                                              </object>
-                                            </property>
-                                            <property name="expression">
-                                              <lookup type="AdwEnumListItem" name="nick"/>
-                                            </property>
                                           </object>
                                         </child>
                                       </object>
@@ -866,10 +825,23 @@
                         <property name="content">
                           <object class="AdwToastOverlay" id="toast_overlay">
                             <property name="child">
-                              <object class="ExbView" id="viewer">
-                                <property name="engine">
-                                  <object class="ExbEngine" id="engine"/>
-                                </property>
+                              <object class="GtkOverlay">
+                                <child>
+                                  <object class="ExbView" id="viewer">
+                                    <property name="engine">
+                                      <object class="ExbEngine" id="engine"/>
+                                    </property>
+                                  </object>
+                                </child>
+                                <child type="overlay">
+                                  <object class="AdwStatusPage" id="loading_status_page">
+                                    <property name="visible" bind-source="engine" bind-property="loading-file">False</property>
+                                    <property name="paintable">
+                                      <object class="AdwSpinnerPaintable"/>
+                                    </property>
+                                    <property name="title">Loading</property>
+                                  </object>
+                                </child>
                               </object>
                             </property>
                           </object>
@@ -899,8 +871,6 @@
                   </object>
                 </child>
               </object>
-
-
             </property>
           </object>
               </property>
@@ -910,6 +880,7 @@
       </object>
     </property>
   </template>
+  <object class="ExhibitSettingsDialog" id="settings_dialog"/>
   <menu id="primary_menu">
     <section>
       <item>
@@ -1014,3 +985,4 @@
     </section>
   </menu>
 </interface>
+

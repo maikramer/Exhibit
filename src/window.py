@@ -22,15 +22,18 @@ import json
 import re
 import threading
 import logging
+import asyncio
 
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Exb
 from .file_row import FileRow
 from wand.image import Image
+from .settings_dialog import ExhibitSettingsDialog
 
 from gettext import gettext as _
 
 GObject.type_register(Exb.View)
 GObject.type_register(Exb.Engine)
+GObject.type_register(ExhibitSettingsDialog)
 
 log = logging.getLogger(__name__)
 
@@ -97,7 +100,7 @@ settings = Gio.Settings.new('io.github.nokse22.Exhibit')
 class ExbWindow(Adw.ApplicationWindow):
     __gtype_name__ = 'ExbWindow'
 
-    loading_label = Gtk.Template.Child()
+    settings_dialog = Gtk.Template.Child()
 
     split_view = Gtk.Template.Child()
 
@@ -172,7 +175,7 @@ class ExbWindow(Adw.ApplicationWindow):
 
         self.save_settings_action = self.create_action(
             'save-settings', self.on_save_settings)
-        self.save_settings_action.set_enabled(False)
+        # self.save_settings_action.set_enabled(False)
 
         # Saving all the useful paths
         data_home = os.environ["XDG_DATA_HOME"]
@@ -184,6 +187,8 @@ class ExbWindow(Adw.ApplicationWindow):
 
         os.makedirs(self.user_configurations_path, exist_ok=True)
         os.makedirs(data_home + "/other files/", exist_ok=True)
+
+        self.presets = Exb.Presets.new_with_paths([self.user_configurations_path])
 
         # Create the hdri folder and add the default if there are none
         self.setup_hdri_folder()
@@ -320,33 +325,6 @@ class ExbWindow(Adw.ApplicationWindow):
         for key, value in self.configurations[name]["other-settings"].items():
             self.window_settings.set_setting(key, value)
 
-    def check_for_options_change(self):
-        if self.block_reload:
-            return
-
-        state_name = self.settings_action.get_state().get_string()
-        if state_name == "custom":
-            return
-
-        log.debug(f"Checking for changed options from {state_name}")
-
-        state_options = self.engine.get_default_user_customizable_settings()
-
-        for key, value in self.configurations[state_name]["view-settings"].items():
-            state_options[key] = value
-
-        for key, value in self.configurations[state_name]["other-settings"].items():
-            state_options[key] = value
-
-        current_settings = self.engine.get_user_customized_settings()
-        for key, value in state_options.items():
-            if key in current_settings:
-                if current_settings[key] != value:
-                    log.info(
-                        f"current key: {key}'s value is {current_settings[key]} != {value}")
-                    self.change_setting_state(GLib.Variant("s", "custom"))
-                    return
-
     # def periodic_check_for_file_change(self):
     #     if self.filepath == "":
     #         return True
@@ -387,10 +365,7 @@ class ExbWindow(Adw.ApplicationWindow):
         self.update_background_color()
 
     def on_save_settings(self, *args):
-        self.save_settings_name_entry.set_text("")
-        self.save_settings_extensions_entry.set_text("")
-        self.save_settings_expander.set_expanded(False)
-        self.save_dialog.present(self)
+        self.settings_dialog.present(self)
 
     def open_file_chooser(self, *args):
         file_filter = Gtk.FileFilter(name=_("All supported formats"))
@@ -416,32 +391,34 @@ class ExbWindow(Adw.ApplicationWindow):
             log.error(f"Exception Opening file: {e}")
             return
 
-        if file:
-            filepath = file.get_path()
-            log.info("open file response")
-            self.on_file_opened()
-            self.viewer.get_engine().set_file(file)
-            # self.load_file(filepath=filepath)
+        self.load_file(file)
 
-    def load_file(self, **kwargs):
-        self.startup_stack.set_visible_child_name("loading_page")
-        self.stack.set_visible_child_name("startup_page")
-        self.loading_label.set_label(
+    def load_file(self, file):
+        if not file:
+            return
+
+        filepath = file.get_path()
+
+        preset = self.presets.get_default_for(filepath)
+        self.engine.apply_preset(preset)
+
+        try:
+            result = self.engine.load_file(file)
+        except Exception as e:
+            log.warn(e)
+            self.on_file_not_opened(filepath)
+            return
+
+        self.on_file_opened()
+
+        self.loading_status_page.set_description(
             _("Loading {}").format(
                 os.path.basename(kwargs.get("filepath", "Nothing"))))
-        self.block_reload = True
-        # self.viewer.initialize()
-        # GLib.timeout_add(
-        #     100,
-        #     lambda *args: threading.Thread(
-        #         target=self._load_file, kwargs=(kwargs)).start())
 
     def on_file_opened(self):
         log.debug("on file opened")
 
         self.update_time_stamp()
-        # if settings.get_boolean("auto-reload"):
-        #     self.change_checker.run()
 
         self.file_name = os.path.basename(self.filepath)
 
@@ -454,14 +431,10 @@ class ExbWindow(Adw.ApplicationWindow):
 
         self.update_background_color()
 
-        engine = self.viewer.get_engine()
-
-        if engine.get_property("animations-n") == 0:
+        if self.engine.get_property("animations-n") == 0:
             self.animation_group.set_visible(False)
         else:
             self.animation_group.set_visible(True)
-
-        self.block_reload = False
 
     def on_file_not_opened(self, filepath):
         log.debug("on file not opened")
@@ -474,8 +447,6 @@ class ExbWindow(Adw.ApplicationWindow):
             self.send_toast(_("Can't open") + " " + os.path.basename(filepath))
 
         self.update_background_color()
-
-        self.block_reload = False
 
     def send_toast(self, message):
         toast = Adw.Toast(title=message, timeout=2)
