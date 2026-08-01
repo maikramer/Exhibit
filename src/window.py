@@ -133,6 +133,8 @@ class ExbWindow(Adw.ApplicationWindow):
     animation_group = Gtk.Template.Child()
     play_button = Gtk.Template.Child()
 
+    loading_status_page = Gtk.Template.Child()
+
     width = 600
     height = 600
     distance = 0
