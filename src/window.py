@@ -414,8 +414,7 @@ class ExbWindow(Adw.ApplicationWindow):
         self.on_file_opened()
 
         self.loading_status_page.set_description(
-            _("Loading {}").format(
-                os.path.basename(kwargs.get("filepath", "Nothing"))))
+            _("Loading {}").format(os.path.basename(filepath)))
 
     def on_file_opened(self):
         log.debug("on file opened")
