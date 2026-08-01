@@ -64,10 +64,9 @@ typedef struct
 
 G_DEFINE_TYPE_WITH_PRIVATE (ExbEngine, exb_engine, G_TYPE_OBJECT)
 
-enum
+typedef enum
 {
-  PROP_0,
-  PROP_WIDTH,
+  PROP_WIDTH = 1,
   PROP_HEIGHT,
   PROP_FILE,
   PROP_STANDALONE,
@@ -79,11 +78,9 @@ enum
   PROP_GRID_COLOR,
   PROP_GRID_SUBDIVISIONS,
   PROP_BLENDING,
-  PROP_BLENDING_MODE,
   PROP_TONE_MAPPING,
   PROP_AMBIENT_OCCLUSION,
   PROP_ANTI_ALIASING,
-  PROP_ANTI_ALIASING_MODE,
   PROP_DISPLAY_DEPTH,
   PROP_HDRI_AMBIENT,
   PROP_HDRI_SKYBOX,
@@ -111,19 +108,18 @@ enum
   PROP_NORMAL_SCALE,
   PROP_VOLUME_RENDERING,
   PROP_VOLUME_INVERSE_OPACITY,
-  PROP_SHOW_SPRITES,
   PROP_SPRITES_SIZE,
-  PROP_SPRITES_TYPE,
+  PROP_SPRITES,
   PROP_ANIMATION_INDEX,
   PROP_ANIMATIONS_N,
   PROP_ANIMATION_ADJUSTMENT,
   PROP_SCIVIS,
   PROP_SCIVIS_COMPONENT,
   PROP_SCIVIS_CELLS,
-  N_PROPS
-};
+  PROP_LOADING_FILE,
+} ExbEngineProps;
 
-static GParamSpec *properties[N_PROPS];
+static GParamSpec *props[PROP_LOADING_FILE + 1];
 
 enum
 {
@@ -146,12 +142,10 @@ static const OptionMap option_maps[] = {
   { "grid-subdivisions",      "render.grid.subdivisions"          },
   { "grid-color",             "render.grid.color"                 },
   { "grid-subdivisions",      "render.grid.subdivisions"          },
-  { "blending",               "render.effect.blending.enable"     },
-  { "blending-mode",          "render.effect.blending.mode"       },
+  { "blending",               "render.effect.blending.mode"       },
   { "tone-mapping",           "render.effect.tone_mapping"        },
   { "ambient-occlusion",      "render.effect.ambient_occlusion"   },
-  { "anti-aliasing",          "render.effect.antialiasing.enable" },
-  { "anti-aliasing-mode",     "render.effect.antialiasing.mode"   },
+  { "anti-aliasing",          "render.effect.antialiasing.mode"   },
   { "display-depth",          "render.effect.display_depth"       },
   { "hdri-ambient",           "render.hdri.ambient"               },
   { "hdri-skybox",            "render.background.skybox"          },
@@ -180,9 +174,8 @@ static const OptionMap option_maps[] = {
   { "normal-scale",           "model.normal.scale"                },
   { "volume-rendering",       "model.volume.enable"               },
   { "volume-inverse-opacity", "model.volume.inverse"              },
-  { "show-sprites",           "model.point_sprites.enable"        },
   { "sprites-size",           "model.point_sprites.size"          },
-  { "sprites-type",           "model.point_sprites.type"          },
+  { "sprites",                "model.point_sprites.type"          },
   { "scivis",                 "model.scivis.enable"               },
   { "scivis-component",       "model.scivis.component"            },
   { "scivis-cells",           "model.scivis.cells"                },
@@ -251,9 +244,10 @@ exb_engine_load_file_finish_func (gpointer user_data)
   update_animations_data (self);
 
   priv->is_loading = FALSE;
+  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_LOADING_FILE]);
 
   g_set_object (&priv->file, data->file);
-  g_object_notify_by_pspec (G_OBJECT (self), properties[PROP_FILE]);
+  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_FILE]);
   g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 
   EXB_RETURN (G_SOURCE_REMOVE);
@@ -277,6 +271,7 @@ exb_engine_load_file_thread_func (gpointer user_data)
   g_message ("ExbEngine: Loading file: %s", file_path);
 
   priv->is_loading = TRUE;
+  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_LOADING_FILE]);
 
   f3d_scene_clear (priv->scene);
   if (!f3d_scene_add (priv->scene, file_path))
@@ -294,7 +289,7 @@ exb_engine_load_file_thread_func (gpointer user_data)
       finish_data->file = g_object_ref (data->file);
       g_idle_add (exb_engine_load_file_finish_func, finish_data);
 
-      EXB_RETURN (dex_future_new_for_boolean (TRUE));
+      EXB_RETURN (dex_future_new_true ());
     }
 }
 
@@ -331,7 +326,9 @@ exb_engine_play_animation (ExbEngine *self)
   EXB_ENTRY;
 
   if (priv->animation_handler_id)
-    EXB_EXIT;
+    {
+      EXB_EXIT;
+    }
 
   priv->animation_handler_id = g_timeout_add (1, advance_animation, self);
 
@@ -350,7 +347,9 @@ on_animation_adjustment_value_changed (ExbEngine     *self,
   g_return_if_fail (GTK_IS_ADJUSTMENT (adj));
 
   if (!priv->scene)
-    EXB_EXIT;
+    {
+      EXB_EXIT;
+    }
 
   f3d_scene_load_animation_time (priv->scene,
                                  gtk_adjustment_get_value (adj) / 1000);
@@ -412,7 +411,9 @@ exb_g_value_destroy (gpointer data)
   GValue *value = data;
 
   if(!G_IS_VALUE (value))
-    return;
+    {
+      return;
+    }
 
   g_value_unset (value);
   g_free (value);
@@ -475,8 +476,12 @@ f3d_options_map_lookup (ExbEngine  *self,
   g_return_val_if_fail (option_id != NULL, NULL);
 
   for (gsize i = 0; i < option_maps_len; i++)
-    if (g_str_equal(option_maps[i].prop_name, option_id))
-      f3d_option_id = g_strdup (option_maps[i].f3d_key);
+    {
+      if (g_str_equal(option_maps[i].prop_name, option_id))
+        {
+          f3d_option_id = g_strdup (option_maps[i].f3d_key);
+        }
+    }
 
   if (!f3d_has_option (self, f3d_option_id))
     {
@@ -495,7 +500,7 @@ f3d_get_rgb_option (ExbEngine  *self,
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const char *rgba_string = NULL;
   f3d_options_t *options = NULL;
-  g_auto(GStrv) parts = NULL;
+  g_auto (GStrv) parts = NULL;
 
   EXB_ENTRY;
 
@@ -557,10 +562,16 @@ copy_from_hash_table (GHashTable *hash_table,
   EXB_ENTRY;
 
   stored_value = (GValue *) g_hash_table_lookup (hash_table, prop_name);
+
   if (!stored_value || !G_IS_VALUE (stored_value))
-    EXB_RETURN (FALSE);
+    {
+      EXB_RETURN (FALSE);
+    }
+
   if (G_VALUE_TYPE (value) != G_VALUE_TYPE (stored_value))
-    EXB_RETURN (FALSE);
+    {
+      EXB_RETURN (FALSE);
+    }
 
   g_value_copy (stored_value, value);
   EXB_RETURN (TRUE);
@@ -660,9 +671,9 @@ f3d_get_option (ExbEngine  *self,
           g_value_set_object (value, NULL);
         }
     }
-  else if ((type == EXB_TYPE_ANTI_ALIASING_MODE) ||
-           (type == EXB_TYPE_BLENDING_MODE) ||
-           (type == EXB_TYPE_SPRITE_TYPE) ||
+  else if ((type == EXB_TYPE_ANTI_ALIASING) ||
+           (type == EXB_TYPE_BLENDING) ||
+           (type == EXB_TYPE_SPRITES) ||
            (type == EXB_TYPE_DIRECTION))
     {
       g_autofree const char *option_value = NULL;
@@ -796,9 +807,9 @@ f3d_set_option (ExbEngine    *self,
           f3d_options_set_as_string_representation (options, f3d_key, "");
         }
     }
-  else if ((type == EXB_TYPE_ANTI_ALIASING_MODE) ||
-           (type == EXB_TYPE_BLENDING_MODE) ||
-           (type == EXB_TYPE_SPRITE_TYPE) ||
+  else if ((type == EXB_TYPE_ANTI_ALIASING) ||
+           (type == EXB_TYPE_BLENDING) ||
+           (type == EXB_TYPE_SPRITES) ||
            (type == EXB_TYPE_DIRECTION))
     {
       const char *enum_nick = NULL;
@@ -849,6 +860,7 @@ f3d_get_distance (ExbEngine *self)
 
   f3d_camera_get_position (priv->camera, f3d_camera_position);
   graphene_vec3_init_from_float (&camera_position, (float *) f3d_camera_position);
+
   return graphene_vec3_length (&camera_position);
 }
 
@@ -869,7 +881,9 @@ exb_engine_unoverride_option (ExbEngine  *self,
 
   g_value_init (&value, type);
   if (!f3d_get_option (self, &value, option_id, type))
-    EXB_RETURN (FALSE);
+    {
+      EXB_RETURN (FALSE);
+    }
 
   add_value_to_hash_table (priv->original_options, option_id, &value);
 
@@ -882,7 +896,9 @@ exb_engine_unoverride_option (ExbEngine  *self,
     }
 
   if (!f3d_options_is_optional (options, f3d_key))
-    EXB_RETURN (FALSE);
+    {
+      EXB_RETURN (FALSE);
+    }
 
   f3d_options_remove_value (options, f3d_key);
   g_message ("Removing value of %s", f3d_key);
@@ -907,7 +923,9 @@ exb_engine_override_option (ExbEngine  *self,
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
 
   if (!g_hash_table_lookup_extended (priv->original_options, option_id, NULL, &stored_value))
-    EXB_RETURN (FALSE);
+    {
+      EXB_RETURN (FALSE);
+    }
 
   g_value_init (&value, G_VALUE_TYPE (stored_value));
   g_value_copy (stored_value, &value);
@@ -931,33 +949,43 @@ exb_engine_get_property (GObject    *object,
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
-  switch (prop_id)
+  switch ((ExbEngineProps) prop_id)
     {
     case PROP_WIDTH:
       g_value_set_uint (value, priv->width);
       break;
+
     case PROP_HEIGHT:
       g_value_set_uint (value, priv->height);
       break;
+
     case PROP_FILE:
       g_value_set_object (value, exb_engine_get_file (self));
       break;
+
     case PROP_STANDALONE:
       g_value_set_boolean (value, priv->standalone);
       break;
+
     case PROP_OVERRIDE_MODEL_COLOR:
       g_value_set_boolean (value, !g_hash_table_contains (priv->original_options, "model-color"));
       break;
+
     case PROP_ANIMATION_ADJUSTMENT:
       g_value_set_object (value, priv->animation_adj);
       break;
+
     case PROP_ANIMATIONS_N:
       g_value_set_int (value, exb_engine_get_animations_n (self));
       break;
+
+    case PROP_LOADING_FILE:
+      g_value_set_boolean (value, priv->is_loading);
+      break;
+
     default:
       if (!f3d_get_option (self, value, pspec->name, pspec->value_type))
         G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
     }
 
   EXB_EXIT;
@@ -978,27 +1006,38 @@ exb_engine_set_property (GObject      *object,
 
   g_message ("Setting `%s`", pspec->name);
 
-  switch (prop_id)
+  switch ((ExbEngineProps) prop_id)
     {
     case PROP_WIDTH:
       exb_engine_set_size (self, g_value_get_uint (value), priv->height);
       break;
+
     case PROP_HEIGHT:
       exb_engine_set_size (self, priv->width, g_value_get_uint (value));
       break;
+
     case PROP_OVERRIDE_MODEL_COLOR:
-      if (!g_value_get_boolean (value))
-        exb_engine_unoverride_option (self, "model-color", GDK_TYPE_RGBA);
-      else
-        exb_engine_override_option (self, "model-color", GDK_TYPE_RGBA);
-      break;
+      {
+        if (!g_value_get_boolean (value))
+          {
+            exb_engine_unoverride_option (self, "model-color", GDK_TYPE_RGBA);
+          }
+        else
+          {
+            exb_engine_override_option (self, "model-color", GDK_TYPE_RGBA);
+          }
+        break;
+      }
+
     case PROP_ANIMATION_ADJUSTMENT:
       exb_engine_set_animation_adjustment (self, g_value_get_object (value));
       break;
+
     default:
       if (!f3d_set_option (self, value, pspec->name, pspec->value_type))
-        G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
-      break;
+        {
+          G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
+        }
     }
 
   EXB_EXIT;
@@ -1075,7 +1114,9 @@ _exb_engine_initialize (ExbEngine *self)
     }
 
   if (priv->file)
-    exb_engine_load_file (self, priv->file);
+    {
+      exb_engine_load_file (self, priv->file);
+    }
 
   EXB_EXIT;
 }
@@ -1142,6 +1183,8 @@ exb_engine_init (ExbEngine *self)
 
   exb_engine_set_animation_adjustment (self, g_object_new (GTK_TYPE_ADJUSTMENT, NULL));
 
+  dex_init ();
+
   EXB_EXIT;
 }
 
@@ -1158,323 +1201,311 @@ exb_engine_class_init (ExbEngineClass *klass)
       g_signal_new ("changed", G_TYPE_FROM_CLASS (klass), G_SIGNAL_RUN_LAST, 0,
                     NULL, NULL, g_cclosure_marshal_VOID__VOID, G_TYPE_NONE, 0);
 
-  properties[PROP_WIDTH] =
+  props[PROP_WIDTH] =
       g_param_spec_uint ("width",
                          NULL, NULL,
                          0, G_MAXUINT, 300,
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_HEIGHT] =
+  props[PROP_HEIGHT] =
       g_param_spec_uint ("height",
                          NULL, NULL,
                          0, G_MAXUINT, 300,
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_FILE] =
+  props[PROP_FILE] =
       g_param_spec_object ("file",
                            NULL, NULL,
                            G_TYPE_FILE,
                            G_PARAM_READABLE | G_PARAM_EXPLICIT_NOTIFY | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_STANDALONE] =
+  props[PROP_STANDALONE] =
       g_param_spec_boolean ("standalone",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_ORTHOGRAPHIC] =
+  props[PROP_ORTHOGRAPHIC] =
       g_param_spec_boolean ("orthographic",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SHOW_GRID] =
+  props[PROP_SHOW_GRID] =
       g_param_spec_boolean ("show-grid",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_GRID_ABSOLUTE] =
+  props[PROP_GRID_ABSOLUTE] =
       g_param_spec_boolean ("grid-absolute",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_GRID_UNIT] =
+  props[PROP_GRID_UNIT] =
       g_param_spec_double ("grid-unit",
                            NULL, NULL,
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_GRID_COLOR] =
+  props[PROP_GRID_COLOR] =
       g_param_spec_boxed ("grid-color",
                           NULL, NULL,
                           GDK_TYPE_RGBA,
                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_GRID_SUBDIVISIONS] =
+  props[PROP_GRID_SUBDIVISIONS] =
       g_param_spec_uint ("grid-subdivisions",
                          NULL, NULL,
                          0, G_MAXINT, 10,
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_BLENDING] =
-      g_param_spec_boolean ("blending",
-                            NULL, NULL,
-                            FALSE,
-                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-
-  properties[PROP_TONE_MAPPING] =
+  props[PROP_TONE_MAPPING] =
       g_param_spec_boolean ("tone-mapping",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_AMBIENT_OCCLUSION] =
+  props[PROP_AMBIENT_OCCLUSION] =
       g_param_spec_boolean ("ambient-occlusion",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_ANTI_ALIASING] =
-      g_param_spec_boolean ("anti-aliasing",
-                            NULL, NULL,
-                            FALSE,
-                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-
-  properties[PROP_DISPLAY_DEPTH] =
+  props[PROP_DISPLAY_DEPTH] =
       g_param_spec_boolean ("display-depth",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_HDRI_AMBIENT] =
+  props[PROP_HDRI_AMBIENT] =
       g_param_spec_boolean ("hdri-ambient",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_HDRI_SKYBOX] =
+  props[PROP_HDRI_SKYBOX] =
       g_param_spec_boolean ("hdri-skybox",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_HDRI_FILE] =
+  props[PROP_HDRI_FILE] =
       g_param_spec_object ("hdri-file",
                            NULL, NULL,
                            G_TYPE_FILE,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_BLUR_BACKGROUND] =
+  props[PROP_BLUR_BACKGROUND] =
       g_param_spec_boolean ("blur-background",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_BLUR_COC] =
+  props[PROP_BLUR_COC] =
       g_param_spec_double ("blur-coc",
                            NULL, NULL,
                            0.0, G_MAXDOUBLE, 20.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_LIGHT_INTENSITY] =
+  props[PROP_LIGHT_INTENSITY] =
       g_param_spec_double ("light-intensity",
                            NULL, NULL,
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_BACKGROUND_COLOR] =
+  props[PROP_BACKGROUND_COLOR] =
       g_param_spec_boxed ("background-color",
                           NULL, NULL,
                           GDK_TYPE_RGBA,
                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SHOW_EDGES] =
+  props[PROP_SHOW_EDGES] =
       g_param_spec_boolean ("show-edges",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_EDGES_WIDTH] =
+  props[PROP_EDGES_WIDTH] =
       g_param_spec_double ("edges-width",
                            NULL, NULL,
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_POINT_SIZE] =
+  props[PROP_POINT_SIZE] =
       g_param_spec_double ("point-size",
                            NULL, NULL,
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SHOW_ARMATURE] =
+  props[PROP_SHOW_ARMATURE] =
       g_param_spec_boolean ("show-armature",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_FINAL_SHADER] =
+  props[PROP_FINAL_SHADER] =
       g_param_spec_string ("final-shader",
                             NULL, NULL,
                             "",
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_OVERRIDE_MODEL_COLOR] =
+  props[PROP_OVERRIDE_MODEL_COLOR] =
       g_param_spec_boolean ("override-model-color",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_MODEL_COLOR] =
+  props[PROP_MODEL_COLOR] =
       g_param_spec_boxed ("model-color",
                           NULL, NULL,
                           GDK_TYPE_RGBA,
                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_MODEL_METALLIC] =
+  props[PROP_MODEL_METALLIC] =
       g_param_spec_double ("model-metallic",
                            NULL, NULL,
                            0.0, 1.0, 0.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_MODEL_ROUGHNESS] =
+  props[PROP_MODEL_ROUGHNESS] =
       g_param_spec_double ("model-roughness",
                            NULL, NULL,
                            0.0, 1.0, 0.5,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_MODEL_OPACITY] =
+  props[PROP_MODEL_OPACITY] =
       g_param_spec_double ("model-opacity",
                            NULL, NULL,
                            0.0, 1.0, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_MODEL_CHECKERBOARD] =
+  props[PROP_MODEL_CHECKERBOARD] =
       g_param_spec_boolean ("model-checkerboard",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_MODEL_UNLIT] =
+  props[PROP_MODEL_UNLIT] =
       g_param_spec_boolean ("model-unlit",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_TEXTURE_MATCAP] =
+  props[PROP_TEXTURE_MATCAP] =
       g_param_spec_object ("texture-matcap",
                            NULL, NULL,
                            G_TYPE_FILE,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_TEXTURE_BASE_COLOR] =
+  props[PROP_TEXTURE_BASE_COLOR] =
       g_param_spec_object ("texture-base-color",
                            NULL, NULL,
                            G_TYPE_FILE,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_TEXTURE_EMISSIVE] =
+  props[PROP_TEXTURE_EMISSIVE] =
       g_param_spec_object ("texture-emissive",
                            NULL, NULL,
                            G_TYPE_FILE,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_TEXTURE_MATERIAL] =
+  props[PROP_TEXTURE_MATERIAL] =
       g_param_spec_object ("texture-material",
                            NULL, NULL,
                            G_TYPE_FILE,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_NORMAL_SCALE] =
+  props[PROP_NORMAL_SCALE] =
       g_param_spec_double ("normal-scale",
                            NULL, NULL,
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_VOLUME_RENDERING] =
+  props[PROP_VOLUME_RENDERING] =
       g_param_spec_boolean ("volume-rendering",
                             NULL, NULL,
                             FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_VOLUME_INVERSE_OPACITY] =
+  props[PROP_VOLUME_INVERSE_OPACITY] =
       g_param_spec_boolean ("volume-inverse-opacity",
                             NULL, NULL,
                             FALSE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SHOW_SPRITES] =
-      g_param_spec_boolean ("show-sprites",
-                            NULL, NULL,
-                            FALSE,
-                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
-
-  properties[PROP_SPRITES_SIZE] =
+  props[PROP_SPRITES_SIZE] =
       g_param_spec_double ("sprites-size",
                            NULL, NULL,
                            0.0, G_MAXDOUBLE, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SPRITES_TYPE] =
+  props[PROP_SPRITES] =
       g_param_spec_enum ("sprites-type",
                          NULL, NULL,
-                         exb_sprite_type_get_type (),
-                         EXB_SPRITE_TYPE_SPHERE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+                         EXB_TYPE_SPRITES,
+                         EXB_SPRITES_NONE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_UP] =
+  props[PROP_UP] =
       g_param_spec_enum ("up",
                          NULL, NULL,
                          exb_direction_get_type (),
                          EXB_DIRECTION_POSITIVE_Y, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_ANIMATION_INDEX] =
+  props[PROP_ANIMATION_INDEX] =
       g_param_spec_int ("animation-index",
                         NULL, NULL,
                         0, 1000, 0,
                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_ANIMATIONS_N] =
+  props[PROP_ANIMATIONS_N] =
       g_param_spec_int ("animations-n",
                         NULL, NULL,
                         0, 1000, 0,
                         G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_ANIMATION_ADJUSTMENT] =
+  props[PROP_ANIMATION_ADJUSTMENT] =
       g_param_spec_object ("animation-adjustment",
                            NULL, NULL,
                            GTK_TYPE_ADJUSTMENT,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_ANTI_ALIASING_MODE] =
-      g_param_spec_enum ("anti-aliasing-mode",
+  props[PROP_ANTI_ALIASING] =
+      g_param_spec_enum ("anti-aliasing",
                          NULL, NULL,
-                         exb_anti_aliasing_mode_get_type (),
-                         EXB_ANTI_ALIASING_MODE_FXAA, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+                         EXB_TYPE_ANTI_ALIASING,
+                         EXB_ANTI_ALIASING_NONE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_BLENDING_MODE] =
-      g_param_spec_enum ("blending-mode",
+  props[PROP_BLENDING] =
+      g_param_spec_enum ("blending",
                          NULL, NULL,
-                         exb_blending_mode_get_type (),
-                         EXB_BLENDING_MODE_DDP, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+                         EXB_TYPE_BLENDING,
+                         EXB_BLENDING_NONE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SCIVIS] =
+  props[PROP_SCIVIS] =
       g_param_spec_boolean ("scivis",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SCIVIS_COMPONENT] =
+  props[PROP_SCIVIS_COMPONENT] =
       g_param_spec_int ("scivis-component",
                         NULL, NULL,
                         -2, -1, -1,
                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  properties[PROP_SCIVIS_CELLS] =
+  props[PROP_SCIVIS_CELLS] =
       g_param_spec_boolean ("scivis-cells",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
-  g_object_class_install_properties (object_class, N_PROPS, properties);
+  props[PROP_LOADING_FILE] =
+      g_param_spec_boolean ("loading-file",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READABLE | G_PARAM_STATIC_STRINGS);
+
+  g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 }
 
 /**
@@ -1525,7 +1556,9 @@ exb_engine_render (ExbEngine *self)
   g_return_val_if_fail (priv->window != NULL, FALSE);
 
   if (priv->is_loading)
-    EXB_RETURN (FALSE);
+    {
+      EXB_RETURN (FALSE);
+    }
 
   f3d_window_render (priv->window);
 
@@ -1551,7 +1584,9 @@ exb_engine_set_size (ExbEngine *self,
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   if (priv->window)
-    f3d_window_set_size (priv->window, width, height);
+    {
+      f3d_window_set_size (priv->window, width, height);
+    }
 
   priv->width = width;
   priv->height = height;
@@ -1574,7 +1609,9 @@ exb_engine_get_animations_n (ExbEngine *self)
   EXB_ENTRY;
 
   if (!priv->scene)
-    EXB_RETURN (0);
+    {
+      EXB_RETURN (0);
+    }
 
   animations = f3d_scene_available_animations (priv->scene);
 
@@ -1586,7 +1623,7 @@ exb_engine_get_animations_n (ExbEngine *self)
  * @self: a #ExbEngine
  * @file: a #GFile
  *
- * Returns: (transfer full): a [class@Dex.Future] that resolves to a boolean
+ * Returns: (transfer full): a [class@Dex.Future] that resolves to a boolean or an error
  */
 DexFuture *
 exb_engine_load_file (ExbEngine *self,
@@ -1607,18 +1644,18 @@ exb_engine_load_file (ExbEngine *self,
 
   file_path = g_file_get_path (data->file);
 
-  if (!file_path || !g_file_query_exists (data->file, NULL))
+  if (!g_file_query_exists (data->file, NULL))
     {
       EXB_RETURN (dex_future_new_for_error (g_error_new (G_IO_ERROR,
                                                          G_IO_ERROR_FAILED,
-                                                         "Coudn't load file '%s'",
+                                                         "Coudn't load file: '%s'",
                                                          file_path)));
     }
 
   if (!priv->scene)
     {
       g_set_object (&priv->file, data->file);
-      EXB_RETURN (dex_future_new_for_boolean (TRUE));
+      EXB_RETURN (dex_future_new_true ());
     }
 
   if (!f3d_scene_supports (priv->scene, file_path))
@@ -1677,11 +1714,14 @@ exb_engine_render_texture (ExbEngine *self)
   g_return_val_if_fail (priv->window != NULL, NULL);
 
   if (priv->is_loading)
-    EXB_RETURN (NULL);
+    {
+      EXB_RETURN (NULL);
+    }
 
-  img = f3d_window_render_to_image (priv->window, FALSE);
-  if (!img)
-    return NULL;
+  if (!(img = f3d_window_render_to_image (priv->window, FALSE)))
+    {
+      EXB_RETURN (NULL);
+    }
 
   width = f3d_image_get_width (img);
   height = f3d_image_get_height (img);
@@ -1690,9 +1730,11 @@ exb_engine_render_texture (ExbEngine *self)
   data = f3d_image_get_content (img);
   bytes = g_bytes_new (data, (size_t) width * height * channels);
 
-  texture = gdk_memory_texture_new (
-      (int) width, (int) height, channels == 4 ? GDK_MEMORY_R8G8B8A8 : GDK_MEMORY_R8G8B8, bytes,
-      (size_t) width * channels);
+  texture = gdk_memory_texture_new ((int) width,
+                                    (int) height,
+                                    channels == 4 ? GDK_MEMORY_R8G8B8A8 : GDK_MEMORY_R8G8B8, bytes,
+                                    (size_t) width * channels);
+
   EXB_RETURN (g_steal_pointer(&texture));
 }
 
@@ -1711,7 +1753,9 @@ exb_engine_zoom (ExbEngine *self,
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   if (!priv->camera)
-    return;
+    {
+      return;
+    }
 
   if (priv->orthographic)
     {
@@ -1742,7 +1786,9 @@ exb_engine_pan (ExbEngine *self,
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   if (!priv->camera)
-    return;
+    {
+      return;
+    }
 
   distance = f3d_get_distance(self);
   factor = 0.0000001 * priv->width + 0.001 * distance;
@@ -1768,7 +1814,9 @@ exb_engine_rotate (ExbEngine *self,
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   if (!priv->camera)
-    return;
+    {
+      return;
+    }
 
   elevation = dy * 0.5;
   azimuth = -dx * 0.5;
@@ -1883,4 +1931,12 @@ exb_engine_apply_preset (ExbEngine *self,
   g_return_if_fail (EXB_IS_PRESET (preset));
 
   _exb_preset_apply (preset, self);
+}
+
+gboolean
+exb_engine_get_loading_file (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+
+  return priv->is_loading;
 }

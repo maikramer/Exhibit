@@ -71,8 +71,10 @@ exb_preset_get_property (GObject    *object,
     case PROP_NAME:
       g_value_set_string (value, self->name);
       break;
+
     case PROP_FORMATS:
       break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
     }
@@ -91,8 +93,10 @@ exb_preset_set_property (GObject      *object,
     case PROP_NAME:
       exb_preset_set_name (self, g_value_get_string (value));
       break;
+
     case PROP_FORMATS:
       break;
+
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
     }
@@ -220,9 +224,9 @@ exb_preset_load_from_key_file (ExbPreset  *self,
         g_value_init (&value, G_TYPE_FILE);
         g_value_set_object (&value, file);
       }
-    else if ((type == EXB_TYPE_ANTI_ALIASING_MODE) ||
-             (type == EXB_TYPE_BLENDING_MODE)      ||
-             (type == EXB_TYPE_SPRITE_TYPE)         ||
+    else if ((type == EXB_TYPE_ANTI_ALIASING) ||
+             (type == EXB_TYPE_BLENDING)      ||
+             (type == EXB_TYPE_SPRITES)       ||
              (type == EXB_TYPE_DIRECTION))
       {
         g_autoptr (GEnumClass) enum_class = NULL;

@@ -64,5 +64,6 @@ void        exb_engine_rotate_with_limit (ExbEngine *self,
 void        exb_engine_reset_camera      (ExbEngine *self);
 void        exb_engine_apply_preset      (ExbEngine *self,
                                           ExbPreset *preset);
+gboolean    exb_engine_get_loading_file  (ExbEngine *self);
 
 G_END_DECLS
