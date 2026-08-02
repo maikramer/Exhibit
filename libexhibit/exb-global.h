@@ -59,7 +59,7 @@ typedef enum
   EXB_ANTI_ALIASING_NONE,
   EXB_ANTI_ALIASING_FXAA,
   EXB_ANTI_ALIASING_SSAA,
-  EXB_ANTI_ALIASING_TAA,
+  // EXB_ANTI_ALIASING_TAA, strange visual bug
 } ExbAntiAliasing;
 
 gchar ** exb_get_allowed_extensions (void);
