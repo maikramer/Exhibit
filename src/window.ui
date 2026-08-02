@@ -440,7 +440,6 @@
                                                 </property>
                                               </object>
                                             </child>
-
                                             <child>
                                               <object class="AdwSpinRow" id="model_opacity_spin">
                                                 <property name="hexpand">True</property>
@@ -457,8 +456,8 @@
                                                 </property>
                                               </object>
                                             </child>
-                                      </object>
-                                    </child>
+                                          </object>
+                                        </child>
                                         <child>
                                           <object class="AdwPreferencesGroup" id="color_group">
                                             <property name="hexpand">True</property>
@@ -692,14 +691,11 @@
                                       <object class="AdwPreferencesGroup" id="animation_group">
                                         <property name="title" translatable="yes">Animation</property>
                                         <child>
-                                          <object class="AdwSpinRow">
-                                            <property name="title" translatable="yes">Animation Index</property>
-                                            <property name="adjustment">
-                                               <object class="GtkAdjustment" id="animation_index_adj">
-                                                 <property name="upper">99</property>
-                                                 <property name="value" bind-source="engine" bind-property="animation-index" bind-flags="bidirectional | sync-create">0</property>
-                                                 <property name="step-increment">1.0</property>
-                                               </object>
+                                          <object class="AdwComboRow" id="animation_combo">
+                                            <property name="title" translatable="yes">Animation</property>
+                                            <property name="model">
+                                              <object class="GtkStringList" id="animation_combo_model">
+                                              </object>
                                             </property>
                                           </object>
                                         </child>

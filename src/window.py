@@ -121,20 +121,14 @@ class ExbWindow(Adw.ApplicationWindow):
 
     toast_overlay = Gtk.Template.Child()
 
-    grid_switch = Gtk.Template.Child()
-    absolute_grid_switch = Gtk.Template.Child()
-
     hdri_file_row = Gtk.Template.Child()
     up_direction_combo = Gtk.Template.Child()
-    automatic_settings_switch = Gtk.Template.Child()
-    automatic_reload_switch = Gtk.Template.Child()
-    point_sprites_type_combo = Gtk.Template.Child()
     model_scivis_component_combo = Gtk.Template.Child()
 
     startup_stack = Gtk.Template.Child()
-
     settings_section = Gtk.Template.Child()
 
+    animation_combo_model = Gtk.Template.Child()
     animation_group = Gtk.Template.Child()
     play_button = Gtk.Template.Child()
 
@@ -436,11 +430,7 @@ class ExbWindow(Adw.ApplicationWindow):
         self.no_file_loaded = False
 
         self.update_background_color()
-
-        if self.engine.get_property("animations-n") == 0:
-            self.animation_group.set_visible(False)
-        else:
-            self.animation_group.set_visible(True)
+        self.update_animation_ui()
 
     def on_file_not_opened(self, filepath):
         log.debug("on file not opened")
@@ -453,6 +443,15 @@ class ExbWindow(Adw.ApplicationWindow):
             self.send_toast(_("Can't open") + " " + os.path.basename(filepath))
 
         self.update_background_color()
+
+    def update_animation_ui(self):
+        if self.engine.get_animations_n() == 0:
+            self.animation_group.set_visible(False)
+
+            for i, s in enumerate(self.animation_combo_model):
+                self.animation_combo_model.remove(i)
+        else:
+            self.animation_group.set_visible(True)
 
     def send_toast(self, message):
         toast = Adw.Toast(title=message, timeout=2)
