@@ -200,8 +200,11 @@ typedef struct _LoadFileData
 static void
 load_file_data_free (LoadFileData *data)
 {
-  g_object_unref (data->file);
-  g_object_unref (data->engine);
+  if (data == NULL)
+    return;
+
+  g_clear_object (&data->file);
+  g_clear_object (&data->engine);
   g_free (data);
 }
 
@@ -256,7 +259,7 @@ exb_engine_load_file_finish_func (gpointer user_data)
 }
 
 static DexFuture *
-exb_engine_load_file_thread_func (gpointer user_data)
+load_file_func (gpointer user_data)
 {
   ExbEngine *self;
   ExbEnginePrivate *priv;
@@ -271,9 +274,6 @@ exb_engine_load_file_thread_func (gpointer user_data)
   file_path = g_file_get_path (data->file);
 
   g_message ("ExbEngine: Loading file: %s", file_path);
-
-  priv->is_loading = TRUE;
-  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_LOADING_FILE]);
 
   f3d_scene_clear (priv->scene);
   if (!f3d_scene_add (priv->scene, file_path))
@@ -695,7 +695,7 @@ f3d_get_option (ExbEngine  *self,
               final_option_value = g_strdup_printf("positive-%s", lowercase_axis);
             }
 
-          if (g_str_has_prefix(option_value, "-"))
+          if (g_str_has_prefix (option_value, "-"))
             {
               lowercase_axis = g_ascii_strdown (option_value + strlen("+"), -1);
               final_option_value = g_strdup_printf("negative-%s", lowercase_axis);
@@ -1721,7 +1721,6 @@ exb_engine_load_file (ExbEngine *self,
   ExbEnginePrivate *priv;
   g_autoptr (LoadFileData) data = NULL;
   g_autofree gchar *file_path = NULL;
-  DexFuture *future;
 
   EXB_ENTRY;
 
@@ -1758,12 +1757,19 @@ exb_engine_load_file (ExbEngine *self,
                                                          file_path)));
     }
 
-  future = dex_thread_spawn ("[load-file]",
-                             exb_engine_load_file_thread_func,
-                             g_steal_pointer (&data),
-                             (GDestroyNotify) load_file_data_free);
+  priv->is_loading = TRUE;
+  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_LOADING_FILE]);
 
-  EXB_RETURN (future);
+  EXB_RETURN (load_file_func (data));
+
+  /* TODO  Now loading a file is not thread safe */
+  /* DexFuture *future; */
+  /* future = dex_thread_spawn ("[load-file]", */
+  /*                            load_file_func, */
+  /*                            g_steal_pointer (&data), */
+  /*                            (GDestroyNotify) load_file_data_free); */
+
+  /* EXB_RETURN (future); */
 }
 
 /**
