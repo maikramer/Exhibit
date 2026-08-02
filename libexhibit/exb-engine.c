@@ -273,8 +273,6 @@ load_file_func (gpointer user_data)
 
   file_path = g_file_get_path (data->file);
 
-  g_message ("ExbEngine: Loading file: %s", file_path);
-
   f3d_scene_clear (priv->scene);
   if (!f3d_scene_add (priv->scene, file_path))
     {
@@ -436,8 +434,6 @@ flush_pending_option (gpointer key,
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (prop_value), FALSE);
 
-  g_message ("Flushing %s type: %s", prop_name, g_type_name (G_VALUE_TYPE (prop_value)));
-
   g_object_set_property (G_OBJECT (self), prop_name, prop_value);
 
   EXB_RETURN (TRUE);
@@ -460,7 +456,7 @@ f3d_has_option (ExbEngine   *self,
 
   if (!f3d_closest_key || !g_str_equal (f3d_key, f3d_closest_key))
     {
-      g_message ("ExbEngine: Invalid f3d key '%s' while getting option, closest is '%s'", f3d_key, f3d_closest_key);
+      g_warning ("ExbEngine: Invalid f3d key '%s' while getting option, closest is '%s'", f3d_key, f3d_closest_key);
       EXB_RETURN (FALSE);
     }
 
@@ -488,7 +484,7 @@ f3d_options_map_lookup (ExbEngine   *self,
 
   if (!f3d_has_option (self, f3d_option_id))
     {
-      g_message ("ExbEngine: Invalid pspec '%s' while getting option", option_id);
+      g_warning ("ExbEngine: Invalid pspec '%s' while getting option", option_id);
       EXB_RETURN (NULL);
     }
 
@@ -512,8 +508,6 @@ f3d_get_rgb_option (ExbEngine  *self,
 
   options = f3d_engine_get_options (priv->engine);
   rgba_string = exb_f3d_options_get_as_string (options, f3d_key);
-
-  g_message ("ExbEngine: RGBA string is '%s'", rgba_string);
 
   if (!rgba_string)
     EXB_RETURN (FALSE);
@@ -595,12 +589,9 @@ f3d_get_option (ExbEngine  *self,
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (value), FALSE);
 
-  g_message ("Getting `%s`, type: %s", option_id, g_type_name (type));
-
   if(g_hash_table_contains (priv->original_options, option_id) &&
      copy_from_hash_table (priv->original_options, option_id, value))
     {
-      g_message ("Value %s has been overridden", option_id);
       EXB_RETURN (TRUE);
     }
 
@@ -614,13 +605,13 @@ f3d_get_option (ExbEngine  *self,
 
   if (!(f3d_key = f3d_options_map_lookup (self, option_id)))
     {
-      g_message ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
+      g_warning ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
       EXB_RETURN (FALSE);
     }
 
   if (!f3d_options_has_value (options, f3d_key))
     {
-      g_message ("ExbEngine: Key '%s' has no value, default value is returned", f3d_key);
+      g_warning ("ExbEngine: Key '%s' has no value, default value is returned", f3d_key);
       EXB_RETURN (TRUE);
     }
 
@@ -713,7 +704,7 @@ f3d_get_option (ExbEngine  *self,
 
       if (!enum_value)
         {
-          g_message ("ExbEngine: Unknown string '%s' for enum '%s'", option_value, option_id);
+          g_warning ("ExbEngine: Unknown string '%s' for enum '%s'", option_value, option_id);
           EXB_RETURN (FALSE);
         }
 
@@ -721,7 +712,7 @@ f3d_get_option (ExbEngine  *self,
     }
   else
     {
-      g_message ("Type not found");
+      g_warn_if_reached ();
     }
 
   EXB_RETURN (TRUE);
@@ -742,8 +733,6 @@ f3d_set_option (ExbEngine    *self,
   g_return_val_if_fail (EXB_IS_ENGINE (self), FALSE);
   g_return_val_if_fail (G_IS_VALUE (value), FALSE);
 
-  g_message ("Setting `%s`, type: %s", option_id, g_type_name (type));
-
   if (!priv->engine)
     {
       add_value_to_hash_table (priv->pending_options, option_id, value);
@@ -760,7 +749,7 @@ f3d_set_option (ExbEngine    *self,
 
   if (!(f3d_key = f3d_options_map_lookup (self, option_id)))
     {
-      g_message ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
+      g_warning ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
       EXB_RETURN (FALSE);
     }
 
@@ -823,7 +812,7 @@ f3d_set_option (ExbEngine    *self,
 
       if (!enum_value)
         {
-          g_message ("ExbEngine: Unknown enum value %d for '%s'", g_value_get_enum (value), option_id);
+          g_warning ("ExbEngine: Unknown enum value %d for '%s'", g_value_get_enum (value), option_id);
           EXB_RETURN (FALSE);
         }
 
@@ -893,7 +882,7 @@ exb_engine_unoverride_option (ExbEngine  *self,
 
   if (!(f3d_key = f3d_options_map_lookup (self, option_id)))
     {
-      g_message ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
+      g_warning ("ExbEngine: Invalid pspec '%s' while setting option", option_id);
       EXB_RETURN (FALSE);
     }
 
@@ -903,8 +892,6 @@ exb_engine_unoverride_option (ExbEngine  *self,
     }
 
   f3d_options_remove_value (options, f3d_key);
-  g_message ("Removing value of %s", f3d_key);
-  g_message ("Now has value: %s", f3d_options_has_value (options, f3d_key) ? "TRUE" : "FALSE");
 
   EXB_RETURN (TRUE);
 }
@@ -1150,8 +1137,6 @@ exb_engine_finalize (GObject *object)
 
   g_return_if_fail (EXB_IS_ENGINE (self));
 
-  g_message ("ExbEngine: Finalizing");
-
   g_clear_object (&priv->file);
   g_clear_object (&priv->animation_adj);
 
@@ -1177,17 +1162,14 @@ _exb_engine_initialize (ExbEngine *self)
 
   if (priv->standalone)
     {
-      g_message ("ExbViewer: Initializing F3D with automatic (offscreen)");
       priv->engine = f3d_engine_create (true);
     }
   else if (g_getenv ("WAYLAND_DISPLAY"))
     {
-      g_message ("ExbViewer: Initializing F3D with external EGL");
       priv->engine = f3d_engine_create_external_egl ();
     }
   else if (g_getenv ("DISPLAY"))
     {
-      g_message ("ExbViewer: Initializing F3D with external GLX");
       priv->engine = f3d_engine_create_external_glx ();
     }
 
@@ -1248,8 +1230,6 @@ exb_engine_init (ExbEngine *self)
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
 
   EXB_ENTRY;
-
-  g_message ("ExbEngine: Initializing instance");
 
   priv->is_loading = FALSE;
   priv->standalone = FALSE;

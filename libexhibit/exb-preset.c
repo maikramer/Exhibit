@@ -344,7 +344,6 @@ apply_preset_property (const gchar *key,
                        GValue     *value,
                        ExbEngine  *engine)
 {
-  g_message ("Key: %s", key);
   g_object_set_property (G_OBJECT (engine), key, value);
 }
 

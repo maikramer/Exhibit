@@ -145,8 +145,6 @@ exb_view_dispose (GObject *object)
 
   g_return_if_fail (EXB_IS_VIEW (self));
 
-  g_message ("ExbView: Finalizing");
-
   g_clear_object (&priv->engine);
 
   G_OBJECT_CLASS (exb_view_parent_class)->dispose (object);
@@ -288,8 +286,6 @@ on_drag_begin (ExbView *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
-  g_message ("ExbView: drag begin");
-
   priv->drag_prev_x = 0;
   priv->drag_prev_y = 0;
 }
@@ -311,8 +307,6 @@ on_drag_update (ExbView        *self,
 
   dx = offset_x - priv->drag_prev_x;
   dy = offset_y - priv->drag_prev_y;
-
-  g_message ("ExbView: drag: %f %f", dx, dy);
 
   button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
 
@@ -339,7 +333,6 @@ exb_view_init (ExbView *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
-  g_message ("ExbView: Initializing instance");
   g_return_if_fail (EXB_IS_VIEW (self));
 
   priv->always_point_up = TRUE;
