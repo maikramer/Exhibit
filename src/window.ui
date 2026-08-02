@@ -571,7 +571,7 @@
                                           </object>
                                         </child>
                                         <child>
-                                          <object class="FileRow" id="hdri_file_row">
+                                          <object class="ExhibitFileRow" id="hdri_file_row">
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">HDRI Image</property>

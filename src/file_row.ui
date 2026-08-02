@@ -4,7 +4,7 @@
   <!-- interface-name t.ui -->
   <requires lib="gtk" version="4.12"/>
   <requires lib="libadwaita" version="1.0"/>
-  <template class="FileRow" parent="AdwPreferencesRow">
+  <template class="ExhibitFileRow" parent="AdwPreferencesRow">
     <property name="css-name">file-row</property>
     <child>
       <object class="GtkDropTarget" id="drop_target">
@@ -53,9 +53,9 @@
                 <child>
                   <object class="GtkLabel" id="title">
                     <property name="ellipsize">none</property>
-                    <property name="label" bind-source="FileRow" bind-property="title" bind-flags="sync-create"/>
+                    <property name="label" bind-source="ExhibitFileRow" bind-property="title" bind-flags="sync-create"/>
                     <property name="lines">0</property>
-                    <property name="mnemonic-widget">FileRow</property>
+                    <property name="mnemonic-widget">ExhibitFileRow</property>
                     <property name="wrap">True</property>
                     <property name="wrap-mode">word-char</property>
                     <property name="xalign">0</property>

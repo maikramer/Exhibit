@@ -24,13 +24,13 @@ from gettext import gettext as _
 import os
 
 
-class ImageThumbnail(Gtk.FlowBoxChild):
-    __gtype_name__ = "ImageThumbnail"
+class ExhibitImageThumbnail(Gtk.FlowBoxChild):
+    __gtype_name__ = "ExhibitImageThumbnail"
 
     def __init__(self, file_thumbnail, hdri_file):
         super().__init__()
 
-        self.hdri_file = hdri_file
+        self.hdri_file: Gio.File = Gio.File.new_for_path(hdri_file)
 
         file = Gio.File.new_for_path(file_thumbnail)
         image = Gtk.Picture(
@@ -47,13 +47,8 @@ class ImageThumbnail(Gtk.FlowBoxChild):
 
 
 @Gtk.Template(resource_path="/io/github/nokse22/Exhibit/file_row.ui")
-class FileRow(Adw.PreferencesRow):
-    __gtype_name__ = "FileRow"
-
-    __gsignals__ = {
-        "delete-file": (GObject.SignalFlags.RUN_FIRST, None, ()),
-        "file-added": (GObject.SignalFlags.RUN_FIRST, None, (str,)),
-    }
+class ExhibitFileRow(Adw.PreferencesRow):
+    __gtype_name__ = "ExhibitFileRow"
 
     file_button = Gtk.Template.Child()
     filename_label = Gtk.Template.Child()
@@ -66,7 +61,7 @@ class FileRow(Adw.PreferencesRow):
     def __init__(self):
         super().__init__()
 
-        self._file = None
+        self._file: Gio.File = None
 
         self.title = ""
 
@@ -82,53 +77,43 @@ class FileRow(Adw.PreferencesRow):
 
         self.drop_target.set_gtypes([Gdk.FileList])
 
-    @GObject.Property(type=Gio.File, default=None, flags=GObject.ParamFlags.READWRITE | GObject.ParamFlags.EXPLICIT_NOTIFY)
+    @GObject.Property(type=Gio.File, default=None, flags=GObject.ParamFlags.READWRITE)
     def file(self):
         return self._file
 
     @file.setter
     def file(self, value):
-        if self._file == value:
-            return
         self._file = value
+
         if value is not None:
-            self.set_filename(value.get_path())
+            filename = value.get_path()
+            self.filename_label.set_label(filename)
+            self.filename_label.set_visible(True)
+            self.filename_label.set_tooltip_text(filename)
+            self.delete_button.set_visible(True)
         else:
-            self.on_delete_clicked()
+            self.filename_label.set_visible(False)
+            self.delete_button.set_visible(False)
+
         self.notify("file")
 
     def on_open_clicked(self, btn):
         self.on_open_file_dialog()
 
-    def set_filename(self, filepath):
-        if filepath == "":
-            self.on_delete_clicked()
-            return
-        self.filepath = filepath
-        self._file = Gio.File.new_for_path(filepath)
-        filename = os.path.basename(filepath)
-        self.filename_label.set_label(filename)
-        self.filename_label.set_visible(True)
-        self.filename_label.set_tooltip_text(filename)
-        self.delete_button.set_visible(True)
-
     def on_delete_clicked(self, *args):
-        self.filename_label.set_visible(False)
-        self.delete_button.set_visible(False)
-        self.emit("delete-file")
+        self.file = None
 
     def on_drop_received(self, drop, value, x, y):
-        filepath = value.get_files()[0].get_path()
-        extension = os.path.splitext(filepath)[1][1:].lower()
+        file = value.get_files()[0]
+        extension = os.path.splitext(file.get_path())[1][1:].lower()
         if extension in self.file_patterns:
-            self.emit("file-added", filepath)
-            self.set_filename(filepath)
+            self.file = file
 
     def add_suggested_file(self, file_thumbnail, filepath):
         if os.path.isfile(filepath):
             self.suggestions_box.set_visible(True)
 
-            hdri_thumbnail = ImageThumbnail(file_thumbnail, filepath)
+            hdri_thumbnail = ExhibitImageThumbnail(file_thumbnail, filepath)
             self.suggestions_box.append(hdri_thumbnail)
 
             self.suggested_files_n += 1
@@ -136,9 +121,7 @@ class FileRow(Adw.PreferencesRow):
             self.suggestions_box.set_size_request(-1, height)
 
     def on_image_activated(self, flow_box, child):
-        filepath = child.hdri_file
-        self.set_filename(filepath)
-        self.emit("file-added", filepath)
+        self.file = child.hdri_file
 
     def on_open_file_dialog(self, *args):
         file_filter = Gtk.FileFilter(name=_("All supported formats"))
@@ -160,6 +143,4 @@ class FileRow(Adw.PreferencesRow):
         file = dialog.open_finish(response)
 
         if file:
-            filepath = file.get_path()
-            self.set_filename(filepath)
-            self.emit("file-added", filepath)
+            self.file = file

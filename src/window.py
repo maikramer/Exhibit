@@ -25,8 +25,9 @@ import logging
 import asyncio
 
 from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Exb
-from .file_row import FileRow
 from wand.image import Image
+
+from .file_row import ExhibitFileRow
 from .settings_dialog import ExhibitSettingsDialog
 
 from gettext import gettext as _
