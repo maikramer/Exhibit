@@ -30,7 +30,7 @@
  *
  * Returns: (transfer full) (array zero-terminated=1) (nullable): A list of strings
  */
-char **
+gchar **
 exb_get_allowed_extensions (void)
 {
   g_autoptr(GPtrArray) array = g_ptr_array_new_with_free_func (g_free);
@@ -44,15 +44,15 @@ exb_get_allowed_extensions (void)
       return NULL;
     }
 
-  for (int i = 0; i < count; i++)
+  for (gint i = 0; i < count; i++)
     {
       if (readers[i].extensions)
         {
-          for (char **ext = readers[i].extensions; *ext; ext++)
+          for (gchar **ext = readers[i].extensions; *ext; ext++)
             g_ptr_array_add (array, g_strdup (*ext));
         }
     }
 
   g_ptr_array_add (array, NULL);
-  return (char **) g_ptr_array_free (g_steal_pointer (&array), FALSE);
+  return (gchar **) g_ptr_array_free (g_steal_pointer (&array), FALSE);
 }

@@ -62,6 +62,6 @@ typedef enum
   EXB_ANTI_ALIASING_TAA,
 } ExbAntiAliasing;
 
-char ** exb_get_allowed_extensions (void);
+gchar ** exb_get_allowed_extensions (void);
 
 G_END_DECLS
