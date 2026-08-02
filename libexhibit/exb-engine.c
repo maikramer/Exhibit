@@ -625,7 +625,7 @@ f3d_get_option (ExbEngine  *self,
 
   if (g_str_equal (option_id, "animation-index"))
     {
-      gint values[] = {};
+      gint values[64] = {};
       size_t size;
       f3d_options_get_as_int_vector (options, f3d_key, values, &size);
       g_value_set_int (value, values[0]);
