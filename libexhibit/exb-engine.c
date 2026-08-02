@@ -703,7 +703,9 @@ f3d_get_option (ExbEngine  *self,
         }
       else
         {
-          final_option_value = g_strdup (option_value);
+          GString *copy = g_string_new (option_value);
+          g_string_replace (copy, "_", "-", 0);
+          final_option_value =  g_string_free (copy, FALSE);
         }
 
       enum_class = g_type_class_ref (G_VALUE_TYPE (value));
@@ -837,7 +839,9 @@ f3d_set_option (ExbEngine    *self,
         }
       else
         {
-          option_value = g_strdup (enum_nick);
+          GString *copy = g_string_new (enum_nick);
+          g_string_replace (copy, "-", "_", 0);
+          option_value =  g_string_free (copy, FALSE);
         }
 
       f3d_options_set_as_string_representation (options, f3d_key, option_value);
