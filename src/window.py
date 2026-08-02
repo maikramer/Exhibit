@@ -42,36 +42,8 @@ GObject.type_register(ExhibitSettingsDialog)
 
 log = logging.getLogger(__name__)
 
-up_dir_n_to_string = {
-    0: "-X",
-    1: "+X",
-    2: "-Y",
-    3: "+Y",
-    4: "-Z",
-    5: "+Z"
-}
-
-up_dir_string_to_n = {
-    "-X": 0,
-    "+X": 1,
-    "-Y": 2,
-    "+Y": 3,
-    "-Z": 4,
-    "+Z": 5
-}
-
-up_dirs_vector = {
-    "-X": (-1.0, 0.0, 0.0),
-    "+X": (1.0, 0.0, 0.0),
-    "-Y": (0.0, -1.0, 0.0),
-    "+Y": (0.0, 1.0, 0.0),
-    "-Z": (0.0, 0.0, -1.0),
-    "+Z": (0.0, 0.0, 1.0)
-}
-
-allowed_extensions = []
-
-image_patterns = ["hdr", "exr", "png", "jpg", "pnm", "tiff", "bmp"]
+image_patt = ["hdr", "exr", "png", "jpg", "pnm", "tiff", "bmp"]
+model_patt = [s for s in Exb.get_allowed_extensions() if s not in image_patt]
 
 
 class PeriodicChecker(GObject.Object):
@@ -207,7 +179,7 @@ class ExbWindow(Adw.ApplicationWindow):
         self.split_view.set_show_sidebar(self.sidebar_default_visible)
 
         # Getting the saved HDRI and generating thumbnails
-        self.hdri_file_row.file_patterns = image_patterns
+        self.hdri_file_row.file_patterns = image_patt
         self.hdri_file_row.window = self
 
         for filename in list_files(self.hdri_path):
@@ -258,11 +230,6 @@ class ExbWindow(Adw.ApplicationWindow):
     # Functions that set the UI from the settings, triggered when
     #   a setting has changed.
 
-    def set_up_direction_combo(self, *args):
-        val = up_dir_string_to_n[self.engine.get_property("up").value]
-        log.info(f"Setting up direction combo to {val}")
-        self.up_direction_combo.set_selected(val)
-
     def set_scivis_component_combo(self, setting, *args):
         selected = self.model_scivis_component_combo.get_selected()
         log.debug(
@@ -278,10 +245,6 @@ class ExbWindow(Adw.ApplicationWindow):
 
     # Functions that are called when a UI changes, they should only
     #   set the corresponding setting.
-
-    def on_up_direction_combo_changed(self, combo, *args):
-        direction = up_dir_n_to_string[combo.get_selected()]
-        self.engine.set_property("up", direction)
 
     def on_scivis_component_combo_changed(self, *args):
         selected = self.model_scivis_component_combo.get_selected()
@@ -371,9 +334,7 @@ class ExbWindow(Adw.ApplicationWindow):
     def open_file_chooser(self, *args):
         file_filter = Gtk.FileFilter(name=_("All supported formats"))
 
-        allowed_extensions = Exb.get_allowed_extensions()
-
-        for patt in allowed_extensions:
+        for patt in model_patt:
             file_filter.add_pattern("*." + patt)
 
         filter_list = Gio.ListStore.new(Gtk.FileFilter())
@@ -514,9 +475,9 @@ class ExbWindow(Adw.ApplicationWindow):
         file = value.get_files()[0]
         extension = os.path.splitext(file)[1][1:].lower()
 
-        if extension in image_patterns:
+        if extension in image_patt:
             self.load_hdri(file)
-        elif extension in allowed_extensions:
+        elif extension in model_patt:
             log.info("drop received")
             self.load_file(file=file)
 
