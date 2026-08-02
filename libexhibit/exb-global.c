@@ -33,8 +33,8 @@
 gchar **
 exb_get_allowed_extensions (void)
 {
-  g_autoptr(GPtrArray) array = g_ptr_array_new_with_free_func (g_free);
-  g_autoptr(f3d_reader_info_t) readers = NULL;
+  g_autoptr (GPtrArray) array = g_ptr_array_new_with_free_func (g_free);
+  g_autoptr (f3d_reader_info_t) readers = NULL;
   gint count = 0;
 
   f3d_engine_autoload_plugins ();
@@ -48,8 +48,44 @@ exb_get_allowed_extensions (void)
     {
       if (readers[i].extensions)
         {
-          for (gchar **ext = readers[i].extensions; *ext; ext++)
-            g_ptr_array_add (array, g_strdup (*ext));
+          for (gchar **ext = readers[i].extensions; *ext != NULL; ext++)
+            {
+              g_ptr_array_add (array, g_strdup (*ext));
+            }
+        }
+    }
+
+  g_ptr_array_add (array, NULL);
+  return (gchar **) g_ptr_array_free (g_steal_pointer (&array), FALSE);
+}
+
+/**
+ * exb_get_allowed_mime_types:
+ *
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): A list of strings
+ */
+gchar **
+exb_get_allowed_mime_types (void)
+{
+  g_autoptr (GPtrArray) array = g_ptr_array_new_with_free_func (g_free);
+  g_autoptr (f3d_reader_info_t) readers = NULL;
+  gint count = 0;
+
+  f3d_engine_autoload_plugins ();
+
+  if (!(readers = f3d_engine_get_readers_info (&count)))
+    {
+      return NULL;
+    }
+
+  for (gint i = 0; i < count; i++)
+    {
+      if (readers[i].mime_types)
+        {
+          for (gchar **mime = readers[i].mime_types; *mime != NULL; mime++)
+            {
+              g_ptr_array_add (array, g_strdup (*mime));
+            }
         }
     }
 

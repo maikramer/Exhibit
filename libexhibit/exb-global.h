@@ -62,6 +62,7 @@ typedef enum
   // EXB_ANTI_ALIASING_TAA, strange visual bug
 } ExbAntiAliasing;
 
-gchar ** exb_get_allowed_extensions (void);
+gchar **exb_get_allowed_extensions (void);
+gchar **exb_get_allowed_mime_types (void);
 
 G_END_DECLS
