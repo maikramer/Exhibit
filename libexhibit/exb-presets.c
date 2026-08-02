@@ -35,8 +35,7 @@ struct _ExbPresets
 static void exb_presets_list_model_init (GListModelInterface *iface);
 
 G_DEFINE_FINAL_TYPE_WITH_CODE (ExbPresets, exb_presets, G_TYPE_OBJECT,
-                               G_IMPLEMENT_INTERFACE (G_TYPE_LIST_MODEL,
-                                                      exb_presets_list_model_init))
+                               G_IMPLEMENT_INTERFACE (G_TYPE_LIST_MODEL, exb_presets_list_model_init))
 
 static GType
 exb_presets_get_item_type (GListModel *model G_GNUC_UNUSED)
@@ -61,8 +60,8 @@ static void
 exb_presets_list_model_init (GListModelInterface *iface)
 {
   iface->get_item_type = exb_presets_get_item_type;
-  iface->get_n_items   = exb_presets_get_n_items;
-  iface->get_item      = exb_presets_get_item;
+  iface->get_n_items = exb_presets_get_n_items;
+  iface->get_item = exb_presets_get_item;
 }
 
 static void
@@ -71,6 +70,7 @@ exb_presets_finalize (GObject *object)
   ExbPresets *self = EXB_PRESETS (object);
 
   g_clear_pointer (&self->search_paths, g_ptr_array_unref);
+  g_clear_object (&self->store);
 
   G_OBJECT_CLASS (exb_presets_parent_class)->finalize (object);
 }
@@ -119,7 +119,7 @@ exb_presets_scan_paths (ExbPresets *self)
               continue;
             }
 
-          g_list_store_append (self->store, g_steal_pointer (&preset));
+          g_list_store_append (self->store, preset);
         }
     }
 }
@@ -128,9 +128,10 @@ static void
 on_store_items_changed (GListModel *model,
                         guint       position,
                         guint       removed,
-                        guint       added)
+                        guint       added,
+                        gpointer    user_data)
 {
-  g_list_model_items_changed (model, position, removed, added);
+  g_list_model_items_changed (G_LIST_MODEL (user_data), position, removed, added);
 }
 
 static void
@@ -159,7 +160,7 @@ exb_presets_init (ExbPresets *self)
   g_signal_connect_object (self->store,
                            "items-changed",
                            G_CALLBACK (on_store_items_changed),
-                           NULL,
+                           self,
                            G_CONNECT_DEFAULT);
 }
 
@@ -203,7 +204,7 @@ exb_presets_new_with_paths (const gchar * const *paths)
  * Returns: (transfer none) (nullable): The matching #ExbPreset, or %NULL
  */
 ExbPreset *
-exb_presets_lookup (ExbPresets *self,
+exb_presets_lookup (ExbPresets  *self,
                     const gchar *name)
 {
   g_return_val_if_fail (EXB_IS_PRESETS (self), NULL);
@@ -217,10 +218,11 @@ exb_presets_lookup (ExbPresets *self,
 
       preset_name = exb_preset_get_name (preset);
 
+      if (!preset_name)
+        continue;
+
       cmp_name = g_string_new_take (g_ascii_strdown (preset_name, -1));
       g_string_replace (cmp_name, " ", "_", 0);
-
-      g_message("%s : %s", cmp_name->str, preset_name);
 
       if (g_strcmp0 (name, cmp_name->str) == 0)
         return preset;
@@ -237,7 +239,7 @@ exb_presets_lookup (ExbPresets *self,
  * Returns: (transfer none) (nullable): The matching #ExbPreset, or %NULL
  */
 ExbPreset *
-exb_presets_get_default_for (ExbPresets *self,
+exb_presets_get_default_for (ExbPresets  *self,
                              const gchar *filename)
 {
   EXB_ENTRY;
@@ -252,8 +254,6 @@ exb_presets_get_default_for (ExbPresets *self,
       const gchar *preset_formats;
 
       preset_formats = exb_preset_get_formats (preset);
-
-      g_message ("%s, %s", preset_formats, filename);
 
       match_regex = g_regex_new (preset_formats, G_REGEX_DEFAULT, G_REGEX_MATCH_DEFAULT, NULL);
 
