@@ -21,40 +21,38 @@
 
 #include "exb-enums.h"
 #include "exb-global.h"
+#include "exb-utils.h"
 
 #include <f3d/engine_c_api.h>
 
 /**
  * exb_get_allowed_extensions:
  *
- * Returns: (transfer full): (array zero-terminated=1) (nullable): A list of strings
+ * Returns: (transfer full) (array zero-terminated=1) (nullable): A list of strings
  */
 char **
 exb_get_allowed_extensions (void)
 {
-  g_autofree f3d_reader_info_t *readers = NULL;
-  GPtrArray *array;
+  g_autoptr(GPtrArray) array = g_ptr_array_new_with_free_func (g_free);
+  g_autoptr(f3d_reader_info_t) readers = NULL;
   gint count = 0;
 
   f3d_engine_autoload_plugins ();
 
-  readers = f3d_engine_get_readers_info (&count);
-  if (!readers)
-    return NULL;
-
-  array = g_ptr_array_new_with_free_func (g_free);
+  if (!(readers = f3d_engine_get_readers_info (&count)))
+    {
+      return NULL;
+    }
 
   for (int i = 0; i < count; i++)
     {
       if (readers[i].extensions)
         {
           for (char **ext = readers[i].extensions; *ext; ext++)
-            {
-              g_ptr_array_add (array, g_strdup (*ext));
-            }
+            g_ptr_array_add (array, g_strdup (*ext));
         }
     }
 
   g_ptr_array_add (array, NULL);
-  return (char **) g_ptr_array_free (array, FALSE);
+  return (char **) g_ptr_array_free (g_steal_pointer (&array), FALSE);
 }

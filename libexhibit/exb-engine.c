@@ -140,7 +140,6 @@ static const OptionMap option_maps[] = {
   { "show-grid",              "render.grid.enable"                },
   { "grid-absolute",          "render.grid.absolute"              },
   { "grid-unit",              "render.grid.unit"                  },
-  { "grid-subdivisions",      "render.grid.subdivisions"          },
   { "grid-color",             "render.grid.color"                 },
   { "grid-subdivisions",      "render.grid.subdivisions"          },
   { "blending",               "render.effect.blending.mode"       },
@@ -201,10 +200,12 @@ typedef struct _LoadFileData
 static void
 load_file_data_free (LoadFileData *data)
 {
-  g_object_unref (&data->file);
-  g_object_unref (&data->engine);
+  g_object_unref (data->file);
+  g_object_unref (data->engine);
   g_free (data);
 }
+
+G_DEFINE_AUTOPTR_CLEANUP_FUNC (LoadFileData, load_file_data_free)
 
 static void
 update_animations_data (ExbEngine *self)
@@ -234,7 +235,7 @@ exb_engine_load_file_finish_func (gpointer user_data)
 {
   ExbEngine *self;
   ExbEnginePrivate *priv;
-  LoadFileData *data = user_data;
+  g_autoptr (LoadFileData) data = user_data;
 
   EXB_ENTRY;
 
@@ -284,11 +285,11 @@ exb_engine_load_file_thread_func (gpointer user_data)
     }
   else
     {
-      LoadFileData *finish_data = g_new0 (LoadFileData, 1);
+      g_autoptr (LoadFileData) finish_data = g_new0 (LoadFileData, 1);
 
-      finish_data->engine = self;
+      finish_data->engine = g_object_ref (self);
       finish_data->file = g_object_ref (data->file);
-      g_idle_add (exb_engine_load_file_finish_func, finish_data);
+      g_idle_add (exb_engine_load_file_finish_func, g_steal_pointer (&finish_data));
 
       EXB_RETURN (dex_future_new_true ());
     }
@@ -312,6 +313,7 @@ advance_animation (gpointer self)
   if (new_value >= max_value)
     {
       gtk_adjustment_set_value (priv->animation_adj, max_value);
+      priv->animation_handler_id = 0;
       EXB_RETURN (FALSE);
     }
 
@@ -456,7 +458,7 @@ f3d_has_option (ExbEngine   *self,
   options = f3d_engine_get_options (priv->engine);
   f3d_closest_key = exb_f3d_options_get_closest_option (options, f3d_key, NULL);
 
-  if (!g_str_equal (f3d_key, f3d_closest_key))
+  if (!f3d_closest_key || !g_str_equal (f3d_key, f3d_closest_key))
     {
       g_message ("ExbEngine: Invalid f3d key '%s' while getting option, closest is '%s'", f3d_key, f3d_closest_key);
       EXB_RETURN (FALSE);
@@ -586,7 +588,6 @@ f3d_get_option (ExbEngine  *self,
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
   g_autofree const gchar *f3d_key = NULL;
-  g_autofree const gchar *f3d_closest_key = NULL;
   f3d_options_t *options = NULL;
 
   EXB_ENTRY;
@@ -690,15 +691,13 @@ f3d_get_option (ExbEngine  *self,
 
           if (g_str_has_prefix(option_value, "+"))
             {
-              lowercase_axis = g_ascii_strdown (option_value + strlen("+"),
-                                                sizeof (option_value + strlen("+")));
+              lowercase_axis = g_ascii_strdown (option_value + strlen("+"), -1);
               final_option_value = g_strdup_printf("positive-%s", lowercase_axis);
             }
 
           if (g_str_has_prefix(option_value, "-"))
             {
-              lowercase_axis = g_ascii_strdown (option_value + strlen("+"),
-                                                sizeof (option_value + strlen("+")));
+              lowercase_axis = g_ascii_strdown (option_value + strlen("+"), -1);
               final_option_value = g_strdup_printf("negative-%s", lowercase_axis);
             }
         }
@@ -733,7 +732,6 @@ f3d_set_option (ExbEngine    *self,
                 GType         type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const gchar *f3d_closest_key = NULL;
   g_autofree const gchar *f3d_key = NULL;
   f3d_options_t *options = NULL;
 
@@ -871,7 +869,6 @@ exb_engine_unoverride_option (ExbEngine  *self,
                               GType       type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const gchar *f3d_closest_key = NULL;
   g_autofree const gchar *f3d_key = NULL;
   f3d_options_t *options = NULL;
   g_auto (GValue) value = G_VALUE_INIT;
@@ -914,7 +911,6 @@ exb_engine_override_option (ExbEngine  *self,
                             GType       type)
 {
   ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  g_autofree const gchar *f3d_closest_key = NULL;
   g_autofree const gchar *f3d_key = NULL;
   gpointer stored_value;
   g_auto (GValue) value = G_VALUE_INIT;
@@ -1153,9 +1149,13 @@ exb_engine_finalize (GObject *object)
   g_message ("ExbEngine: Finalizing");
 
   g_clear_object (&priv->file);
+  g_clear_object (&priv->animation_adj);
+
   g_clear_pointer (&priv->engine, f3d_engine_delete);
   g_clear_pointer (&priv->pending_options, g_hash_table_unref);
   g_clear_pointer (&priv->original_options, g_hash_table_unref);
+
+  g_source_remove (priv->animation_handler_id);
 
   G_OBJECT_CLASS (exb_engine_parent_class)->finalize (object);
 
@@ -1256,9 +1256,9 @@ exb_engine_init (ExbEngine *self)
                                                  exb_g_value_destroy);
 
   priv->original_options = g_hash_table_new_full (g_str_hash,
-                                                     g_str_equal,
-                                                     NULL,
-                                                     exb_g_value_destroy);
+                                                  g_str_equal,
+                                                  NULL,
+                                                  exb_g_value_destroy);
 
   for (gsize i = 0; i < overridable_options_len; i++)
     {
@@ -1714,8 +1714,8 @@ DexFuture *
 exb_engine_load_file (ExbEngine *self,
                       GFile     *file)
 {
-  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
-  LoadFileData *data = g_new0 (LoadFileData, 1);
+  ExbEnginePrivate *priv;
+  g_autoptr (LoadFileData) data = NULL;
   g_autofree gchar *file_path = NULL;
   DexFuture *future;
 
@@ -1723,6 +1723,9 @@ exb_engine_load_file (ExbEngine *self,
 
   g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
   g_return_val_if_fail (G_IS_FILE (file), NULL);
+
+  priv = exb_engine_get_instance_private (self);
+  data = g_new0 (LoadFileData, 1);
 
   data->file = g_object_ref (file);
   data->engine = g_object_ref (self);
@@ -1753,7 +1756,7 @@ exb_engine_load_file (ExbEngine *self,
 
   future = dex_thread_spawn ("[load-file]",
                              exb_engine_load_file_thread_func,
-                             data,
+                             g_steal_pointer (&data),
                              (GDestroyNotify) load_file_data_free);
 
   EXB_RETURN (future);
