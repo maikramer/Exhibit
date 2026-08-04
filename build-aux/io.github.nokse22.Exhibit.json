@@ -23,25 +23,7 @@
     "modules" : [
         "imagemagick.json",
         "libf3d.json",
-        {
-            "name" : "libdex",
-            "buildsystem" : "meson",
-            "config-opts" : [
-                "--buildtype=debugoptimized",
-                "-Ddocs=false",
-                "-Dintrospection=enabled",
-                "-Dexamples=false",
-                "-Dtests=false",
-                "-Dsysprof=true"
-            ],
-            "sources" : [
-                {
-                    "type" : "git",
-                    "url" : "https://gitlab.gnome.org/GNOME/libdex.git",
-                    "branch" : "main"
-                }
-            ]
-        },
+        "libdex.json",
         {
             "name" : "exhibit",
             "buildsystem" : "meson",
