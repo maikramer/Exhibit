@@ -2021,6 +2021,12 @@ exb_engine_apply_preset (ExbEngine *self,
   _exb_preset_apply (preset, self);
 }
 
+/**
+ * exb_engine_get_loading_file:
+ * @self: a #ExbEngine
+ *
+ * Returns: if it's loading a file
+ */
 gboolean
 exb_engine_get_loading_file (ExbEngine *self)
 {
