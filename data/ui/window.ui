@@ -234,8 +234,8 @@
               <object class="AdwOverlaySplitView" id="split_view">
                 <property name="sidebar-width-fraction">0.35</property>
                 <property name="sidebar-width-unit">px</property>
-                <property name="max-sidebar-width">400</property>
-                <property name="min-sidebar-width">300</property>
+                <property name="max-sidebar-width">440</property>
+                <property name="min-sidebar-width">320</property>
                 <property name="show-sidebar">false</property>
                 <signal name="notify::show-sidebar" handler="on_split_view_show_sidebar_changed"/>
                 <property name="sidebar">
@@ -862,82 +862,6 @@
                                     </style>
                                   </object>
                                 </child>
-                                <child>
-                                  <object class="GtkMenuButton" id="object_tree_button">
-                                    <property name="icon-name">view-list-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Object tree</property>
-                                    <property name="visible">False</property>
-                                    <property name="direction">down</property>
-                                    <style>
-                                      <class name="overlay-button"/>
-                                      <class name="circular"/>
-                                    </style>
-                                    <property name="popover">
-                                      <object class="GtkPopover" id="object_tree_popover">
-                                        <property name="has-arrow">False</property>
-                                        <property name="autohide">True</property>
-                                        <style>
-                                          <class name="object-tree-popover"/>
-                                        </style>
-                                        <child>
-                                          <object class="GtkBox" id="object_tree_panel">
-                                            <property name="orientation">vertical</property>
-                                            <property name="spacing">6</property>
-                                            <property name="width-request">300</property>
-                                            <property name="height-request">380</property>
-                                            <property name="margin-top">10</property>
-                                            <property name="margin-bottom">10</property>
-                                            <property name="margin-start">10</property>
-                                            <property name="margin-end">10</property>
-                                            <style>
-                                              <class name="object-tree-panel"/>
-                                            </style>
-                                            <child>
-                                              <object class="GtkLabel">
-                                                <property name="label" translatable="yes">Objects</property>
-                                                <property name="xalign">0</property>
-                                                <style>
-                                                  <class name="heading"/>
-                                                </style>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="GtkLabel">
-                                                <property name="label" translatable="yes">Toggle mesh parts without reloading the camera</property>
-                                                <property name="xalign">0</property>
-                                                <property name="wrap">True</property>
-                                                <style>
-                                                  <class name="dim-label"/>
-                                                  <class name="caption"/>
-                                                </style>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="GtkScrolledWindow">
-                                                <property name="hexpand">True</property>
-                                                <property name="vexpand">True</property>
-                                                <property name="hscrollbar-policy">never</property>
-                                                <property name="propagate-natural-height">True</property>
-                                                <property name="min-content-height">200</property>
-                                                <property name="max-content-height">420</property>
-                                                <child>
-                                                  <object class="GtkListView" id="object_tree_view">
-                                                    <property name="hexpand">True</property>
-                                                    <property name="vexpand">True</property>
-                                                    <property name="single-click-activate">False</property>
-                                                    <style>
-                                                      <class name="object-tree-view"/>
-                                                    </style>
-                                                  </object>
-                                                </child>
-                                              </object>
-                                            </child>
-                                          </object>
-                                        </child>
-                                      </object>
-                                    </property>
-                                  </object>
-                                </child>
                               </object>
                             </child>
                             <child type="end">
@@ -1008,9 +932,93 @@
                                 <property name="resize-end-child">True</property>
                                 <property name="shrink-end-child">True</property>
                                 <property name="start-child">
-                                  <object class="AdwTabView" id="tab_view">
+                                  <object class="GtkOverlay" id="viewport_overlay">
                                     <property name="hexpand">True</property>
                                     <property name="vexpand">True</property>
+                                    <property name="child">
+                                      <object class="AdwTabView" id="tab_view">
+                                        <property name="hexpand">True</property>
+                                        <property name="vexpand">True</property>
+                                      </object>
+                                    </property>
+                                    <child type="overlay">
+                                      <object class="GtkBox" id="object_tree_overlay_shell">
+                                        <property name="orientation">horizontal</property>
+                                        <property name="spacing">8</property>
+                                        <property name="halign">start</property>
+                                        <property name="valign">start</property>
+                                        <property name="margin-top">64</property>
+                                        <property name="margin-start">12</property>
+                                        <property name="visible">False</property>
+                                        <style>
+                                          <class name="object-tree-overlay-shell"/>
+                                        </style>
+                                        <child>
+                                          <object class="GtkToggleButton" id="object_tree_toggle">
+                                            <property name="icon-name">view-list-symbolic</property>
+                                            <property name="tooltip-text" translatable="yes">Outliner</property>
+                                            <property name="valign">start</property>
+                                            <style>
+                                              <class name="overlay-button"/>
+                                              <class name="circular"/>
+                                            </style>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkRevealer" id="object_tree_revealer">
+                                            <property name="reveal-child" bind-source="object_tree_toggle" bind-property="active" bind-flags="sync-create | bidirectional">False</property>
+                                            <property name="transition-type">slide-right</property>
+                                            <property name="transition-duration">180</property>
+                                            <property name="halign">start</property>
+                                            <property name="valign">start</property>
+                                            <child>
+                                              <object class="GtkBox" id="object_tree_panel">
+                                                <property name="orientation">vertical</property>
+                                                <property name="spacing">6</property>
+                                                <property name="width-request">300</property>
+                                                <property name="height-request">420</property>
+                                                <style>
+                                                  <class name="object-tree-panel"/>
+                                                  <class name="object-tree-overlay-panel"/>
+                                                </style>
+                                                <child>
+                                                  <object class="GtkLabel">
+                                                    <property name="label" translatable="yes">Outliner</property>
+                                                    <property name="xalign">0</property>
+                                                    <style>
+                                                      <class name="heading"/>
+                                                      <class name="object-tree-overlay-text"/>
+                                                    </style>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="GtkScrolledWindow">
+                                                    <property name="hexpand">True</property>
+                                                    <property name="vexpand">True</property>
+                                                    <property name="hscrollbar-policy">automatic</property>
+                                                    <property name="vscrollbar-policy">automatic</property>
+                                                    <style>
+                                                      <class name="object-tree-scroll"/>
+                                                    </style>
+                                                    <child>
+                                                      <object class="GtkListView" id="object_tree_view">
+                                                        <property name="hexpand">True</property>
+                                                        <property name="vexpand">True</property>
+                                                        <property name="single-click-activate">False</property>
+                                                        <property name="show-separators">False</property>
+                                                        <style>
+                                                          <class name="object-tree-view"/>
+                                                        </style>
+                                                      </object>
+                                                    </child>
+                                                  </object>
+                                                </child>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
                                   </object>
                                 </property>
                                 <property name="end-child">
@@ -1342,6 +1350,12 @@
               <object class="AdwSwitchRow" id="restore_session_switch">
                 <property name="title" translatable="yes">Restore Last Session</property>
                 <property name="subtitle" translatable="yes">Reopen the previous tabs on startup when no file is passed on the command line</property>
+              </object>
+            </child>
+            <child>
+              <object class="AdwSwitchRow" id="focus_existing_tab_switch">
+                <property name="title" translatable="yes">Focus Existing Tab</property>
+                <property name="subtitle" translatable="yes">Opening a model that is already open switches to that tab and flashes it instead of creating a duplicate</property>
               </object>
             </child>
             <child>

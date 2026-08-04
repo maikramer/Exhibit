@@ -39,6 +39,11 @@
       <summary>Restore last session</summary>
       <description>When enabled, reopen the last session’s model tabs on startup (unless a file is passed on the command line).</description>
     </key>
+	  <key name="focus-existing-tab" type="b">
+      <default>true</default>
+      <summary>Focus existing tab</summary>
+      <description>When opening a model that is already open, switch to that tab and briefly highlight it instead of opening a duplicate tab.</description>
+    </key>
 	  <key name="split-compare-sash-ratio" type="d">
       <default>0.62</default>
       <summary>Split Compare sash ratio</summary>

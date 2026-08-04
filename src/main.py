@@ -137,6 +137,11 @@ class Viewer3dApplication(Adw.Application):
         if display is None:
             return
 
+        # Custom symbolic icons live under the app gresource.
+        Gtk.IconTheme.get_for_display(display).add_resource_path(
+            "/io/github/nokse22/Exhibit/icons"
+        )
+
         self._css_provider = Gtk.CssProvider()
         self._css_provider.load_from_resource(_STYLE_RESOURCE)
         Gtk.StyleContext.add_provider_for_display(

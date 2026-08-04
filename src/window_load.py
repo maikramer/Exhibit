@@ -173,6 +173,21 @@ class LoadMixin:
             basename = _("Untitled")
 
         replace = kwargs.get("override") or kwargs.get("preserve_orientation")
+        # Same file already open → focus + flash (default on; Loading setting).
+        if (
+            filepath
+            and not replace
+            and tab_hint is None
+            and self.saved_settings.get_boolean("focus-existing-tab")
+        ):
+            existing = self._find_tab_by_filepath(filepath)
+            if existing is not None:
+                self._focus_existing_tab(existing)
+                # Keep batch opens moving when a duplicate is skipped.
+                if not self._advance_open_queue():
+                    self._unblock_reload_if_idle()
+                return
+
         new_tab = kwargs.get("new_tab")
         if new_tab is None:
             # First document reuses the empty tab; later opens get a new tab.

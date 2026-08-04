@@ -41,6 +41,31 @@
 
         <child>
           <object class="GtkShortcutsGroup">
+            <property name="title" translatable="yes" context="shortcut window">Tabs</property>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Close Tab (right-click tab)</property>
+                <property name="action-name">win.tab-close</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Close Other Tabs (right-click tab)</property>
+                <property name="action-name">win.tab-close-other</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkShortcutsShortcut">
+                <property name="title" translatable="yes">Reopen Closed Tab</property>
+                <property name="action-name">win.tab-reopen-closed</property>
+                <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;t</property>
+              </object>
+            </child>
+          </object>
+        </child>
+
+        <child>
+          <object class="GtkShortcutsGroup">
             <property name="title" translatable="yes" context="shortcut window">Camera</property>
             <child>
               <object class="GtkShortcutsShortcut">

@@ -22,6 +22,8 @@ from .widgets import F3DViewer, ViewerTab
 
 
 class TabsMixin:
+    _CLOSED_TABS_MAX = 20
+
     @property
     def f3d_viewer(self):
         tab = self._active_tab()
@@ -35,6 +37,156 @@ class TabsMixin:
         if tab is None:
             raise RuntimeError("No viewer tab available")
         return tab.stats_overlay_label
+
+    def _setup_tab_context_menu(self) -> None:
+        """Right-click tab menu: close variants + reopen closed."""
+        self._closed_tabs: list[str] = []
+        self._tab_menu_page = None
+
+        close_section = Gio.Menu()
+        close_section.append(_("Close Tab"), "win.tab-close")
+        close_section.append(_("Close Other Tabs"), "win.tab-close-other")
+        close_section.append(_("Close Tabs to the Left"), "win.tab-close-before")
+        close_section.append(_("Close Tabs to the Right"), "win.tab-close-after")
+
+        reopen_section = Gio.Menu()
+        reopen_section.append(_("Reopen Closed Tab"), "win.tab-reopen-closed")
+
+        menu = Gio.Menu()
+        menu.append_section(None, close_section)
+        menu.append_section(None, reopen_section)
+        self.tab_view.set_menu_model(menu)
+
+        self._tab_close_action = Gio.SimpleAction.new("tab-close", None)
+        self._tab_close_action.connect("activate", self._on_tab_close_action)
+        self.add_action(self._tab_close_action)
+
+        self._tab_close_other_action = Gio.SimpleAction.new(
+            "tab-close-other", None
+        )
+        self._tab_close_other_action.connect(
+            "activate", self._on_tab_close_other_action
+        )
+        self.add_action(self._tab_close_other_action)
+
+        self._tab_close_before_action = Gio.SimpleAction.new(
+            "tab-close-before", None
+        )
+        self._tab_close_before_action.connect(
+            "activate", self._on_tab_close_before_action
+        )
+        self.add_action(self._tab_close_before_action)
+
+        self._tab_close_after_action = Gio.SimpleAction.new(
+            "tab-close-after", None
+        )
+        self._tab_close_after_action.connect(
+            "activate", self._on_tab_close_after_action
+        )
+        self.add_action(self._tab_close_after_action)
+
+        self._tab_reopen_closed_action = Gio.SimpleAction.new(
+            "tab-reopen-closed", None
+        )
+        self._tab_reopen_closed_action.connect(
+            "activate", self._on_tab_reopen_closed_action
+        )
+        self._tab_reopen_closed_action.set_enabled(False)
+        self.add_action(self._tab_reopen_closed_action)
+
+        self.tab_view.connect("setup-menu", self._on_tab_setup_menu)
+
+        # Ctrl+W is camera move-forward on the viewer — do not steal it.
+        app = self.get_application()
+        if app is not None:
+            app.set_accels_for_action(
+                "win.tab-reopen-closed", ["<Primary><Shift>t"]
+            )
+
+    def _tab_menu_target_page(self):
+        return self._tab_menu_page or self.tab_view.get_selected_page()
+
+    def _on_tab_setup_menu(self, _tab_view, page) -> None:
+        self._tab_menu_page = page
+        if page is None:
+            self._update_tab_menu_actions(None)
+            return
+        self._update_tab_menu_actions(page)
+
+    def _update_tab_menu_actions(self, page) -> None:
+        n_pages = self.tab_view.get_n_pages()
+        if page is None:
+            selected = self.tab_view.get_selected_page()
+            has_page = selected is not None
+            index = (
+                self.tab_view.get_page_position(selected) if has_page else -1
+            )
+        else:
+            has_page = True
+            index = self.tab_view.get_page_position(page)
+
+        self._tab_close_action.set_enabled(has_page and n_pages > 0)
+        self._tab_close_other_action.set_enabled(has_page and n_pages > 1)
+        self._tab_close_before_action.set_enabled(has_page and index > 0)
+        self._tab_close_after_action.set_enabled(
+            has_page and 0 <= index < n_pages - 1
+        )
+        self._update_tab_reopen_action()
+
+    def _update_tab_reopen_action(self) -> None:
+        action = getattr(self, "_tab_reopen_closed_action", None)
+        if action is None:
+            return
+        action.set_enabled(bool(self._closed_tabs))
+
+    def _push_closed_tab(self, tab: ViewerTab) -> None:
+        path = getattr(tab, "filepath", None) or ""
+        if not path:
+            return
+        closed = getattr(self, "_closed_tabs", None)
+        if closed is None:
+            self._closed_tabs = []
+            closed = self._closed_tabs
+        closed.append(path)
+        overflow = len(closed) - self._CLOSED_TABS_MAX
+        if overflow > 0:
+            del closed[:overflow]
+        self._update_tab_reopen_action()
+
+    def _on_tab_close_action(self, *_args) -> None:
+        page = self._tab_menu_target_page()
+        if page is not None:
+            self.tab_view.close_page(page)
+
+    def _on_tab_close_other_action(self, *_args) -> None:
+        page = self._tab_menu_target_page()
+        if page is not None:
+            self.tab_view.close_other_pages(page)
+
+    def _on_tab_close_before_action(self, *_args) -> None:
+        page = self._tab_menu_target_page()
+        if page is not None:
+            self.tab_view.close_pages_before(page)
+
+    def _on_tab_close_after_action(self, *_args) -> None:
+        page = self._tab_menu_target_page()
+        if page is not None:
+            self.tab_view.close_pages_after(page)
+
+    def _on_tab_reopen_closed_action(self, *_args) -> None:
+        closed = getattr(self, "_closed_tabs", None)
+        if not closed:
+            self._update_tab_reopen_action()
+            return
+        while closed:
+            path = closed.pop()
+            if os.path.isfile(path):
+                self.load_file(
+                    filepath=path,
+                    new_tab=not getattr(self, "no_file_loaded", True),
+                )
+                break
+        self._update_tab_reopen_action()
 
     def _active_tab(self) -> ViewerTab | None:
         page = self.tab_view.get_selected_page()
@@ -51,6 +203,94 @@ class TabsMixin:
             child = self.tab_view.get_nth_page(i).get_child()
             if isinstance(child, ViewerTab):
                 yield child
+
+    @staticmethod
+    def _norm_tab_path(filepath: str) -> str:
+        if not filepath:
+            return ""
+        try:
+            return os.path.realpath(filepath)
+        except OSError:
+            return os.path.normpath(filepath)
+
+    def _find_tab_by_filepath(self, filepath: str) -> ViewerTab | None:
+        target = self._norm_tab_path(filepath)
+        if not target:
+            return None
+        for tab in self._iter_tabs():
+            if not tab.filepath:
+                continue
+            if self._norm_tab_path(tab.filepath) == target:
+                return tab
+        return None
+
+    def _flash_tab_attention(
+        self, page, duration_ms: int = 2000, on_done=None
+    ) -> None:
+        """Pulse Adw.TabPage needs-attention for ``duration_ms``."""
+        if page is None:
+            return
+        interval_ms = 200
+        flashes = max(1, int(duration_ms / interval_ms))
+        state = {"on": True, "left": flashes}
+        page.set_needs_attention(True)
+
+        tokens = getattr(self, "_tab_flash_tokens", None)
+        if tokens is None:
+            tokens = {}
+            self._tab_flash_tokens = tokens
+        token = object()
+        tokens[id(page)] = token
+
+        def tick():
+            if tokens.get(id(page)) is not token:
+                return GLib.SOURCE_REMOVE
+            state["left"] -= 1
+            if state["left"] <= 0:
+                page.set_needs_attention(False)
+                tokens.pop(id(page), None)
+                if callable(on_done):
+                    on_done()
+                return GLib.SOURCE_REMOVE
+            state["on"] = not state["on"]
+            page.set_needs_attention(state["on"])
+            return GLib.SOURCE_CONTINUE
+
+        GLib.timeout_add(interval_ms, tick)
+
+    def _focus_existing_tab(self, tab: ViewerTab) -> None:
+        """Select an already-open tab and flash it for feedback."""
+        page = self._tab_page(tab)
+        if page is None:
+            return
+        if self.tab_view.get_selected_page() != page:
+            self._switching_tab = True
+            try:
+                self.tab_view.set_selected_page(page)
+            finally:
+                self._switching_tab = False
+            self.on_tab_selected_page()
+        self._update_tab_bar_visibility()
+        # Show bar for the flash even when a single tab would hide it.
+        forced_bar = False
+        if not self.tab_bar.get_visible():
+            self.tab_bar.set_visible(True)
+            self.toolbar_view.set_extend_content_to_top_edge(False)
+            forced_bar = True
+
+        def _after_flash():
+            if forced_bar:
+                self._update_tab_bar_visibility()
+
+        self._flash_tab_attention(
+            page, duration_ms=2000, on_done=_after_flash
+        )
+        name = tab.file_name or (
+            os.path.basename(tab.filepath) if tab.filepath else _("Untitled")
+        )
+        send = getattr(self, "send_toast", None)
+        if callable(send):
+            send(_("Already open: {}").format(name), timeout=2)
 
     def _update_all_viewers_options(self, options, queue_render=True):
         for tab in self._iter_tabs():
@@ -857,6 +1097,8 @@ class TabsMixin:
         tab = page.get_child()
         closing_viewer = tab.viewer if isinstance(tab, ViewerTab) else None
         was_selected = self.tab_view.get_selected_page() == page
+        if isinstance(tab, ViewerTab):
+            self._push_closed_tab(tab)
 
         # Block notify::selected-page re-entrancy while pages reshuffle.
         self._switching_tab = True

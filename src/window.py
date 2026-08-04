@@ -51,7 +51,21 @@ from .window_settings_react import SettingsReactMixin
 from .window_preferences import PreferencesMixin
 
 
-@Gtk.Template(resource_path='/io/github/nokse22/Exhibit/ui/window.ui')
+def _hoist_template_callbacks(cls):
+    """Expose ``Gtk.Template.Callback`` handlers declared in mixins.
+
+    PyGObject only scans the decorated class namespace, so handlers living in
+    base classes stay unresolved; GtkBuilder then aborts the template and
+    silently discards every ``<style>`` block in the .ui file.
+    """
+    for base in cls.__mro__[1:]:
+        for name, value in vars(base).items():
+            if type(value).__name__ != "CallThing" or name in vars(cls):
+                continue
+            setattr(cls, name, value)
+    return cls
+
+
 class Viewer3dWindow(
     TabsMixin,
     AnimationMixin,
@@ -133,6 +147,7 @@ class Viewer3dWindow(
 
     automatic_settings_switch = Gtk.Template.Child()
     restore_session_switch = Gtk.Template.Child()
+    focus_existing_tab_switch = Gtk.Template.Child()
 
     automatic_reload_switch = Gtk.Template.Child()
 
@@ -187,8 +202,11 @@ class Viewer3dWindow(
     animation_time_scale = Gtk.Template.Child()
     play_button = Gtk.Template.Child()
 
-    object_tree_button = Gtk.Template.Child()
-    object_tree_popover = Gtk.Template.Child()
+    sidebar_stack = Gtk.Template.Child()
+    object_tree_overlay_shell = Gtk.Template.Child()
+    object_tree_toggle = Gtk.Template.Child()
+    object_tree_revealer = Gtk.Template.Child()
+    object_tree_panel = Gtk.Template.Child()
     object_tree_view = Gtk.Template.Child()
 
     width = 600
@@ -208,6 +226,8 @@ class Viewer3dWindow(
         self._anim_bindings = []
         self._playing_handler_id = 0
         self._switching_tab = False
+        self._closed_tabs: list[str] = []
+        self._tab_menu_page = None
         self._pending_open_paths: list[str] = []
         self._mesh_stats = None
         self._armature_xray_restore = None
@@ -346,7 +366,7 @@ class Viewer3dWindow(
 
         self._block_object_tree = False
         self._scene_tree_roots: list[ObjectTreeItem] = []
-        self._object_tree_check_handlers: dict[int, int] = {}
+        self._object_tree_row_handlers: dict[int, int] = {}
         self._setup_object_tree_view()
 
         self.block_reload = True
@@ -471,6 +491,7 @@ class Viewer3dWindow(
         self.save_settings_action = self.create_action(
             'save-settings', self.on_save_settings)
         self.save_settings_action.set_enabled(False)
+        self._setup_tab_context_menu()
         self._init_preferences_actions()
         self._init_home_button()
 
@@ -593,6 +614,12 @@ class Viewer3dWindow(
         )
         self.restore_session_switch.connect(
             "notify::active", self.on_restore_session_toggled)
+        self.saved_settings.bind(
+            "focus-existing-tab",
+            self.focus_existing_tab_switch,
+            "active",
+            Gio.SettingsBindFlags.DEFAULT,
+        )
 
         self._load_nav_settings_from_gschema()
         # Push defaults into switch/spin widgets without fighting gschema bind.
@@ -618,6 +645,10 @@ class Viewer3dWindow(
         self.add_action(action)
         return action
 
+
+Viewer3dWindow = Gtk.Template(
+    resource_path="/io/github/nokse22/Exhibit/ui/window.ui"
+)(_hoist_template_callbacks(Viewer3dWindow))
 
 
 def list_files(directory):
