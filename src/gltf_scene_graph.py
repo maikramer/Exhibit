@@ -40,14 +40,22 @@ class ScenePart:
     path_label: str
 
 
+# Outliner kinds (Blender-like): mesh / empty / bone / armature.
+SCENE_KIND_MESH = "mesh"
+SCENE_KIND_EMPTY = "empty"
+SCENE_KIND_BONE = "bone"
+SCENE_KIND_ARMATURE = "armature"
+
+
 @dataclass(frozen=True)
 class SceneTreeNode:
-    """A glTF node in the scene hierarchy (mesh or structural)."""
+    """A glTF node in the scene hierarchy (mesh, empty, bone, or armature)."""
 
     index: int
     name: str
     has_mesh: bool
     children: tuple["SceneTreeNode", ...] = ()
+    kind: str = SCENE_KIND_EMPTY
 
 
 def is_glb(path: str) -> bool:
@@ -232,9 +240,68 @@ def _scene_root_indices(gltf: dict[str, Any], nodes: list[dict[str, Any]]) -> li
     return [index for index in range(len(nodes)) if index not in parents]
 
 
+def _collect_joint_indices(gltf: dict[str, Any]) -> set[int]:
+    joints: set[int] = set()
+    for skin in gltf.get("skins") or []:
+        if not isinstance(skin, dict):
+            continue
+        raw = skin.get("joints")
+        if not isinstance(raw, list):
+            continue
+        for joint in raw:
+            try:
+                joints.add(int(joint))
+            except (TypeError, ValueError):
+                continue
+    return joints
+
+
+def _is_pure_joint(
+    nodes: list[dict[str, Any]], index: int, joint_set: set[int]
+) -> bool:
+    if index not in joint_set or index < 0 or index >= len(nodes):
+        return False
+    node = nodes[index]
+    return isinstance(node, dict) and "mesh" not in node
+
+
+def _iter_object_child_indices(
+    nodes: list[dict[str, Any]],
+    index: int,
+    joint_set: set[int],
+    visiting: set[int],
+) -> list[int]:
+    """Children for the object outliner, skipping pure joint (bone) nodes."""
+    if index < 0 or index >= len(nodes) or index in visiting:
+        return []
+    visiting.add(index)
+    node = nodes[index]
+    if not isinstance(node, dict):
+        return []
+    out: list[int] = []
+    for child in node.get("children") or []:
+        try:
+            child_index = int(child)
+        except (TypeError, ValueError):
+            continue
+        if child_index < 0 or child_index >= len(nodes):
+            continue
+        if _is_pure_joint(nodes, child_index, joint_set):
+            out.extend(
+                _iter_object_child_indices(nodes, child_index, joint_set, visiting)
+            )
+        else:
+            out.append(child_index)
+    return out
+
+
 def _build_tree_node(
-    nodes: list[dict[str, Any]], index: int, seen: set[int]
+    nodes: list[dict[str, Any]],
+    index: int,
+    seen: set[int],
+    joint_set: set[int] | None = None,
 ) -> SceneTreeNode | None:
+    """Build a scene node. When ``joint_set`` is set, pure joints are skipped."""
     if index < 0 or index >= len(nodes) or index in seen:
         return None
     node = nodes[index]
@@ -243,17 +310,138 @@ def _build_tree_node(
 
     seen.add(index)
     children: list[SceneTreeNode] = []
+    if joint_set is not None:
+        child_indices = _iter_object_child_indices(nodes, index, joint_set, set())
+    else:
+        child_indices = []
+        for child in node.get("children") or []:
+            try:
+                child_indices.append(int(child))
+            except (TypeError, ValueError):
+                continue
+
+    for child_index in child_indices:
+        built = _build_tree_node(nodes, child_index, seen, joint_set)
+        if built is not None:
+            children.append(built)
+
+    has_mesh = "mesh" in node
+    kind = SCENE_KIND_MESH if has_mesh else SCENE_KIND_EMPTY
+    return SceneTreeNode(
+        index=index,
+        name=_node_name(nodes, index),
+        has_mesh=has_mesh,
+        children=tuple(children),
+        kind=kind,
+    )
+
+
+def _build_bone_tree_node(
+    nodes: list[dict[str, Any]],
+    index: int,
+    joint_set: set[int],
+    seen: set[int],
+) -> SceneTreeNode | None:
+    if index < 0 or index >= len(nodes) or index in seen or index not in joint_set:
+        return None
+    node = nodes[index]
+    if not isinstance(node, dict):
+        return None
+
+    seen.add(index)
+    children: list[SceneTreeNode] = []
     for child in node.get("children") or []:
-        child_index = int(child)
-        built = _build_tree_node(nodes, child_index, seen)
+        try:
+            child_index = int(child)
+        except (TypeError, ValueError):
+            continue
+        if child_index not in joint_set:
+            continue
+        built = _build_bone_tree_node(nodes, child_index, joint_set, seen)
         if built is not None:
             children.append(built)
 
     return SceneTreeNode(
         index=index,
         name=_node_name(nodes, index),
-        has_mesh="mesh" in node,
+        has_mesh=False,
         children=tuple(children),
+        kind=SCENE_KIND_BONE,
+    )
+
+
+def _skin_joint_list(skin: dict[str, Any]) -> list[int]:
+    raw = skin.get("joints")
+    if not isinstance(raw, list):
+        return []
+    joints: list[int] = []
+    for joint in raw:
+        try:
+            joints.append(int(joint))
+        except (TypeError, ValueError):
+            continue
+    return joints
+
+
+def _build_armature_node(
+    gltf: dict[str, Any],
+    nodes: list[dict[str, Any]],
+    skin: dict[str, Any],
+    skin_index: int,
+) -> SceneTreeNode | None:
+    joints = _skin_joint_list(skin)
+    if not joints:
+        return None
+    joint_set = set(joints)
+    n_nodes = len(nodes)
+
+    skeleton = skin.get("skeleton")
+    if not isinstance(skeleton, int) or skeleton < 0 or skeleton >= n_nodes:
+        inferred = _infer_skin_skeleton(gltf, joints)
+        skeleton = inferred if inferred is not None else joints[0]
+
+    seen: set[int] = set()
+    bone_children: list[SceneTreeNode] = []
+    if skeleton in joint_set:
+        root_bone = _build_bone_tree_node(nodes, skeleton, joint_set, seen)
+        if root_bone is not None:
+            bone_children.append(root_bone)
+    else:
+        # Skeleton is an ancestor empty — gather joint roots under / among joints.
+        parents = _joint_parent_map(nodes)
+        roots = [j for j in joints if parents.get(j) not in joint_set]
+        if not roots:
+            roots = [joints[0]]
+        for root in roots:
+            built = _build_bone_tree_node(nodes, root, joint_set, seen)
+            if built is not None:
+                bone_children.append(built)
+
+    # Orphan joints not reached via hierarchy (common in packed assets).
+    for joint in joints:
+        if joint in seen:
+            continue
+        built = _build_bone_tree_node(nodes, joint, joint_set, seen)
+        if built is not None:
+            bone_children.append(built)
+
+    if not bone_children:
+        return None
+
+    skin_name = skin.get("name")
+    if isinstance(skin_name, str) and skin_name.strip():
+        name = skin_name
+    elif skin_index == 0:
+        name = "Armature"
+    else:
+        name = f"Armature {skin_index + 1}"
+
+    return SceneTreeNode(
+        index=-1 - int(skin_index),
+        name=name,
+        has_mesh=False,
+        children=tuple(bone_children),
+        kind=SCENE_KIND_ARMATURE,
     )
 
 
@@ -273,6 +461,9 @@ def build_scene_tree(
     """
     Return the glTF scene hierarchy as nested nodes.
 
+    Object nodes (mesh / empty) are listed first; skin joint hierarchies are
+    separated under synthetic Armature roots (Blender-like outliner).
+
     Runs meshopt/quantization preparation first so the graph matches what F3D
     loads (unless ``already_prepared``). Returns an empty list for non-GLB
     paths or unreadable files.
@@ -285,12 +476,31 @@ def build_scene_tree(
     if not isinstance(nodes, list) or not nodes:
         return []
 
+    joint_set = _collect_joint_indices(gltf)
     roots: list[SceneTreeNode] = []
     seen: set[int] = set()
     for root_index in _scene_root_indices(gltf, nodes):
-        built = _build_tree_node(nodes, int(root_index), seen)
+        root_index = int(root_index)
+        if _is_pure_joint(nodes, root_index, joint_set):
+            for child_index in _iter_object_child_indices(
+                nodes, root_index, joint_set, set()
+            ):
+                built = _build_tree_node(nodes, child_index, seen, joint_set)
+                if built is not None:
+                    roots.append(built)
+            continue
+        built = _build_tree_node(nodes, root_index, seen, joint_set)
         if built is not None:
             roots.append(built)
+
+    skins = gltf.get("skins") or []
+    if isinstance(skins, list):
+        for skin_index, skin in enumerate(skins):
+            if not isinstance(skin, dict):
+                continue
+            armature = _build_armature_node(gltf, nodes, skin, skin_index)
+            if armature is not None:
+                roots.append(armature)
     return roots
 
 

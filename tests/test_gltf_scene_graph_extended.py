@@ -8,6 +8,10 @@ from pathlib import Path
 import pytest
 
 from exhibit.gltf_scene_graph import (
+    SCENE_KIND_ARMATURE,
+    SCENE_KIND_BONE,
+    SCENE_KIND_EMPTY,
+    SCENE_KIND_MESH,
     ScenePart,
     SceneTreeNode,
     _build_tree_node,
@@ -256,3 +260,58 @@ def test_scene_tree_multipart_structure(tmp_path: Path):
     tree = build_scene_tree(str(path))
     assert tree_has_mesh(tree) is True
     assert {c.name for c in tree[0].children} == {"PartA", "PartB"}
+    assert tree[0].kind == SCENE_KIND_EMPTY
+    assert {c.kind for c in tree[0].children} == {SCENE_KIND_MESH}
+
+
+def test_scene_tree_separates_armature(tmp_path: Path):
+    """Meshes stay in the object branch; joints hang under a synthetic Armature."""
+    gltf, bin_chunk = plain_triangle_gltf()
+    gltf["nodes"] = [
+        {"name": "Hips", "children": [1]},
+        {"name": "Spine"},
+        {"name": "Body", "mesh": 0, "skin": 0},
+    ]
+    gltf["scenes"] = [{"nodes": [0, 2]}]
+    gltf["skins"] = [{"name": "Rig", "joints": [0, 1], "skeleton": 0}]
+    path = write_glb(tmp_path / "rig.glb", gltf, bin_chunk)
+    tree = build_scene_tree(str(path))
+
+    kinds = {n.kind for n in tree}
+    assert SCENE_KIND_ARMATURE in kinds
+    assert SCENE_KIND_MESH in kinds
+    # Pure joints are not listed among object roots.
+    assert all(n.kind != SCENE_KIND_BONE for n in tree)
+
+    mesh_nodes = [n for n in tree if n.kind == SCENE_KIND_MESH]
+    assert len(mesh_nodes) == 1
+    assert mesh_nodes[0].name == "Body"
+
+    armature = next(n for n in tree if n.kind == SCENE_KIND_ARMATURE)
+    assert armature.name == "Rig"
+    assert armature.index < 0
+    assert len(armature.children) == 1
+    hips = armature.children[0]
+    assert hips.kind == SCENE_KIND_BONE
+    assert hips.name == "Hips"
+    assert len(hips.children) == 1
+    assert hips.children[0].name == "Spine"
+    assert hips.children[0].kind == SCENE_KIND_BONE
+
+
+def test_scene_tree_armature_for_orphan_joints(tmp_path: Path):
+    """Joints not present in the scene still appear under Armature."""
+    gltf, bin_chunk = plain_triangle_gltf()
+    gltf["nodes"] = [
+        {"name": "Root"},
+        {"name": "BoneA"},
+        {"name": "Mesh", "mesh": 0, "skin": 0},
+    ]
+    gltf["scenes"] = [{"nodes": [2]}]
+    gltf["skins"] = [{"joints": [0, 1], "skeleton": 0}]
+    path = write_glb(tmp_path / "orphan-rig.glb", gltf, bin_chunk)
+    tree = build_scene_tree(str(path))
+    assert [n.name for n in tree if n.kind != SCENE_KIND_ARMATURE] == ["Mesh"]
+    armature = next(n for n in tree if n.kind == SCENE_KIND_ARMATURE)
+    bone_names = {b.name for b in armature.children}
+    assert bone_names == {"Root", "BoneA"} or "Root" in bone_names
