@@ -811,7 +811,7 @@
                               </object>
                             </child>
                             <child type="end">
-                              <object class="GtkMenuButton">
+                              <object class="GtkMenuButton" id="primary_menu_button">
                                 <property name="primary">True</property>
                                 <property name="icon-name">open-menu-symbolic</property>
                                 <property name="tooltip-text" translatable="yes">Menu</property>
@@ -893,23 +893,11 @@
       </object>
     </property>
   </template>
-  <object class="ExhibitSettingsDialog" id="settings_dialog"/>
+  <object class="SettingsDialog" id="settings_dialog"/>
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="action">app.theme</attribute>
-        <attribute name="target">follow</attribute>
-        <attribute name="label" translatable="yes">Follow System</attribute>
-      </item>
-      <item>
-        <attribute name="action">app.theme</attribute>
-        <attribute name="target">light</attribute>
-        <attribute name="label" translatable="yes">Light Theme</attribute>
-      </item>
-      <item>
-        <attribute name="action">app.theme</attribute>
-        <attribute name="target">dark</attribute>
-        <attribute name="label" translatable="yes">Dark Theme</attribute>
+        <attribute name="custom">theme</attribute>
       </item>
     </section>
     <section>

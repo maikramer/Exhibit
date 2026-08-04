@@ -9,11 +9,11 @@
     </key>
 	  <key name="theme" type="s">
       <choices>
-        <choice value="follow"/>
+        <choice value="auto"/>
         <choice value="light"/>
         <choice value="dark"/>
       </choices>
-      <default>'follow'</default>
+      <default>'auto'</default>
     </key>
 	  <key name="startup-width" type="i">
       <default>840</default>

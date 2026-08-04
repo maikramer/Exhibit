@@ -76,15 +76,6 @@ class ExbApplication(Adw.Application):
 
         self.saved_settings = Gio.Settings.new("io.github.nokse22.Exhibit")
 
-        theme_action = Gio.SimpleAction.new_stateful(
-            "theme",
-            GLib.VariantType.new("s"),
-            GLib.Variant("s", self.saved_settings.get_string("theme")),
-        )
-        theme_action.connect("activate", self.on_theme_setting_changed)
-        self.update_theme()
-        self.add_action(theme_action)
-
     def do_open(self, files, n_files, hint):
         for file in files:
             file_path = file.get_path()
@@ -150,21 +141,6 @@ class ExbApplication(Adw.Application):
 
     def on_help_action(self, *args):
         Gio.AppInfo.launch_default_for_uri("help:exhibit")
-
-    def on_theme_setting_changed(self, action, state):
-        action.set_state(state)
-        self.saved_settings.set_string("theme", state.get_string())
-        self.update_theme()
-
-    def update_theme(self):
-        manager = Adw.StyleManager().get_default()
-        match self.saved_settings.get_string("theme"):
-            case "follow":
-                manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
-            case "light":
-                manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-            case "dark":
-                manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
 
     def do_activate(self):
         win = self.props.active_window

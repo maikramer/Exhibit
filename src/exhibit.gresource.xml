@@ -5,9 +5,10 @@
     <file>style.css</file>
 
     <file preprocess="xml-stripblanks">window.ui</file>
-    <file preprocess="xml-stripblanks">file_row.ui</file>
-    <file preprocess="xml-stripblanks">settings_dialog.ui</file>
     <file preprocess="xml-stripblanks">shortcuts-dialog.ui</file>
+    <file preprocess="xml-stripblanks">widgets/file_row.ui</file>
+    <file preprocess="xml-stripblanks">widgets/settings_dialog.ui</file>
+    <file preprocess="xml-stripblanks">widgets/theme_switcher.ui</file>
     <file preprocess="xml-stripblanks">icons/16x16/actions/go-home-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/16x16/actions/photo-camera-symbolic.svg</file>
     <file preprocess="xml-stripblanks">icons/16x16/actions/image-alt-symbolic.svg</file>

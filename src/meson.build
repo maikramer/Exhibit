@@ -31,8 +31,9 @@ exhibit_sources = [
   'main.py',
   'window.py',
   'settings.py',
-  'settings_dialog.py',
-  'file_row.py'
+  'widgets/settings_dialog.py',
+  'widgets/file_row.py',
+  'widgets/theme_switcher.py',
 ]
 
 install_data(exhibit_sources, install_dir: moduledir)

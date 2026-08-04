@@ -3,7 +3,7 @@
   <requires lib="gtk" version="4.0"/>
   <requires lib="Adw" version="1.0"/>
   <requires lib="Gdk" version="1.0"/>
-  <template class="ExhibitSettingsDialog" parent="AdwDialog">
+  <template class="SettingsDialog" parent="AdwDialog">
     <property name="content-height">360</property>
     <property name="content-width">360</property>
     <property name="title">Save Settings</property>

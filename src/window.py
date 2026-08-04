@@ -106,6 +106,8 @@ class ExbWindow(Adw.ApplicationWindow):
 
     loading_status_page = Gtk.Template.Child()
 
+    primary_menu_button = Gtk.Template.Child()
+
     width = 600
     height = 600
     distance = 0

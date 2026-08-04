@@ -21,11 +21,13 @@ from gi.repository import Adw, Gtk, Gdk, Gio, GObject
 
 from gettext import gettext as _
 
+from .config import *
+
 import os
 
 
-class ExhibitImageThumbnail(Gtk.FlowBoxChild):
-    __gtype_name__ = "ExhibitImageThumbnail"
+class ImageThumbnail(Gtk.FlowBoxChild):
+    __gtype_name__ = "ImageThumbnail"
 
     def __init__(self, file_thumbnail, hdri_file):
         super().__init__()
@@ -46,9 +48,9 @@ class ExhibitImageThumbnail(Gtk.FlowBoxChild):
         self.set_tooltip_text(base_name)
 
 
-@Gtk.Template(resource_path="/io/github/nokse22/Exhibit/file_row.ui")
-class ExhibitFileRow(Adw.PreferencesRow):
-    __gtype_name__ = "ExhibitFileRow"
+@Gtk.Template(resource_path="/io/github/nokse22/Exhibit/widgets/file_row.ui")
+class FileRow(Adw.PreferencesRow):
+    __gtype_name__ = "FileRow"
 
     file_button = Gtk.Template.Child()
     filename_label = Gtk.Template.Child()
@@ -109,11 +111,13 @@ class ExhibitFileRow(Adw.PreferencesRow):
         if extension in self.file_patterns:
             self.file = file
 
-    def add_suggested_file(self, file_thumbnail, filepath):
+    def add_suggested_file(self, filepath):
         if os.path.isfile(filepath):
             self.suggestions_box.set_visible(True)
 
-            hdri_thumbnail = ExhibitImageThumbnail(file_thumbnail, filepath)
+            file_thumbnail = self.generate_thumbnail(filepath)
+
+            hdri_thumbnail = ImageThumbnail(file_thumbnail, filepath)
             self.suggestions_box.append(hdri_thumbnail)
 
             self.suggested_files_n += 1
@@ -144,3 +148,22 @@ class ExhibitFileRow(Adw.PreferencesRow):
 
         if file:
             self.file = file
+
+    def generate_thumbnail(self, hdri_file_path, width=300, height=200):
+        base_name = os.path.basename(hdri_file_path)
+        name, _ = os.path.splitext(base_name)
+
+        thumbnail_name = f"{name}.jpeg"
+        thumbnail_filepath = os.path.join(HDRI_TN_PATH, thumbnail_name)
+
+        if os.path.isfile(thumbnail_filepath):
+            return
+
+        with Image(filename=hdri_file_path) as img:
+            img.thumbnail(width, height)
+            img.gamma(1.7)
+            img.brightness_contrast(0, -5)
+            img.format = 'jpeg'
+            img.save(filename=thumbnail_filepath)
+
+        return thumbnail_filepath

@@ -20,9 +20,9 @@
 from gi.repository import Gtk, Adw
 
 
-@Gtk.Template(resource_path='/io/github/nokse22/Exhibit/settings_dialog.ui')
-class ExhibitSettingsDialog(Adw.Dialog):
-    __gtype_name__ = "ExhibitSettingsDialog"
+@Gtk.Template(resource_path='/io/github/nokse22/Exhibit/widgets/settings_dialog.ui')
+class SettingsDialog(Adw.Dialog):
+    __gtype_name__ = "SettingsDialog"
 
     settings_column_view = Gtk.Template.Child()
     settings_column_view_name_column = Gtk.Template.Child()
