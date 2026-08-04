@@ -570,7 +570,7 @@
                                           </object>
                                         </child>
                                         <child>
-                                          <object class="ExhibitFileRow" id="hdri_file_row">
+                                          <object class="FileRow" id="hdri_file_row">
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">HDRI Image</property>
@@ -910,15 +910,11 @@
         <attribute name="action">win.open-new</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_Add File to Scene</attribute>
-        <attribute name="action">win.add-new</attribute>
-      </item>
-      <item>
         <attribute name="label" translatable="yes">_Export Image</attribute>
         <attribute name="action">win.save-as-image</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_Open In External App</attribute>
+        <attribute name="label" translatable="yes">_Open Externally</attribute>
         <attribute name="action">app.open-external</attribute>
       </item>
     </section>
@@ -929,7 +925,7 @@
       </item>
       <item>
         <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
-        <attribute name="action">win.show-help-overlay</attribute>
+        <attribute name="action">app.shortcuts</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_About Exhibit</attribute>

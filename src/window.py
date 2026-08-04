@@ -24,11 +24,21 @@ import threading
 import logging
 import asyncio
 
-from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Exb
-from wand.image import Image
+from gi.repository import Adw
+from gi.repository import Gtk
+from gi.repository import Gdk
+from gi.repository import Gio
+from gi.repository import GLib
+from gi.repository import GObject
+from gi.repository import Exb
 
-from .file_row import ExhibitFileRow
-from .settings_dialog import ExhibitSettingsDialog
+from wand.image import Image
+from pathlib import Path
+
+from .file_row import FileRow
+from .settings_dialog import SettingsDialog
+from .config import *
+from .theme_switcher import ThemeSwitcher
 
 from gettext import gettext as _
 
@@ -38,37 +48,12 @@ GObject.type_register(Exb.Blending)
 GObject.type_register(Exb.Sprites)
 GObject.type_register(Exb.AntiAliasing)
 GObject.type_register(Exb.Direction)
-GObject.type_register(ExhibitSettingsDialog)
+GObject.type_register(SettingsDialog)
 
 log = logging.getLogger(__name__)
 
 image_patt = ["hdr", "exr", "png", "jpg", "pnm", "tiff", "bmp"]
 model_patt = [s for s in Exb.get_allowed_extensions() if s not in image_patt]
-
-
-class PeriodicChecker(GObject.Object):
-    def __init__(self, function):
-        super().__init__()
-
-        self._running = False
-        self._function = function
-
-    def run(self):
-        if self._running:
-            return
-        self._running = True
-        GLib.timeout_add(500, self.periodic_check)
-
-    def stop(self):
-        self._running = False
-
-    def periodic_check(self):
-        if self._running:
-            self._function()
-            return True
-        else:
-            return False
-
 
 settings = Gio.Settings.new('io.github.nokse22.Exhibit')
 
@@ -130,8 +115,6 @@ class ExbWindow(Adw.ApplicationWindow):
             'save-as-image', self.open_save_file_chooser)
         self.open_new_action = self.create_action(
             'open-new', self.open_file_chooser)
-        self.open_new_action = self.create_action(
-            'add-new', self.open_file_chooser)
 
         self.orthographic_action = Gio.SimpleAction.new_stateful(
             "orthographic",
@@ -152,18 +135,24 @@ class ExbWindow(Adw.ApplicationWindow):
             'save-settings', self.on_save_settings)
         # self.save_settings_action.set_enabled(False)
 
-        # Saving all the useful paths
-        data_home = os.environ["XDG_DATA_HOME"]
+        theme_action = Gio.SimpleAction.new_stateful(
+            "theme",
+            GLib.VariantType.new("s"),
+            GLib.Variant("s", settings.get_string("theme")),
+        )
+        theme_action.connect("activate", self.set_theme_action)
+        self.add_action(theme_action)
 
-        self.hdri_path = data_home + "/HDRIs/"
-        self.hdri_thumbnails_path = self.hdri_path + "/thumbnails/"
+        popover = self.primary_menu_button.get_popover()
+        theme_switcher = ThemeSwitcher()
+        popover.add_child(theme_switcher, "theme")
 
-        self.user_configurations_path = data_home + "/configurations/"
+        # Creating folders if needed
+        Path(PRESETS_PATH).mkdir(parents=True, exist_ok=True)
+        Path(HDRI_PATH).mkdir(parents=True, exist_ok=True)
+        Path(HDRI_TN_PATH).mkdir(parents=True, exist_ok=True)
 
-        os.makedirs(self.user_configurations_path, exist_ok=True)
-        os.makedirs(data_home + "/other files/", exist_ok=True)
-
-        self.presets = Exb.Presets.new_with_paths([self.user_configurations_path])
+        self.presets = Exb.Presets.new_with_paths([PRESETS_PATH])
 
         # Create the hdri folder and add the default if there are none
         self.setup_hdri_folder()
@@ -184,17 +173,12 @@ class ExbWindow(Adw.ApplicationWindow):
         self.hdri_file_row.file_patterns = image_patt
         self.hdri_file_row.window = self
 
-        for filename in list_files(self.hdri_path):
-            name, _ = os.path.splitext(filename)
-
-            thumbnail = self.hdri_thumbnails_path + name + ".jpeg"
-            filepath = self.hdri_path + filename
+        for filename in Path(HDRI_PATH).iterdir():
             try:
-                if not os.path.isfile(thumbnail):
-                    thumbnail = self.generate_thumbnail(filepath)
-                self.hdri_file_row.add_suggested_file(thumbnail, filepath)
-            except Exception:
-                log.warning(f"Couldn't open HDRI file {filepath}, skipping")
+                filepath = Path(HDRI_PATH) / filename
+                self.hdri_file_row.add_suggested_file(filepath)
+            except Exception as e:
+                log.warning(f"Couldn't open HDRI file {filepath}: {e}")
 
         self.style_manager = Adw.StyleManager().get_default()
         self.style_manager.connect(
@@ -211,55 +195,29 @@ class ExbWindow(Adw.ApplicationWindow):
         log.info("Started")
 
     def setup_hdri_folder(self):
-        if os.path.isdir(self.hdri_path):
-            return
-
-        os.makedirs(self.hdri_path, exist_ok=True)
-        os.makedirs(self.hdri_thumbnails_path, exist_ok=True)
-
         hdri_names = ["city.hdr", "meadow.hdr", "field.hdr", "sky.hdr"]
         for hdri_filename in hdri_names:
-            if not os.path.isfile(self.hdri_path + hdri_filename):
+            if not os.path.isfile(HDRI_PATH + hdri_filename):
                 hdri = Gio.resources_lookup_data(
-                    '/io/github/nokse22/Exhibit/HDRIs/' + hdri_filename,
+                    RESOURCES_PREFIX + "HDRIs/" + hdri_filename,
                     Gio.ResourceLookupFlags.NONE).get_data()
                 hdri_bytes = bytearray(hdri)
-                with open(self.hdri_path + hdri_filename, 'wb') as output_file:
+                with open(Path(HDRI_PATH) / hdri_filename, 'wb') as output_file:
                     output_file.write(hdri_bytes)
                 log.info(f"Added {hdri_filename}")
 
-    #
-    # Functions that set the UI from the settings, triggered when
-    #   a setting has changed.
+    def set_theme_action(self, action, variant):
+        manager = Adw.StyleManager().get_default()
+        value = variant.get_string()
+        match value:
+            case "default":
+                manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
+            case "light":
+                manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+            case "dark":
+                manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
 
-    def set_scivis_component_combo(self, setting, *args):
-        selected = self.model_scivis_component_combo.get_selected()
-        log.debug(
-            f"Setting scivis component combo, selected: {selected}")
-        self.model_color_row.set_sensitive(True if selected == 0 else False)
-
-        if (self.engine.get_property("scivis-component").value == -1 and
-                self.engine.get_property("cells").value):
-            self.model_scivis_component_combo.set_selected(0)
-        else:
-            self.model_scivis_component_combo.set_selected(
-                -self.engine.get_property("scivis-component").value + 1)
-
-    # Functions that are called when a UI changes, they should only
-    #   set the corresponding setting.
-
-    def on_scivis_component_combo_changed(self, *args):
-        selected = self.model_scivis_component_combo.get_selected()
-        self.model_color_row.set_sensitive(True if selected == 0 else False)
-
-        if selected == 0:
-            self.engine.set_property("scivis-component", -1)
-            self.engine.set_property("cells", True)
-            self.engine.set_property("scivis-enabled", False)
-        else:
-            self.engine.set_property("scivis-component", -(selected - 1))
-            self.engine.set_property("cells", False)
-            self.engine.set_property("scivis-enabled", True)
+        settings.set_string("theme", value)
 
     #
     #
@@ -269,50 +227,6 @@ class ExbWindow(Adw.ApplicationWindow):
             self.engine.set_property("background-color", Gdk.RGBA(0.117, 0.117, 0.117, 1.0))
         else:
             self.engine.set_property("background-color", Gdk.RGBA(1.0, 1.0, 1.0, 1.0))
-
-    def set_settings_from_name(self, name):
-        log.debug("settings from name")
-        if name == "custom":
-            return
-
-        # Get the default settings and change the ones defined by the chosen presets
-        options = self.window_settings.get_default_user_customizable_settings()
-        for key, value in self.configurations[name]["view-settings"].items():
-            options[key] = value
-
-        # Set all the settings
-        for key, value in options.items():
-            self.window_settings.set_setting(key, value)
-
-        # Update all the viewer settings, to support settings without UI
-        self.f3d_viewer.update_options(options)
-
-        # Set all the settings not related to the viewer
-        for key, value in self.configurations[name]["other-settings"].items():
-            self.window_settings.set_setting(key, value)
-
-    # def periodic_check_for_file_change(self):
-    #     if self.filepath == "":
-    #         return True
-
-    #     changed = self.update_time_stamp()
-    #     if changed:
-    #         log.debug("file changed")
-    #         self.load_file(preserve_orientation=True, override=True)
-
-    #     if settings.get_boolean("auto-reload"):
-    #         return True
-    #     return False
-
-    def update_time_stamp(self):
-        try:
-            stamp = os.stat(self.filepath).st_mtime
-            if stamp != self._cached_time_stamp:
-                self._cached_time_stamp = stamp
-                return True
-            return False
-        except Exception:
-            return False
 
     def change_setting_state(self, state):
         log.debug(f"Requested changing settings to {state}")
@@ -363,6 +277,7 @@ class ExbWindow(Adw.ApplicationWindow):
 
         filepath = file.get_path()
 
+        self.engine.reset()
         preset = self.presets.get_default_for(filepath)
         self.engine.apply_preset(preset)
 
@@ -380,8 +295,6 @@ class ExbWindow(Adw.ApplicationWindow):
 
     def on_file_opened(self):
         log.debug("on file opened")
-
-        self.update_time_stamp()
 
         self.file_name = os.path.basename(self.filepath)
 
@@ -460,7 +373,6 @@ class ExbWindow(Adw.ApplicationWindow):
     def orthographic_state_changed(self, action, state):
         action.set_state(state)
         self.engine.set_property("orthographic", state.get_boolean())
-        # self.viewer.update_options({"orthographic": state.get_boolean()})
 
     def on_orthographic_changed(self, setting, *args):
         self.orthographic_action.set_state(
@@ -496,11 +408,8 @@ class ExbWindow(Adw.ApplicationWindow):
         self.split_view.set_show_sidebar(False)
 
     def open_with_external_app(self):
-        try:
-            file = Gio.File.new_for_path(self.filepath)
-        except Exception:
-            log.error("Failed to construct a new Gio.File from path.")
-        else:
+        file = self.engine.get_file()
+        if file:
             launcher = Gtk.FileLauncher.new(file)
             launcher.set_always_ask(True)
             launcher.launch(self, None, None)
@@ -526,8 +435,7 @@ class ExbWindow(Adw.ApplicationWindow):
         self.sidebar_default_visible = self.split_view.get_show_sidebar()
 
     def on_play_button_clicked(self, btn):
-        engine = self.viewer.get_engine()
-        engine.play_animation()
+        self.engine.play_animation()
 
     def on_playing_changed(self, *args):
         if self.viewer.playing:
@@ -554,23 +462,6 @@ class ExbWindow(Adw.ApplicationWindow):
         self.add_action(action)
         return action
 
-    def generate_thumbnail(self, hdri_file_path, width=300, height=200):
-        base_name = os.path.basename(hdri_file_path)
-        name, _ = os.path.splitext(base_name)
-
-        thumbnail_name = f"{name}.jpeg"
-        thumbnail_filepath = os.path.join(
-            self.hdri_thumbnails_path, thumbnail_name)
-
-        with Image(filename=hdri_file_path) as img:
-            img.thumbnail(width, height)
-            img.gamma(1.7)
-            img.brightness_contrast(0, -5)
-            img.format = 'jpeg'
-            img.save(filename=thumbnail_filepath)
-
-        return thumbnail_filepath
-
     @Gtk.Template.Callback("enum_name")
     def enum_name (self, item):
         return item.get_nick().title().replace("-", " ")
@@ -586,12 +477,3 @@ class ExbWindow(Adw.ApplicationWindow):
             "startup-sidebar-show", window.split_view.get_show_sidebar())
         settings.set_boolean(
             "auto-best", settings.get_boolean("auto-best"))
-
-
-def list_files(directory):
-    items = os.listdir(directory)
-    files = [
-        item for item in items if os.path.isfile(os.path.join(directory, item))
-    ]
-    return files
-
