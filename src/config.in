@@ -1,0 +1,7 @@
+from gi.repository import GLib
+
+DATA_HOME = GLib.get_user_data_dir()
+HDRI_TN_PATH = DATA_HOME + '/@HDRI_TN_PATH@'
+HDRI_PATH = DATA_HOME + '/@HDRI_PATH@'
+PRESETS_PATH = DATA_HOME + '/@PRESETS_PATH@'
+RESOURCES_PREFIX = '/io/github/nokse22/Exhibit/'
