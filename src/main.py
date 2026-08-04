@@ -27,7 +27,7 @@ from .window import ExbWindow
 from gettext import gettext as _
 
 
-class ExbApplication(Adw.Application):
+class ExhibitApplication(Adw.Application):
     """The main application singleton class."""
 
     open_filepath = None
@@ -166,5 +166,5 @@ class ExbApplication(Adw.Application):
 
 def main(version):
     """The application's entry point."""
-    app = ExbApplication()
+    app = ExhibitApplication()
     return app.run(sys.argv)
