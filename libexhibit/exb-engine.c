@@ -78,6 +78,7 @@ typedef enum
   PROP_GRID_UNIT,
   PROP_GRID_COLOR,
   PROP_GRID_SUBDIVISIONS,
+  PROP_GRID_REFLECTION,
   PROP_BLENDING,
   PROP_TONE_MAPPING,
   PROP_AMBIENT_OCCLUSION,
@@ -142,6 +143,7 @@ static const OptionMap option_maps[] = {
   { "grid-unit",              "render.grid.unit"                  },
   { "grid-color",             "render.grid.color"                 },
   { "grid-subdivisions",      "render.grid.subdivisions"          },
+  { "grid-reflection"         "render.grid.reflection"            },
   { "blending",               "render.effect.blending.mode"       },
   { "tone-mapping",           "render.effect.tone_mapping"        },
   { "ambient-occlusion",      "render.effect.ambient_occlusion"   },
@@ -978,6 +980,7 @@ exb_engine_get_property (GObject    *object,
     case PROP_GRID_UNIT:
     case PROP_GRID_COLOR:
     case PROP_GRID_SUBDIVISIONS:
+    case PROP_GRID_REFLECTION:
     case PROP_BLENDING:
     case PROP_TONE_MAPPING:
     case PROP_AMBIENT_OCCLUSION:
@@ -1081,6 +1084,7 @@ exb_engine_set_property (GObject      *object,
     case PROP_GRID_UNIT:
     case PROP_GRID_COLOR:
     case PROP_GRID_SUBDIVISIONS:
+    case PROP_GRID_REFLECTION:
     case PROP_BLENDING:
     case PROP_TONE_MAPPING:
     case PROP_AMBIENT_OCCLUSION:
@@ -1329,6 +1333,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                          NULL, NULL,
                          0, G_MAXINT, 10,
                          G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_GRID_REFLECTION] =
+      g_param_spec_double ("grid-reflection",
+                           NULL, NULL,
+                           -1, 1, 0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_TONE_MAPPING] =
       g_param_spec_boolean ("tone-mapping",
