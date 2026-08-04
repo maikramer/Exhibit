@@ -682,6 +682,20 @@ msgid ""
 "line"
 msgstr ""
 
+#: data/ui/window.ui:1327
+msgid "Focus Existing Tab"
+msgstr ""
+
+#: data/ui/window.ui:1328
+msgid ""
+"Opening a model that is already open switches to that tab and flashes it "
+"instead of creating a duplicate"
+msgstr ""
+
+#: src/window_tabs.py:293
+msgid "Already open: {}"
+msgstr ""
+
 #: data/ui/window.ui:825
 msgid "Reload On Change"
 msgstr ""
@@ -778,11 +792,11 @@ msgstr ""
 msgid "Orthonographic"
 msgstr ""
 
-#: data/ui/window.ui:1186 data/gtk/help-overlay.ui:77
+#: data/ui/window.ui:1186 data/gtk/help-overlay.ui:102
 msgid "Sync Cameras Across Tabs"
 msgstr ""
 
-#: data/ui/window.ui:1190 data/gtk/help-overlay.ui:84
+#: data/ui/window.ui:1190 data/gtk/help-overlay.ui:109
 msgid "Split Compare (Experimental)"
 msgstr ""
 
@@ -824,62 +838,95 @@ msgstr ""
 
 #: data/gtk/help-overlay.ui:44
 msgctxt "shortcut window"
-msgid "Camera"
+msgid "Tabs"
+msgstr ""
+
+#: src/window_tabs.py:47
+msgid "Close Tab"
 msgstr ""
 
 #: data/gtk/help-overlay.ui:47
-msgid "Front View"
+msgid "Close Tab (right-click tab)"
 msgstr ""
 
 #: data/gtk/help-overlay.ui:53
+msgid "Close Other Tabs (right-click tab)"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:59 src/window_tabs.py:53
+msgid "Reopen Closed Tab"
+msgstr ""
+
+#: src/window_tabs.py:48
+msgid "Close Other Tabs"
+msgstr ""
+
+#: src/window_tabs.py:49
+msgid "Close Tabs to the Left"
+msgstr ""
+
+#: src/window_tabs.py:50
+msgid "Close Tabs to the Right"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:69
+msgctxt "shortcut window"
+msgid "Camera"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:72
+msgid "Front View"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:78
 msgid "Right View"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:59
+#: data/gtk/help-overlay.ui:84
 msgid "Top View"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:65
+#: data/gtk/help-overlay.ui:90
 msgid "Isometric View"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:71
+#: data/gtk/help-overlay.ui:96
 msgid "Toggle Orthographic"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:95
+#: data/gtk/help-overlay.ui:137
 msgid "Camera Movements"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:100
+#: data/gtk/help-overlay.ui:142
 msgid "Move Forward"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:106
+#: data/gtk/help-overlay.ui:148
 msgid "Move Left"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:112
+#: data/gtk/help-overlay.ui:154
 msgid "Move Backward"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:118
+#: data/gtk/help-overlay.ui:160
 msgid "Move Right"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:126
+#: data/gtk/help-overlay.ui:168
 msgid "Tilt Left"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:132
+#: data/gtk/help-overlay.ui:174
 msgid "Tilt Right"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:138
+#: data/gtk/help-overlay.ui:180
 msgid "Tilt Up"
 msgstr ""
 
-#: data/gtk/help-overlay.ui:144
+#: data/gtk/help-overlay.ui:186
 msgid "Tilt Down"
 msgstr ""
 

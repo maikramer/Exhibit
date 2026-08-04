@@ -707,6 +707,22 @@ msgstr ""
 "Reabre as abas anteriores na inicialização quando nenhum arquivo é passado "
 "na linha de comando"
 
+#: data/ui/window.ui:1327
+msgid "Focus Existing Tab"
+msgstr "Focar Aba Existente"
+
+#: data/ui/window.ui:1328
+msgid ""
+"Opening a model that is already open switches to that tab and flashes it "
+"instead of creating a duplicate"
+msgstr ""
+"Abrir um modelo que já está aberto vai para aquela aba e a pisca em vez de "
+"criar uma duplicata"
+
+#: src/window_tabs.py:293
+msgid "Already open: {}"
+msgstr "Já aberto: {}"
+
 #: data/ui/window.ui:825
 msgid "Reload On Change"
 msgstr "Recarregar ao Alterar"
@@ -808,11 +824,11 @@ msgstr "Salvar Configurações Atuais"
 msgid "Orthonographic"
 msgstr "Ortográfica"
 
-#: data/ui/window.ui:1186 data/gtk/help-overlay.ui:77
+#: data/ui/window.ui:1186 data/gtk/help-overlay.ui:102
 msgid "Sync Cameras Across Tabs"
 msgstr "Sincronizar Câmeras entre Abas"
 
-#: data/ui/window.ui:1190 data/gtk/help-overlay.ui:84
+#: data/ui/window.ui:1190 data/gtk/help-overlay.ui:109
 msgid "Split Compare (Experimental)"
 msgstr "Split Compare (Experimental)"
 
@@ -855,62 +871,95 @@ msgstr "Abrir Arquivo"
 
 #: data/gtk/help-overlay.ui:44
 msgctxt "shortcut window"
+msgid "Tabs"
+msgstr "Abas"
+
+#: src/window_tabs.py:47
+msgid "Close Tab"
+msgstr "Fechar Aba"
+
+#: data/gtk/help-overlay.ui:47
+msgid "Close Tab (right-click tab)"
+msgstr "Fechar Aba (botão direito na aba)"
+
+#: data/gtk/help-overlay.ui:53
+msgid "Close Other Tabs (right-click tab)"
+msgstr "Fechar Outras Abas (botão direito na aba)"
+
+#: data/gtk/help-overlay.ui:59 src/window_tabs.py:53
+msgid "Reopen Closed Tab"
+msgstr "Reabrir Aba Fechada"
+
+#: src/window_tabs.py:48
+msgid "Close Other Tabs"
+msgstr "Fechar Outras Abas"
+
+#: src/window_tabs.py:49
+msgid "Close Tabs to the Left"
+msgstr "Fechar Abas à Esquerda"
+
+#: src/window_tabs.py:50
+msgid "Close Tabs to the Right"
+msgstr "Fechar Abas à Direita"
+
+#: data/gtk/help-overlay.ui:69
+msgctxt "shortcut window"
 msgid "Camera"
 msgstr "Câmera"
 
-#: data/gtk/help-overlay.ui:47
+#: data/gtk/help-overlay.ui:72
 msgid "Front View"
 msgstr "Vista frontal"
 
-#: data/gtk/help-overlay.ui:53
+#: data/gtk/help-overlay.ui:78
 msgid "Right View"
 msgstr "Vista direita"
 
-#: data/gtk/help-overlay.ui:59
+#: data/gtk/help-overlay.ui:84
 msgid "Top View"
 msgstr "Vista superior"
 
-#: data/gtk/help-overlay.ui:65
+#: data/gtk/help-overlay.ui:90
 msgid "Isometric View"
 msgstr "Vista isométrica"
 
-#: data/gtk/help-overlay.ui:71
+#: data/gtk/help-overlay.ui:96
 msgid "Toggle Orthographic"
 msgstr "Alternar ortográfica"
 
-#: data/gtk/help-overlay.ui:95
+#: data/gtk/help-overlay.ui:137
 msgid "Camera Movements"
 msgstr "Movimentos da câmera"
 
-#: data/gtk/help-overlay.ui:100
+#: data/gtk/help-overlay.ui:142
 msgid "Move Forward"
 msgstr "Mover para frente"
 
-#: data/gtk/help-overlay.ui:106
+#: data/gtk/help-overlay.ui:148
 msgid "Move Left"
 msgstr "Mover para a esquerda"
 
-#: data/gtk/help-overlay.ui:112
+#: data/gtk/help-overlay.ui:154
 msgid "Move Backward"
 msgstr "Mover para trás"
 
-#: data/gtk/help-overlay.ui:118
+#: data/gtk/help-overlay.ui:160
 msgid "Move Right"
 msgstr "Mover para a direita"
 
-#: data/gtk/help-overlay.ui:126
+#: data/gtk/help-overlay.ui:168
 msgid "Tilt Left"
 msgstr "Inclinar para a esquerda"
 
-#: data/gtk/help-overlay.ui:132
+#: data/gtk/help-overlay.ui:174
 msgid "Tilt Right"
 msgstr "Inclinar para a direita"
 
-#: data/gtk/help-overlay.ui:138
+#: data/gtk/help-overlay.ui:180
 msgid "Tilt Up"
 msgstr "Inclinar para cima"
 
-#: data/gtk/help-overlay.ui:144
+#: data/gtk/help-overlay.ui:186
 msgid "Tilt Down"
 msgstr "Inclinar para baixo"
 
