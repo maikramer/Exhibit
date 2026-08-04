@@ -2034,3 +2034,35 @@ exb_engine_get_loading_file (ExbEngine *self)
 
   return priv->is_loading;
 }
+
+/**
+ * exb_engine_reset:
+ * @self: a #ExbEngine
+ *
+ */
+void
+exb_engine_reset (ExbEngine *self)
+{
+  ExbEnginePrivate *priv;
+  f3d_options_t *options;
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  priv = exb_engine_get_instance_private (self);
+  options = f3d_engine_get_options (priv->engine);
+
+  for (gsize i = 0; i < option_maps_len; i++)
+    {
+      if (!f3d_has_option (self, option_maps[i].f3d_key))
+        {
+          g_warning ("ExbEngine: Invalid pspec '%s' while getting option", option_maps[i].f3d_key);
+          EXB_EXIT;
+        }
+
+      f3d_options_reset (options, option_maps[i].f3d_key);
+    }
+
+  EXB_EXIT;
+}
