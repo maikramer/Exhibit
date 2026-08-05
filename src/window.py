@@ -278,6 +278,7 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         self.tab_view.connect("notify::selected-page", self._on_tab_selected)
         self.create_action("new-tab", self._on_new_tab_action)
         self.create_action("inspect-skin-weights", self._on_inspect_skin_weights)
+        self.create_action("split-compare-toggle", self._on_split_compare_toggle)
 
         # Camera preset actions (approximate via Exb rotate until full nav ports).
         self.create_action("view-front", lambda *_: self._apply_named_view("front"))

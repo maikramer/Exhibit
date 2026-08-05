@@ -19,7 +19,7 @@ Branches:
 - [~] File watch / auto-reload (single-doc; prompt UI TODO)
 - [~] Headless CLI render (Exb standalone fallback); video encode still f3d-path
 - [~] Animation names combo (glTF names wired); bind pose default on load
-- [ ] Split compare
+- [~] Split compare (action stub; full UI TODO)
 - [~] Session restore / recent files (persist + restore wired)
 - [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
 - [~] pytest suite adapted for Exb shim; mixin UI tests still legacy
