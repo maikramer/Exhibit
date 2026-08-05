@@ -72,17 +72,32 @@ class SettingsUIMixin:
         color_button.set_rgba(rgba)
 
     def set_scivis_component_combo(self, setting, *args):
-        selected = self.model_scivis_component_combo.get_selected()
-        self.logger.debug(
-            f"Setting scivis component combo, selected: {selected}")
-        self.model_color_row.set_sensitive(True if selected == 0 else False)
-
-        if (self.window_settings.get_setting("scivis-component").value == -1 and
-                self.window_settings.get_setting("cells").value):
-            self.model_scivis_component_combo.set_selected(0)
+        if (
+            self.window_settings.get_setting("scivis-component").value == -1
+            and self.window_settings.get_setting("cells").value
+        ):
+            position = 0
         else:
-            self.model_scivis_component_combo.set_selected(
-                -self.window_settings.get_setting("scivis-component").value + 1)
+            try:
+                position = (
+                    -int(
+                        self.window_settings.get_setting(
+                            "scivis-component"
+                        ).value
+                    )
+                    + 1
+                )
+            except Exception:
+                position = 0
+        position = max(0, min(position, 3))
+        self.logger.debug("Setting scivis component combo to %s", position)
+        if self.model_scivis_component_combo.get_selected() != position:
+            self._block_scivis_combo = True
+            try:
+                self.model_scivis_component_combo.set_selected(position)
+            finally:
+                self._block_scivis_combo = False
+        self.model_color_row.set_sensitive(position == 0)
 
     def set_point_sprites_type_combo_changed(self, setting, *args):
         value = self.window_settings.get_setting("sprites-type").value
@@ -113,15 +128,19 @@ class SettingsUIMixin:
         self.window_settings.set_setting("up", direction)
 
     def on_scivis_component_combo_changed(self, *args):
+        if getattr(self, "_block_scivis_combo", False):
+            return
         selected = self.model_scivis_component_combo.get_selected()
-        self.model_color_row.set_sensitive(True if selected == 0 else False)
+        self.model_color_row.set_sensitive(selected == 0)
 
         if selected == 0:
             self.window_settings.set_setting("scivis-component", -1, False)
             self.window_settings.set_setting("cells", True)
             self.window_settings.set_setting("scivis-enabled", False)
         else:
-            self.window_settings.set_setting("scivis-component", -(selected - 1))
+            self.window_settings.set_setting(
+                "scivis-component", -(selected - 1)
+            )
             self.window_settings.set_setting("cells", False)
             self.window_settings.set_setting("scivis-enabled", True)
 

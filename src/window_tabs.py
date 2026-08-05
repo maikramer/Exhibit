@@ -341,8 +341,12 @@ class TabsMixin:
         "model-roughness",
         "model-opacity",
         "model-color",
+        "model-unlit",
+        "normal-scale",
+        "orthographic",
         "show-grid",
         "grid-absolute",
+        "grid-color",
         "background-color",
         "up",
         "show-armature",
@@ -379,6 +383,7 @@ class TabsMixin:
     _ENGINE_PROP_TO_SETTING = {
         "show-grid": "grid",
         "grid-absolute": "grid-absolute",
+        "grid-color": "grid-color",
         "show-armature": "armature-enable",
         "background-color": "bg-color",
         "model-color": "model-color",
@@ -395,6 +400,9 @@ class TabsMixin:
         "model-opacity": "model-opacity",
         "model-metallic": "model-metallic",
         "model-roughness": "model-roughness",
+        "model-unlit": "model-unlit",
+        "normal-scale": "normal-scale",
+        "orthographic": "orthographic",
         "bloom": "bloom",
         "bloom-threshold": "bloom-threshold",
         "bloom-intensity": "bloom-intensity",
@@ -426,7 +434,7 @@ class TabsMixin:
         setting = self.window_settings.get_setting(key)
         if setting is None:
             return
-        if prop in ("background-color", "model-color"):
+        if prop in ("background-color", "model-color", "grid-color"):
             try:
                 normalized = [value.red, value.green, value.blue]
             except Exception:
@@ -447,20 +455,19 @@ class TabsMixin:
             except Exception:
                 return
         elif prop == "anti-aliasing":
+            # Preserve NONE/FXAA/SSAA — bool True→FXAA on reload wiped SSAA.
             try:
-                from gi.repository import Exb
-
-                normalized = value != Exb.AntiAliasing.NONE
+                nick = getattr(value, "value_nick", None) or str(value)
+                normalized = str(nick).replace("_", "-").lower()
             except Exception:
-                normalized = bool(value)
+                normalized = "fxaa" if value else "none"
         elif prop == "blending":
-            # Sidebar Exb.Blending → preset bool translucency-support.
+            # Preserve full Exb.Blending nick (not just bool translucency on/off).
             try:
-                from gi.repository import Exb
-
-                normalized = value != Exb.Blending.NONE
+                nick = getattr(value, "value_nick", None) or str(value)
+                normalized = str(nick).replace("_", "-").lower()
             except Exception:
-                normalized = bool(value)
+                normalized = "ddp" if value else "none"
         elif prop == "sprites":
             try:
                 from gi.repository import Exb
@@ -541,23 +548,94 @@ class TabsMixin:
         was_extend = bool(self.toolbar_view.get_extend_content_to_top_edge())
         # Single-doc: full-bleed under header. Multi-doc: reserve top chrome.
         self.toolbar_view.set_extend_content_to_top_edge(not want_bar)
-        # Force reveal even if autohide lags during the 2nd open.
-        if want_bar:
-            self.tab_bar.set_visible(True)
+        # Explicit hide when single-doc — avoids phantom tab-bar border over GL.
+        self.tab_bar.set_visible(bool(want_bar))
         self._sync_object_tree_overlay_margin(want_bar)
         chrome_changed = was_extend != (not want_bar)
         if chrome_changed:
             GLib.timeout_add(100, self._reframe_after_chrome_change)
         return chrome_changed
 
-    def _sync_object_tree_overlay_margin(self, tab_bar_visible: bool) -> None:
-        """Keep outliner chrome tight to header/tabs (no double top gap)."""
+    def _wire_outliner_overlay_chrome(self) -> None:
+        """Re-measure outliner inset when HeaderBar maps / resizes."""
+        if getattr(self, "_outliner_chrome_wired", False):
+            return
+        hb = getattr(self, "header_bar", None)
+        if hb is None:
+            return
+        self._outliner_chrome_wired = True
+
+        def _resync(*_args):
+            self._sync_object_tree_overlay_margin()
+            return GLib.SOURCE_REMOVE
+
+        hb.connect("notify::mapped", lambda *_a: GLib.idle_add(_resync))
+        hb.connect("map", lambda *_a: GLib.idle_add(_resync))
+        try:
+            hb.connect("notify::height-request", lambda *_a: GLib.idle_add(_resync))
+        except Exception:
+            pass
+        sidebar = getattr(self, "sidebar_toggle_button", None)
+        if sidebar is not None:
+            sidebar.connect("notify::mapped", lambda *_a: GLib.idle_add(_resync))
+            sidebar.connect("map", lambda *_a: GLib.idle_add(_resync))
+        overlay = getattr(self, "viewport_overlay", None)
+        if overlay is not None:
+            overlay.connect("map", lambda *_a: GLib.idle_add(_resync))
+
+    def _header_bar_content_height(self) -> int:
+        hb = getattr(self, "header_bar", None)
+        if hb is None:
+            return 46
+        h = int(hb.get_height() or 0)
+        if h > 0:
+            return h
+        try:
+            _min_h, nat_h, _mb, _nb = hb.measure(Gtk.Orientation.VERTICAL, -1)
+            if nat_h > 0:
+                return int(nat_h)
+            if _min_h > 0:
+                return int(_min_h)
+        except Exception:
+            pass
+        return 46
+
+    def _sync_object_tree_overlay_margin(self, tab_bar_visible: bool | None = None) -> None:
+        """Place outliner shell just below HeaderBar (or tight under tab bar)."""
         shell = getattr(self, "object_tree_overlay_shell", None)
         if shell is None:
             return
-        # Full-bleed under header needs clearance for sidebar/home.
-        # With tabs, content already starts below the bar — small inset only.
-        shell.set_margin_top(8 if tab_bar_visible else 56)
+        if tab_bar_visible is None:
+            tab_bar_visible = self.tab_view.get_n_pages() > 1
+        extend = bool(self.toolbar_view.get_extend_content_to_top_edge())
+        if extend and not tab_bar_visible:
+            shell.set_margin_top(self._header_bar_content_height())
+        else:
+            shell.set_margin_top(8)
+        self._sync_object_tree_overlay_start(shell)
+
+    def _sync_object_tree_overlay_start(self, shell) -> None:
+        """Match outliner column to sidebar toggle X (HeaderBar padding ≠ 8)."""
+        sidebar = getattr(self, "sidebar_toggle_button", None)
+        overlay = getattr(self, "viewport_overlay", None)
+        if sidebar is None or overlay is None or not sidebar.get_mapped():
+            return
+        try:
+            coords = sidebar.translate_coordinates(overlay, 0, 0)
+        except Exception:
+            return
+        if coords is None:
+            return
+        # PyGObject GTK4: (ok, x, y) or (x, y)
+        if len(coords) == 3:
+            ok, x, _y = coords
+            if not ok:
+                return
+        else:
+            x, _y = coords
+        if x is None or x < 0:
+            return
+        shell.set_margin_start(int(round(x)))
 
     def _reframe_after_chrome_change(self):
         """Re-fit visible cameras after tab bar steals/returns vertical space."""
@@ -1287,6 +1365,7 @@ class TabsMixin:
         # Keep per-tab x-ray / depth restore; do not invent defaults across switches.
         self._armature_xray_restore = tab.armature_xray_restore
         self._depth_opacity_restore = tab.depth_opacity_restore
+        self._depth_scivis_restore = getattr(tab, "depth_scivis_restore", None)
         if tab.loaded:
             label = tab.tab_title(_("modified"), _("Untitled"))
             self.set_title(_("Exhibit - {}").format(label))
@@ -1371,7 +1450,15 @@ class TabsMixin:
                 owns_heat = False
                 if heat:
                     try:
-                        owns_heat = tab.viewer.get_prepared_path() == heat
+                        probe = getattr(
+                            tab.viewer, "get_active_load_path", None
+                        )
+                        active = (
+                            probe()
+                            if callable(probe)
+                            else tab.viewer.get_prepared_path()
+                        )
+                        owns_heat = active == heat
                     except Exception as exc:
                         self.logger.debug("tab close heat probe: %s", exc)
                 if was_selected or owns_heat:

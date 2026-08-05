@@ -140,7 +140,7 @@ file-row {
   margin-right: 6px;
 }
 
-/* ToggleButton vs Button: same disk so header row stays level. */
+/* Equal disks: header sidebar/home/menu + outliner toggle. */
 .preview-headerbar .overlay-button.circular,
 .object-tree-overlay-shell .overlay-button.circular {
   min-width: 34px;

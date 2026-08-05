@@ -45,7 +45,10 @@ class InspectMixin:
         tab.mesh_stats = stats
 
     def _apply_stats_overlay(self, enabled: bool) -> None:
-        """Show/hide the Gtk stats overlay; refresh counts when enabling."""
+        """Show/hide the Gtk stats overlay; refresh counts when enabling.
+
+        Exb has no ``ui.filename_info`` / metadata props — Gtk HUD only.
+        """
         if enabled:
             if self._mesh_stats is None:
                 self._refresh_mesh_stats()
@@ -56,34 +59,9 @@ class InspectMixin:
             else:
                 self.stats_overlay_label.set_label(_("No stats available"))
             self.stats_overlay_label.set_visible(True)
-            # Also drive F3D's native metadata + our text via filename_info.
-            info = (
-                format_overlay_text(self._mesh_stats)
-                if self._mesh_stats is not None
-                else ""
-            )
-            if self.f3d_viewer.engine:
-                self.f3d_viewer.engine.options.update(
-                    {
-                        "ui.metadata": True,
-                        "ui.filename": True,
-                        "ui.filename_info": info,
-                        "ui.backdrop.opacity": 0.55,
-                    }
-                )
-                self.f3d_viewer.queue_render()
             return
 
         self.stats_overlay_label.set_visible(False)
-        if self.f3d_viewer.engine:
-            self.f3d_viewer.engine.options.update(
-                {
-                    "ui.metadata": False,
-                    "ui.filename": False,
-                    "ui.filename_info": "",
-                }
-            )
-            self.f3d_viewer.queue_render()
 
     def _prepared_needs_skeleton_fix(self) -> bool:
         path = self.f3d_viewer.get_prepared_path() or self.filepath
@@ -224,8 +202,25 @@ class InspectMixin:
                 self._depth_opacity_restore = float(
                     self.window_settings.get_setting("model-opacity").value
                 )
+            if getattr(self, "_depth_scivis_restore", None) is None:
+                # Depth forces engine scivis for the colormap path; keep the
+                # user's Coloration (WindowSettings) to restore on disable.
+                self._depth_scivis_restore = {
+                    "scivis-enabled": bool(
+                        self.window_settings.get_setting("scivis-enabled").value
+                    ),
+                    "cells": bool(
+                        self.window_settings.get_setting("cells").value
+                    ),
+                    "scivis-component": int(
+                        self.window_settings.get_setting(
+                            "scivis-component"
+                        ).value
+                    ),
+                }
             if tab is not None:
                 tab.depth_opacity_restore = self._depth_opacity_restore
+                tab.depth_scivis_restore = self._depth_scivis_restore
 
             self.window_settings.begin_view_batch()
             try:
@@ -237,7 +232,8 @@ class InspectMixin:
             opts = {
                 "display-depth": True,
                 "model-opacity": 1.0,
-                # Colormap path (see F3D display_depth docs).
+                # Colormap path (see F3D display_depth docs) — engine only;
+                # do not stomp WindowSettings Coloration.
                 "scivis-enabled": True,
             }
             self._update_all_viewers_options(opts)
@@ -249,9 +245,20 @@ class InspectMixin:
             return
 
         restore = getattr(self, "_depth_opacity_restore", None)
+        scivis_restore = getattr(self, "_depth_scivis_restore", None) or {
+            "scivis-enabled": bool(
+                self.window_settings.get_setting("scivis-enabled").value
+            ),
+            "cells": bool(self.window_settings.get_setting("cells").value),
+            "scivis-component": int(
+                self.window_settings.get_setting("scivis-component").value
+            ),
+        }
         self._depth_opacity_restore = None
+        self._depth_scivis_restore = None
         if tab is not None:
             tab.depth_opacity_restore = None
+            tab.depth_scivis_restore = None
         opacity = (
             float(restore)
             if restore is not None
@@ -263,12 +270,24 @@ class InspectMixin:
         self.window_settings.begin_view_batch()
         try:
             self.window_settings.set_setting("model-opacity", opacity)
+            # Re-assert Coloration settings (engine was forced scivis for depth).
+            self.window_settings.set_setting(
+                "scivis-component", scivis_restore["scivis-component"], False
+            )
+            self.window_settings.set_setting(
+                "cells", scivis_restore["cells"], False
+            )
+            self.window_settings.set_setting(
+                "scivis-enabled", scivis_restore["scivis-enabled"]
+            )
         finally:
             self.window_settings.end_view_batch()
         self._update_all_viewers_options(
             {
                 "display-depth": False,
-                "scivis-enabled": False,
+                "scivis-enabled": scivis_restore["scivis-enabled"],
+                "cells": scivis_restore["cells"],
+                "scivis-component": scivis_restore["scivis-component"],
                 "model-opacity": opacity,
             }
         )
@@ -314,7 +333,14 @@ class InspectMixin:
             owner = None
             for tab in self._iter_tabs():
                 try:
-                    if tab.viewer.get_prepared_path() == heat:
+                    # get_prepared_path() strips exhibit-skinw-* — use active load.
+                    probe = getattr(tab.viewer, "get_active_load_path", None)
+                    active = (
+                        probe()
+                        if callable(probe)
+                        else tab.viewer.get_prepared_path()
+                    )
+                    if active == heat:
                         owner = tab
                         break
                 except Exception as exc:

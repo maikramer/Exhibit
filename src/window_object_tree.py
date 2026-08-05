@@ -96,13 +96,17 @@ class ObjectTreeMixin:
         return store
 
     def _set_object_tree_overlay_available(self, available: bool):
-        # Outliner toggle shares overlay-button style with header chrome;
-        # shown only when the active tree has meshes.
+        # Whole shell (toggle + panel) only when active tree has meshes.
+        shell = getattr(self, "object_tree_overlay_shell", None)
         toggle = getattr(self, "object_tree_toggle", None)
-        if toggle is not None:
-            toggle.set_visible(bool(available))
-            if not available:
-                toggle.set_active(False)
+        if shell is not None:
+            shell.set_visible(bool(available))
+        if toggle is not None and not available:
+            toggle.set_active(False)
+        if available:
+            sync = getattr(self, "_sync_object_tree_overlay_margin", None)
+            if callable(sync):
+                sync()
 
     def refresh_object_tree(self):
         try:

@@ -15,6 +15,8 @@ import tempfile
 from ..gltf_scene_graph import (
     ScenePart,
     SceneTreeNode,
+    _effective_hidden,
+    _load_gltf,
     build_glb_hiding_nodes_bytes,
     build_scene_tree,
     list_mesh_parts,
@@ -291,6 +293,7 @@ class F3DViewer(Gtk.Box):
             if key == "anti-aliasing":
                 try:
                     if isinstance(value, bool):
+                        # Legacy presets/configs.
                         mode = (
                             Exb.AntiAliasing.FXAA
                             if value
@@ -298,15 +301,23 @@ class F3DViewer(Gtk.Box):
                         )
                     else:
                         nick = str(value).replace("-", "_").upper()
-                        mode = getattr(Exb.AntiAliasing, nick, Exb.AntiAliasing.FXAA)
+                        mode = getattr(
+                            Exb.AntiAliasing, nick, Exb.AntiAliasing.FXAA
+                        )
                     eng.set_property("anti-aliasing", mode)
                 except Exception as exc:
                     log.debug("update_options anti-aliasing: %s", exc)
                 continue
             if key == "translucency-support":
-                # Preset/config bool → Exb.Blending (DDP vs none).
+                # Bool (legacy) or Exb.Blending nick from fanout/presets.
                 try:
-                    mode = Exb.Blending.DDP if value else Exb.Blending.NONE
+                    if isinstance(value, bool):
+                        mode = (
+                            Exb.Blending.DDP if value else Exb.Blending.NONE
+                        )
+                    else:
+                        nick = str(value).replace("-", "_").upper()
+                        mode = getattr(Exb.Blending, nick, Exb.Blending.DDP)
                     eng.set_property("blending", mode)
                 except Exception as exc:
                     log.debug("update_options translucency-support: %s", exc)
@@ -709,7 +720,22 @@ class F3DViewer(Gtk.Box):
         return set(self._hidden_parts)
 
     def get_effective_hidden_part_indices(self) -> set[int]:
-        return set(self._hidden_parts)
+        """Hidden set expanded so descendants of a hidden ancestor stay hidden."""
+        explicit = set(self._hidden_parts)
+        if not explicit:
+            return explicit
+        path = self._prepared_path or self._loaded_filepath
+        if not path:
+            return explicit
+        gltf = _load_gltf(
+            path, already_prepared=bool(self._prepared_path)
+        )
+        if not gltf:
+            return explicit
+        nodes = gltf.get("nodes") or []
+        if not isinstance(nodes, list):
+            return explicit
+        return _effective_hidden(nodes, explicit)
 
     def get_prepared_path(self) -> str | None:
         """Stable prepare-cache path (not hide/skin adhoc temps)."""
@@ -718,6 +744,13 @@ class F3DViewer(Gtk.Box):
             return base
         path = self._prepared_path
         if path and not is_adhoc_load_temp(path) and os.path.isfile(path):
+            return path
+        return None
+
+    def get_active_load_path(self) -> str | None:
+        """Path currently loaded in the engine (includes hide/skin adhoc temps)."""
+        path = self._prepared_path
+        if path and os.path.isfile(path):
             return path
         return None
 

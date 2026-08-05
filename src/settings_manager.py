@@ -140,6 +140,7 @@ class WindowSettings(Gio.ListStore):
         "model-metallic": 0.0,
         "model-roughness": 0.3,
         "model-opacity": 1.0,
+        "model-unlit": False,
         "armature-enable": False,
         "checkerboard-enable": False,
         "normal-glyphs": False,

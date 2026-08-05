@@ -90,6 +90,28 @@ class AnimationMixin:
             return 1
         return int(index) + 2
 
+    def _animation_index_from_active_viewer(self):
+        """Map active Exb ``animation-index`` → WindowSettings (None / -1 / 0+).
+
+        Shared setting alone is wrong after tab switch: clips are per-engine and
+        fresh opens clear the global setting without touching siblings.
+        """
+        fallback = self.window_settings.get_setting("animation-index").value
+        viewer = getattr(self, "f3d_viewer", None)
+        engine = getattr(viewer, "engine", None) if viewer is not None else None
+        if engine is None:
+            return fallback
+        try:
+            raw = int(engine.get_property("animation-index"))
+        except Exception:
+            return fallback
+        # Exb: -2 = empty/bind pose; -1 = all; >=0 = clip.
+        if raw <= -2:
+            return None
+        if raw < 0:
+            return -1
+        return raw
+
     def _set_animation_controls_sensitive(self, enabled: bool) -> None:
         self.play_button.set_sensitive(enabled)
         play_header = getattr(self, "play_button_headerbar", None)
@@ -118,10 +140,17 @@ class AnimationMixin:
             else:
                 string_list.append(_("Animation {}").format(i))
 
-        current = self.window_settings.get_setting("animation-index").value
+        current = self._animation_index_from_active_viewer()
         if isinstance(current, int) and current >= count:
             current = None
-            self.window_settings.set_setting("animation-index", current, False)
+        # Align shared setting with the visible tab without fanning out.
+        setting = self.window_settings.get_setting("animation-index")
+        if setting is not None and setting.value != current:
+            self.window_settings.begin_view_batch()
+            try:
+                self.window_settings.set_setting("animation-index", current, False)
+            finally:
+                self.window_settings.end_view_batch()
 
         position = self._combo_position_for_animation_index(current)
         if position >= string_list.get_n_items():

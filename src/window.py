@@ -105,6 +105,7 @@ class ExbWindow(
     title_widget = Gtk.Template.Child()
     stack = Gtk.Template.Child()
     toolbar_view = Gtk.Template.Child()
+    header_bar = Gtk.Template.Child()
 
     view_drop_target = Gtk.Template.Child()
     loading_drop_target = Gtk.Template.Child()
@@ -113,6 +114,7 @@ class ExbWindow(
     up_direction_combo = Gtk.Template.Child()
     point_up_switch = Gtk.Template.Child()
     model_scivis_component_combo = Gtk.Template.Child()
+    model_color_row = Gtk.Template.Child()
     startup_stack = Gtk.Template.Child()
     settings_section = Gtk.Template.Child()
     animation_combo_model = Gtk.Template.Child()
@@ -181,6 +183,7 @@ class ExbWindow(
         self._mesh_stats = None
         self._armature_xray_restore = None
         self._depth_opacity_restore = None
+        self._depth_scivis_restore = None
         self._skin_weights_scivis_restore = None
         self._skin_weights_base_path = None
         self._skin_weights_heat_temp = None
@@ -232,6 +235,7 @@ class ExbWindow(
         self._setup_tab_context_menu()
         self._setup_object_tree_view()
         self._seed_primary_tab()
+        self._wire_outliner_overlay_chrome()
         self._update_tab_bar_visibility()
         self.logger.info("Declarative shell ready")
 
@@ -404,6 +408,21 @@ class ExbWindow(
         up_setting.connect("changed", self.set_up_direction_combo)
         up_setting.connect("changed-no-ui-update", self.set_up_direction_combo)
         self.set_up_direction_combo(up_setting)
+
+        self.model_scivis_component_combo.connect(
+            "notify::selected", self.on_scivis_component_combo_changed
+        )
+        scivis_comp = self.window_settings.get_setting("scivis-component")
+        scivis_comp.connect("changed", self.set_scivis_component_combo)
+        scivis_comp.connect(
+            "changed-no-ui-update", self.set_scivis_component_combo
+        )
+        cells_setting = self.window_settings.get_setting("cells")
+        cells_setting.connect("changed", self.set_scivis_component_combo)
+        cells_setting.connect(
+            "changed-no-ui-update", self.set_scivis_component_combo
+        )
+        self.set_scivis_component_combo(scivis_comp)
 
         self.normal_glyphs_scale_spin.connect(
             "notify::value", self.on_spin_changed, "normal-glyphs-scale"
