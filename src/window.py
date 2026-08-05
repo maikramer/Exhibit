@@ -235,6 +235,13 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         self._setup_minimal_tabs()
         self._setup_minimal_outliner()
         self._apply_nav_settings_from_gschema()
+        self._armature_xray_restore = None
+        try:
+            self.engine.connect(
+                "notify::show-armature", self._on_show_armature_changed
+            )
+        except Exception as exc:
+            log.debug("armature notify: %s", exc)
 
         if startup_filepath:
             log.info(f"startup file detected: {startup_filepath}")
@@ -400,20 +407,60 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         return ok
 
     def _on_inspect_skin_weights(self, *args):
-        """Best-effort joint heat map via temp GLB + Exb scivis."""
+        """Joint heat map via temp GLB + Exb scivis (picker for joint index)."""
         path = self.filepath
         if not path:
             self.send_toast(_("Open a model first"))
             return
         try:
-            from .gltf_scene_graph import glb_has_skins
-            from .skin_weights import write_skin_weight_heat_temp
+            from .gltf_scene_graph import _load_gltf, glb_has_skins
+            from .skin_weights import list_skin_joints
 
             if not glb_has_skins(path):
                 self.send_toast(_("No skins in this model"))
                 return
             source = getattr(self._viewer_bridge, "_prepared_path", None) or path
-            temp = write_skin_weight_heat_temp(source, 0)
+            gltf = _load_gltf(source, already_prepared=bool(
+                getattr(self._viewer_bridge, "_prepared_path", None)
+            ))
+            joints = list_skin_joints(gltf or {}, skin_index=0)
+        except Exception as exc:
+            log.warning("skin weight inspect prep failed: %s", exc)
+            self.send_toast(_("Skin-weight inspect failed"))
+            return
+
+        if not joints:
+            self._apply_skin_weight_heat(source, 0)
+            return
+
+        dialog = Adw.AlertDialog(
+            heading=_("Skin weights"),
+            body=_("Pick a joint for the heat map"),
+        )
+        combo = Gtk.DropDown.new_from_strings(
+            [f"{j.list_index}: {j.name}" for j in joints]
+        )
+        combo.set_selected(0)
+        dialog.set_extra_child(combo)
+        dialog.add_response("cancel", _("Cancel"))
+        dialog.add_response("apply", _("Apply"))
+        dialog.set_default_response("apply")
+
+        def _on_response(_d, response):
+            if response != "apply":
+                return
+            idx = int(combo.get_selected())
+            joint_i = joints[idx].list_index if 0 <= idx < len(joints) else 0
+            self._apply_skin_weight_heat(source, joint_i)
+
+        dialog.connect("response", _on_response)
+        dialog.present(self)
+
+    def _apply_skin_weight_heat(self, source: str, joint_list_index: int):
+        try:
+            from .skin_weights import HEAT_ATTR, write_skin_weight_heat_temp
+
+            temp = write_skin_weight_heat_temp(source, joint_list_index)
         except Exception as exc:
             log.warning("skin weight heat failed: %s", exc)
             self.send_toast(_("Skin-weight inspect failed"))
@@ -423,8 +470,6 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             self.engine.reset()
             self.engine.load_file(Gio.File.new_for_path(temp))
             try:
-                from .skin_weights import HEAT_ATTR
-
                 self.engine.set_property("scivis-array-name", HEAT_ATTR)
                 self.engine.set_property("scivis", True)
             except Exception as exc:
@@ -436,7 +481,9 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
                 except OSError:
                     pass
             self._skinw_temp = temp
-            self.send_toast(_("Skin weights (joint 0)"))
+            self.send_toast(
+                _("Skin weights (joint {})").format(joint_list_index)
+            )
         except Exception as exc:
             log.warning("skin weight load failed: %s", exc)
             try:
@@ -485,6 +532,25 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             )
         except Exception as exc:
             log.debug("nav settings: %s", exc)
+
+    def _on_show_armature_changed(self, engine, *_pspec):
+        """X-ray-ish: lower mesh opacity while armature overlay is on."""
+        try:
+            enabled = bool(engine.get_property("show-armature"))
+        except Exception:
+            return
+        try:
+            if enabled:
+                if self._armature_xray_restore is None:
+                    self._armature_xray_restore = float(
+                        engine.get_property("model-opacity")
+                    )
+                engine.set_property("model-opacity", 0.35)
+            elif self._armature_xray_restore is not None:
+                engine.set_property("model-opacity", self._armature_xray_restore)
+                self._armature_xray_restore = None
+        except Exception as exc:
+            log.debug("armature xray: %s", exc)
 
     def _setup_minimal_outliner(self):
         """Floating outliner panel over the viewport (fork ObjectTreeMixin)."""

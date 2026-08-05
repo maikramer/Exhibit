@@ -10,11 +10,11 @@ Branches:
 
 - [x] Multi-document tabs v1 (AdwTabView + focus-existing + warm prepare)
 - [x] Outliner UI + part visibility via GLB filter reload
-- [~] Bone/armature kinds in tree; X-ray via show-armature prop (partial)
+- [x] Bone/armature kinds in tree; X-ray opacity when show-armature on
 - [x] Viewport tool rail (sidebar/home/outliner)
-- [~] Inspect skin-weight heat (joint 0) + Exb scivis-array-name prop
+- [x] Inspect skin-weight heat (joint picker) + scivis-array-name
 - [x] Mesh stats overlay
-- [~] Camera presets + Shift/Ctrl nav + invert/sensitivity; cursor-orbit still TODO
+- [~] Camera presets + Shift/Ctrl nav + invert/sensitivity; zoom/orbit-to-cursor still TODO (needs ray pick)
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [x] File watch / auto-reload + reload prompt dialog
 - [x] Headless CLI render + turntable video on Exb standalone path
