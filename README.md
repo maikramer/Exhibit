@@ -5,7 +5,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
 [![made-with-python](https://img.shields.io/badge/Made%20with-Python-ff7b3f.svg)](https://www.python.org/)
 
-Fork of **Exhibit** for a **gamedev asset workflow**: open packed GLBs from gltfpack-style pipelines, flip animation clips, hide mesh parts, inspect armatures / normals / depth / skin weights, and batch-render views for AI review — without leaving the desktop.
+Fork of **Exhibit** for a **gamedev asset workflow**: open packed GLBs from gltfpack-style pipelines, flip animation clips, hide mesh parts, inspect armatures / normals / depth / skin weights, tune PostFX (bloom / godrays / SSAO), compare models in tabs, and batch-render views for AI review — without leaving the desktop.
 
 Powered by [F3D](https://github.com/f3d-app/f3d) (glTF, USD, STL, FBX, OBJ, PLY, and more).
 
@@ -27,23 +27,29 @@ App ID stays `io.github.nokse22.Exhibit` so local Flatpak / GSettings stay compa
 
 ## Fork features (vs upstream)
 
+Inventory of what [maikramer/Exhibit](https://github.com/maikramer/Exhibit) adds on top of [Nokse22/Exhibit](https://github.com/Nokse22/Exhibit). Upstream remains a single-document F3D previewer; this fork targets **gamedev asset review**.
+
 | Area | What this fork adds |
 |------|---------------------|
-| **GLB prepare** | Expand meshopt + mesh quantization; transcode KTX2/BasisU → PNG; fill missing `skin.skeleton` |
+| **GLB prepare** | Expand meshopt + mesh quantization; transcode KTX2/BasisU → PNG; fill missing `skin.skeleton`; pack external `.gltf` + local/`data:` URIs |
 | **Animation** | Clip combo with default **None** (bind pose); in-place clip switch; reimport when returning to None; **keyframe marks** on scrubber |
-| **Outliner** | Blender-like overlay (mesh/empty/bone/armature); eye hide/show; filtered GLB via F3D `scene.add(bytes)` |
-| **Inspect** | Armature X-ray, UV checkerboard, normal glyphs (+ scale), linearized depth, skin-weight heat maps, stats HUD |
+| **Outliner** | Blender-like overlay (mesh/empty/bone/armature); eye hide/show; filtered GLB via `scene.add(bytes)` |
+| **Inspect** | Armature X-ray (+ opacity), UV checkerboard, normal glyphs (+ scale), linearized depth, skin-weight heat / **joint picker**, stats HUD |
+| **PostFX** | **Bloom** + **godrays** (`final-shader`); SSAO params (intensity / radius / bias / kernel) via F3D patch — GUI + CLI |
 | **File watch** | On-disk edits → silent reload (active tab) or `(modified)` + prompt |
-| **Tabs** | Multi-document `AdwTabView`: each open/drop adds a tab; shared sidebar; same startup loading UI |
-| **Compare** | **Sync Cameras** + experimental **Split Compare** (side-by-side column, Pin, Swap; shortcuts below) |
-| **Recent** | Welcome page lists recent models (GSettings); drop a folder to open all GLB/glTF |
-| **Session** | Optionally restore last open tabs on startup (Loading → **Restore Last Session**); opens are queued one tab at a time so each GLArea can realize |
-| **UI** | Follow OS theme/accent (Yaru/Adwaita portal); Scene-tab IA (Animation + Inspect); glass chrome over the viewport |
-| **CLI** | `exhibit render` → multi-angle PNGs + optional turntable `--video` + `manifest.json` (+ inspect flags) |
-| **Perf** | Cached prepare (LRU ≤8 / 256 MiB); warm open (prepare ∥ F3D engine); tab/window teardown frees engines; ~60 Hz anim tick |
-| **Flatpak** | F3D **3.5.0** / VTK **9.6.2**; EXR + WebP; `libmeshoptimizer` + `libktx` + `libwebp`; depth/glyph + VTK patches — [docs/FLATPAK.md](docs/FLATPAK.md) |
+| **Tabs** | Multi-document `AdwTabView`; focus-existing path; RMB tab menu; shared sidebar; startup loading UI |
+| **Compare** | **Sync Cameras** + experimental **Split Compare** (side-by-side, Pin, Swap, sash width restore) |
+| **Recent / Session** | Welcome recent list; drop/Open Folder batch; optional **Restore Last Session** (queued opens) |
+| **Camera** | Blender-like view keys (`1`/`3`/`5`/`7`…); Sync + Split Compare shortcuts |
+| **Nav** | Touchpad orbit; invert / sensitivity; Shift pan / Ctrl zoom; zoom & orbit under cursor (focal-plane NDC); Alt toggle pivot |
+| **UI** | Follow OS theme/accent; Scene IA (Animation + Inspect); viewport tool rail + glass chrome; Preferences dialog |
+| **CLI** | `exhibit render` → multi-angle PNGs + turntable `--video` + `manifest.json` (+ inspect / PostFX flags) |
+| **Stack** | Upstream **libexhibit** (`Exb.View` / `Exb.Engine`) + Python fork modules; GNOME **50**; F3D **3.5.0** / VTK **9.6.2** |
+| **Perf** | Prepare LRU (≤8 / 256 MiB); warm open (prepare ∥ engine); tab teardown frees engines; ~60 Hz anim tick |
+| **Tests / CI** | Host pytest (~1300) without Gtk/F3D; GitHub Actions workflow; RSS / Flatpak smoke helpers |
+| **Flatpak** | EXR + WebP; `libmeshoptimizer` + `libktx` + `libwebp`; depth / glyph / **SSAO** + VTK patches — [docs/FLATPAK.md](docs/FLATPAK.md) |
 
-Topic docs: [docs/README.md](docs/README.md).
+Topic docs: [docs/README.md](docs/README.md). Migration notes: [docs/MIGRATE_LIBEXHIBIT.md](docs/MIGRATE_LIBEXHIBIT.md).
 
 ### 1. Packed GLB preparation (before F3D load)
 
@@ -84,18 +90,30 @@ Asset-review tools in the sidebar. Depth and normal glyphs conflict (depth pass 
 
 | Control | What it does |
 |---------|----------------|
-| **Show Armature** | F3D skeleton + X-ray mesh (thicker bones, opacity ~0.35). Needs glTF skins; may reload if `skin.skeleton` was missing. CLI: `--armature`. |
+| **Show Armature** | F3D skeleton + X-ray mesh (thicker bones; opacity adjustable). Needs glTF skins; may reload if `skin.skeleton` was missing. CLI: `--armature`. |
 | **Checkerboard** | Replace textures with a UV checker (reload). |
 | **Normal Glyphs** | Vertex normal arrows. Sized in **world space** (F3D patch); use **Glyph Scale** if still too dense. |
 | **Display Depth** | Depth colormap with **linearized** Z (F3D patch). Forces opaque mesh — translucent X-ray would render blank. |
-| **Skin Weights** | Color by `WEIGHTS_0` (magnitude / slot 0–3) or **Bone heat** (per-joint scalar via temp GLB). Joint combo lists `skin.joints` names. |
+| **Skin Weights** | Color by `WEIGHTS_0` (magnitude / slot 0–3) or **Bone heat** (per-joint scalar via temp GLB / `scivis-array-name`). Joint combo lists `skin.joints` names. |
 | **Show Stats** | Gtk HUD: height (m, +Y AABB), verts / faces / edges, scene counts. CLI: `stats` in `manifest.json`; `--overlay` burns into PNGs. |
 
 Stats/height come from the **prepared** GLB when prepare ran. Height is lazy from POSITION `min`/`max` + node world matrices (Three.js-style AABB), not a full vertex scan.
 
 Implementation notes and failure modes: [docs/INSPECT_AND_PREPARE.md](docs/INSPECT_AND_PREPARE.md).
 
-### 5. Headless CLI render (`exhibit render`)
+### 5. PostFX (bloom / godrays / SSAO)
+
+Sidebar render controls (bound to `Exb.Engine` props) plus headless CLI:
+
+| Effect | Where | Notes |
+|--------|-------|-------|
+| **SSAO** | Ambient occlusion expander | Intensity, radius, bias, kernel size — F3D patch `f3d-ssao-params.patch` |
+| **Bloom** | Bloom expander | Threshold / intensity / radius → composed into `render.effect.final_shader` |
+| **Godrays** | Godrays expander | Intensity / decay / density / weight → same final shader |
+
+CLI: `--bloom`, `--bloom-threshold`, `--bloom-intensity`, `--bloom-radius`, `--godrays`, `--godrays-intensity` (and related). Shader build is shared with `libexhibit/exb-postfx.c` / `src/postfx.py`.
+
+### 6. Headless CLI render (`exhibit render`)
 
 No Gtk window. Multi-angle PNGs + `manifest.json` for agent / review pipelines.
 
@@ -144,13 +162,15 @@ Stdout prints the absolute path to `manifest.json` (one line) for piping.
 | `--bg R,G,B` | Background 0..1 (default `1,1,1` — white, matches GUI) |
 | `--animation-index` / `--animation-time` | Clip index + time in seconds |
 | `--overlay` | Burn mesh stats into PNGs |
+| `--bloom` / `--bloom-*` | Bloom final-shader (threshold / intensity / radius) |
+| `--godrays` / `--godrays-*` | Godrays final-shader params |
 | `--format png` | Only PNG for now |
 | `--video mp4\|webm\|gif` | Turntable video (`ffmpeg` for mp4/webm; Pillow GIF; auto-GIF if ffmpeg missing). Flatpak: uses host `ffmpeg` via `flatpak-spawn --host` when sandbox PATH has none |
 | `--video-fps N` | Turntable frame rate (default `24`) |
 
 Manifest includes model path, whether prepare ran, skins/animation names, `stats`, options used, view files, and optional `video` filename.
 
-### 6. Multi-document tabs
+### 7. Multi-document tabs
 
 - Opening or dropping another model while one is already loaded creates a **new tab** (file dialog supports multi-select).
 - Drop a **folder** (or multiple files), or use **Open Folder** (`Ctrl+Shift+O`), to open every supported GLB/glTF in new tabs.
@@ -171,15 +191,17 @@ Manifest includes model path, whether prepare ran, skins/animation names, `stats
 - `Open with` / `HANDLES_OPEN` reuses the active window and opens extra paths as tabs.
 - Warm open: GLB prepare runs off the main thread in parallel with creating the new tab’s F3D engine; `scene.add` stays on the main thread. Closing mid-prepare must not leak retained temps (see [docs/MEMORY.md](docs/MEMORY.md)).
 
-### 7. UI / theme / Preferences
+### 8. UI / theme / Preferences
 
 - Color scheme defaults to **Follow System**; accent comes from the desktop portal (e.g. Ubuntu orange on Yaru).
 - Header **theme** `MenuButton`: Follow System / Light / Dark (icons; `app.theme` stateful action). `Ctrl+,` or gear opens **Preferences** (`AdwPreferencesDialog`) for navigation, loading, HDRI/config folders, and save-settings.
+- **Outliner overlay** (`object_tree_overlay_shell`): list toggle + panel over the GLArea; sidebar/home stay on the HeaderBar.
 - Custom CSS covers viewport chrome (floating header buttons, stats HUD, tab bar) plus the **outliner overlay** (transparent panel, row accents, `text-shadow`). Sidebar lists stay Adwaita.
 - `.ui` `<style>` classes only apply when every `Gtk.Template.Callback` resolves — mixins need `_hoist_template_callbacks` ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#gtktemplate--mixins), [docs/RUNTIME.md](docs/RUNTIME.md#gtkbuilder-style-classes-vanish)).
 - Scene tab groups **Animation** + **Inspect** (see §4). Point sprites: `sphere` / `gaussian` / `circle` / `cross` / `stddev` / `bound`.
+- Shell merge rule: upstream owns HeaderBar / `ExbView` binds; fork extends the **same** `window.ui` (tabs, outliner, Split Compare) — see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/MIGRATE_LIBEXHIBIT.md](docs/MIGRATE_LIBEXHIBIT.md).
 
-### 8. Viewport navigation
+### 9. Viewport navigation & camera presets
 
 Blender-like controls with **classic Exhibit centering** as the default (model stays on the view center while orbiting). Full table, GSettings keys, and implementation notes: [`docs/NAVIGATION.md`](docs/NAVIGATION.md).
 
@@ -193,10 +215,16 @@ Blender-like controls with **classic Exhibit centering** as the default (model s
 | Double-click LMB | Reset to bounds (frame model) |
 | Middle-click (no drag) | Set orbit pivot under cursor (optional pref) |
 | Header home | Same as reset to bounds |
+| `1` / `Shift+1` | Front / Back |
+| `3` / `Shift+3` | Right / Left |
+| `7` / `Shift+7` | Top / Isometric |
+| `5` | Toggle orthographic |
+| `Ctrl+Shift+C` | Sync cameras across tabs |
+| `Ctrl+Shift+D` / `Ctrl+Shift+X` | Split Compare toggle / Swap with pin |
 
-Preferences → **Navigation** (or GSettings `nav-*` keys) for invert axes, sensitivities, touchpad orbit, zoom/orbit-to-cursor, middle-click pivot.
+Preferences → **Navigation** (or GSettings `nav-*` keys) for invert axes, sensitivities, touchpad orbit, zoom/orbit-to-cursor (focal-plane NDC on `ExbView`), middle-click pivot.
 
-### 9. Preview performance & memory
+### 10. Preview performance & memory
 
 - **Lazy** F3D engine create per tab (loading UI first). Reloads on the same tab reuse that engine; **closing** the tab destroys it (`scene.clear` + drop `engine` / animation timer).
 - Cache prepared GLBs with LRU (see §1). Last `Viewer3dWindow` close also `clear_prepare_cache()`.
@@ -205,12 +233,14 @@ Preferences → **Navigation** (or GSettings `nav-*` keys) for invert axes, sens
 - Extra tabs skip auto-best preset churn (inherit current view settings).
 - **Gotcha:** each open tab keeps its own F3D/VTK engine in RAM/GPU. Closing tabs should drop most RSS; a small residual after the first engine create is normal (allocator / GL). Details + how to measure: [docs/MEMORY.md](docs/MEMORY.md).
 
-### 10. Flatpak / build changes
+### 11. Flatpak / build changes
 
 - Sandbox: `--filesystem=home`, `--filesystem=/tmp`, `--filesystem=/media` (symlink targets under `/media`), plus `xdg-config/gtk-3.0|4.0:ro` and Settings portal talk for OS theme/accent.
+- **Runtime:** GNOME **50** Platform/SDK.
 - **Stack:** F3D **v3.5.0** + VTK **9.6.2** in [`build-aux/libf3d.json`](build-aux/libf3d.json). Modules: EXR **ON**, WebP **ON**, ImGui UI **OFF**.
-- **Patches:** depth linearize + normal-glyph world scale (`f3d-*.patch`); VTK cmake policies (`vtk-*.patch`).
+- **Patches:** depth linearize, normal-glyph world scale, **SSAO params** (`f3d-*.patch`); VTK cmake policies (`vtk-*.patch`).
 - UI options mapped to F3D 3.5 enums (`blending.mode`, `antialiasing.mode`, `point_sprites.type`).
+- **libexhibit (fork):** C API extras — `scivis-array-name`, `normal-glyphs` / scale, camera get/set for Sync, nav invert/sensitivity/orbit-to-cursor, PostFX bloom/godrays props — [docs/MIGRATE_LIBEXHIBIT.md](docs/MIGRATE_LIBEXHIBIT.md).
 - **EGL:** do not rely on `create_external_egl()` under Flatpak — use `create_external(eglGetProcAddress)` after the tab `Gtk.GLArea` is realized (otherwise Loading… sticks). See [docs/RUNTIME.md](docs/RUNTIME.md#f3d-engine-init-wayland--flatpak).
 - **Extra modules:** meshoptimizer, KTX-Software (`libktx`), **libwebp** (required for WebP — GNOME Sdk has no usable `WebPConfig.cmake`). Boost 1.91+: omit `system` from `--with-libraries` (header-only).
 - Stabler fetches: skip F3D git-lfs blobs; ImageMagick from the GitHub mirror.
@@ -242,7 +272,8 @@ flatpak run io.github.nokse22.Exhibit /tmp/hero.glb
 - **Outliner:** multipart / skinned `.glb` → list toggle on the canvas → eye hide/show ([docs/OUTLINER.md](docs/OUTLINER.md)).
 - **Inspect:** Scene → **Inspect** (armature, normals, depth, skin weights, stats) — see [docs/INSPECT_AND_PREPARE.md](docs/INSPECT_AND_PREPARE.md).
 - **Tabs:** open a second GLB (dialog or drop) → new tab after the shared loading screen.
-- **Orbit:** two-finger / LMB drag around view center; **Alt** for cursor orbit; **Preferences** (gear / `Ctrl+,`) for nav prefs — see [`docs/NAVIGATION.md`](docs/NAVIGATION.md).
+- **Orbit:** two-finger / LMB drag around view center; **Alt** for cursor orbit; view keys `1`/`3`/`5`/`7`; **Preferences** (gear / `Ctrl+,`) for nav prefs — see [`docs/NAVIGATION.md`](docs/NAVIGATION.md).
+- **PostFX:** sidebar Bloom / Godrays / SSAO expanders (or CLI `--bloom` / `--godrays`).
 - **Compare:** `Ctrl+Shift+C` sync cameras; `Ctrl+Shift+D` Split Compare; pin + `Ctrl+Shift+X` swap — [`docs/SPLIT_COMPARE.md`](docs/SPLIT_COMPARE.md).
 - **Batch views:** `exhibit render` (see above).
 - **Fork notes index:** [`docs/README.md`](docs/README.md).

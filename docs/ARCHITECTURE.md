@@ -18,16 +18,19 @@ Allowed one-shot seed: `_seed_primary_tab()` moves template `ExbView` into tab 0
 
 ```text
 toolbar_view
-├── top: header_bar          (upstream: sidebar / home / menu)
-├── top: tab_bar             (fork, autohide)
+├── top: header_bar          (sidebar + home + menu; floating overlay-button)
+├── top: tab_bar             (fork, visible only when n_pages > 1)
 └── content: toast_overlay
     └── split_compare_main_paned
         ├── start: viewport_overlay
         │   ├── child: tab_view
         │   ├── overlay: loading_status_page
-        │   └── overlay: object_tree_overlay_shell
+        │   └── overlay: object_tree_overlay_shell  (outliner toggle + panel only)
         └── end: split_compare_revealer
 ```
+
+Outliner shell sits below the HeaderBar: `TabsMixin._sync_object_tree_overlay_margin`
+measures `header_bar` height when content extends under the header.
 
 ---
 

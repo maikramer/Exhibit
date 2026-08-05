@@ -20,9 +20,10 @@
       batch import, camera sync across tabs for comparing models, experimental side-by-side
       Split Compare, packed-GLB preparation (meshopt / quantization / KTX2 / skin.skeleton),
       Inspect overlays (armature, checkerboard, normal glyphs, linearized depth, skin-weight
-      heat maps, stats), animation defaulting to bind pose with keyframe scrubber marks,
-      in-memory part visibility, and a headless render CLI with optional turntable video.
-      Built on F3D 3.5 / VTK 9.6 with OpenEXR and WebP.
+      heat maps, stats), PostFX (bloom, godrays, SSAO params), Blender-like view presets,
+      animation defaulting to bind pose with keyframe scrubber marks, in-memory part visibility,
+      and a headless render CLI with optional turntable video and PostFX flags.
+      Built on libexhibit + F3D 3.5 / VTK 9.6 (GNOME 50) with OpenEXR and WebP.
     </p>
   </description>
 
@@ -103,9 +104,10 @@
           <li>Gamedev fork: packed GLB prepare (meshopt, quantization, KTX2, skin.skeleton)</li>
           <li>Multi-tab previews, session restore, Split Compare, file-change reload</li>
           <li>Inspect: armature, checkerboard, normal glyphs, linearized depth, skin weights, stats</li>
+          <li>PostFX: bloom, godrays, SSAO params; Blender-like camera view keys</li>
           <li>Animation bind-pose default, keyframe scrubber marks, in-memory part hide</li>
-          <li>Headless exhibit render CLI (PNG / video / manifest)</li>
-          <li>Flatpak stack: GNOME 50 runtime, F3D 3.5.0, VTK 9.6.2, OpenEXR + WebP</li>
+          <li>Headless exhibit render CLI (PNG / video / manifest / PostFX)</li>
+          <li>Flatpak stack: GNOME 50, libexhibit + F3D 3.5.0, VTK 9.6.2, OpenEXR + WebP</li>
         </ul>
       </description>
     </release>

@@ -14,4 +14,5 @@ Agent- and contributor-oriented notes. User-facing feature summary stays in the 
 | [MEMORY.md](MEMORY.md) | Prepare LRU, F3D teardown contract, RSS harness + measured A/B |
 | [RUNTIME.md](RUNTIME.md) | Flatpak/F3D/animation/template-CSS gotchas (EGL, loading) |
 | [FLATPAK.md](FLATPAK.md) | F3D/VTK pins, modules, local build notes |
+| [MIGRATE_LIBEXHIBIT.md](MIGRATE_LIBEXHIBIT.md) | Merge upstream libexhibit + fork feature checklist |
 | [MELHORIAS_A_E.md](MELHORIAS_A_E.md) | Plano A–E + histórico de ondas (interno) |

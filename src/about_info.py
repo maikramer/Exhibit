@@ -14,7 +14,8 @@ def about_comments() -> str:
     """Localized short description for Adw.AboutDialog comments."""
     return _(
         "Gamedev fork: multi-tab previews, packed-GLB prepare "
-        "(meshopt / KTX2), session restore, camera sync, "
+        "(meshopt / KTX2), Inspect overlays, PostFX "
+        "(bloom / godrays / SSAO), session restore, camera sync, "
         "experimental Split Compare, and exhibit render CLI "
         "with turntable video."
     )

@@ -8,11 +8,13 @@ Blender-like scene hierarchy over the 3D viewport. Companion to
 
 ## UX
 
-- Floating **list** toggle on the main canvas (`object_tree_overlay_shell`), not a
+- Sidebar / home stay on the **HeaderBar** (upstream chrome). Outliner is a
+  floating **list** toggle on the canvas (`object_tree_overlay_shell`) — not a
   header popover and not a sidebar page.
-- Toggle opens a `GtkRevealer` (slide-right) with the tree panel.
-- Shell appears only when the active tab’s glTF tree has at least one mesh
-  (`tree_has_mesh`).
+- Toggle opens a `GtkRevealer` (slide-right) with the tree panel, top-aligned
+  with the toggle (below the HeaderBar via measured `margin-top`).
+- Whole shell is visible only when the active tab’s glTF tree has at least one
+  mesh (`tree_has_mesh`).
 - Hierarchy rows start **collapsed** (`TreeListModel` `passthrough=False`,
   `autoexpand=False`).
 - Eye toggles visibility for **mesh** / **empty** nodes. Bones and synthetic

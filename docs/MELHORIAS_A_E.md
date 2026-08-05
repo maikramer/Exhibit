@@ -19,7 +19,8 @@ Docs de feature / lições (além deste plano): índice [`docs/README.md`](READM
 | [`MEMORY.md`](MEMORY.md) | Prepare LRU + teardown F3D |
 | [`RUNTIME.md`](RUNTIME.md) / [`FLATPAK.md`](FLATPAK.md) | Runtime Flatpak/F3D + pins de build |
 | [`TESTING.md`](TESTING.md) | Pytest host |
-| [`../README.md`](../README.md) | Features user-facing |
+| [`../README.md`](../README.md) | Features user-facing (inventário fork vs upstream) |
+| [`MIGRATE_LIBEXHIBIT.md`](MIGRATE_LIBEXHIBIT.md) | Merge libexhibit + checklist PostFX / shell |
 
 ---
 
