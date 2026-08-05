@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<interface>
+  <requires lib="gtk" version="4.0"/>
+  <template class="ThemeSwitcher" parent="GtkBox">
+    <property name="hexpand">true</property>
+    <style>
+      <class name="themeswitcher"/>
+    </style>
+    <child>
+      <object class="GtkBox" id="box">
+        <property name="hexpand">true</property>
+        <property name="orientation">0</property>
+        <property name="spacing">12</property>
+        <child>
+          <object class="GtkCheckButton" id="system">
+            <property name="visible" bind-source="ThemeSwitcher" bind-property="show-system" bind-flags="sync-create"/>
+            <property name="hexpand">true</property>
+            <property name="halign">3</property>
+            <property name="focus-on-click">false</property>
+            <property name="tooltip-text" translatable="yes">Follow System Style</property>
+            <signal name="notify::active" handler="_on_color_scheme_changed"/>
+            <style>
+              <class name="theme-selector"/>
+              <class name="system"/>
+            </style>
+          </object>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="light">
+            <property name="hexpand">true</property>
+            <property name="halign">3</property>
+            <property name="group">system</property>
+            <property name="focus-on-click">false</property>
+            <property name="tooltip-text" translatable="yes">Light Style</property>
+            <signal name="notify::active" handler="_on_color_scheme_changed"/>
+            <style>
+              <class name="theme-selector"/>
+              <class name="light"/>
+            </style>
+          </object>
+        </child>
+        <child>
+          <object class="GtkCheckButton" id="dark">
+            <property name="hexpand">true</property>
+            <property name="halign">3</property>
+            <property name="group">system</property>
+            <property name="focus-on-click">false</property>
+            <property name="tooltip-text" translatable="yes">Dark Style</property>
+            <signal name="notify::active" handler="_on_color_scheme_changed"/>
+            <style>
+              <class name="theme-selector"/>
+              <class name="dark"/>
+            </style>
+          </object>
+        </child>
+      </object>
+    </child>
+  </template>
+</interface>

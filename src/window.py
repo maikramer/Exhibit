@@ -18,474 +18,109 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
 
 import os
+import json
+import re
+import threading
+import logging
+import asyncio
 
-import gi
+from gi.repository import Adw
+from gi.repository import Gtk
+from gi.repository import Gdk
+from gi.repository import Gio
+from gi.repository import GLib
+from gi.repository import GObject
+from gi.repository import Exb
 
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
+from wand.image import Image
+from pathlib import Path
 
-from gi.repository import Adw, Gtk, Gdk, Gio, GLib, GObject, Pango
-
-from . import logger_lib
-from .periodic_checker import PeriodicChecker
-from .settings_manager import WindowSettings
-from .window_tabs import TabsMixin
-from .window_animation import AnimationMixin
-from .window_object_tree import ObjectTreeItem, ObjectTreeMixin
-from .window_settings_ui import SettingsUIMixin, up_dir_n_to_string, up_dir_string_to_n
-from .file_patterns import allowed_extensions, image_patterns
+from .file_row import FileRow
+from .settings_dialog import SettingsDialog
+from .config import *
+from .theme_switcher import ThemeSwitcher
 
 from gettext import gettext as _
 
-_HELP_OVERLAY_RESOURCE = "/io/github/nokse22/Exhibit/gtk/help-overlay.ui"
+GObject.type_register(Exb.View)
+GObject.type_register(Exb.Engine)
+GObject.type_register(Exb.Blending)
+GObject.type_register(Exb.Sprites)
+GObject.type_register(Exb.AntiAliasing)
+GObject.type_register(Exb.Direction)
+GObject.type_register(SettingsDialog)
 
-from .window_load import LoadMixin
-from .window_layout import LayoutMixin
-from .window_chrome import ChromeMixin
-from .window_export import ExportMixin
-from .window_file_watch import FileWatchMixin
-from .window_inspect import InspectMixin
-from .window_lifecycle import LifecycleMixin
-from .window_settings_io import SettingsIOMixin
-from .window_settings_react import SettingsReactMixin
-from .window_preferences import PreferencesMixin
+log = logging.getLogger(__name__)
 
+image_patt = ["hdr", "exr", "png", "jpg", "pnm", "tiff", "bmp"]
+model_patt = [s for s in Exb.get_allowed_extensions() if s not in image_patt]
 
-def _hoist_template_callbacks(cls):
-    """Expose ``Gtk.Template.Callback`` handlers declared in mixins.
-
-    PyGObject only scans the decorated class namespace, so handlers living in
-    base classes stay unresolved; GtkBuilder then aborts the template and
-    silently discards every ``<style>`` block in the .ui file.
-    """
-    for base in cls.__mro__[1:]:
-        for name, value in vars(base).items():
-            if type(value).__name__ != "CallThing" or name in vars(cls):
-                continue
-            setattr(cls, name, value)
-    return cls
+settings = Gio.Settings.new('io.github.nokse22.Exhibit')
 
 
-class Viewer3dWindow(
-    TabsMixin,
-    AnimationMixin,
-    ObjectTreeMixin,
-    SettingsUIMixin,
-    SettingsIOMixin,
-    SettingsReactMixin,
-    PreferencesMixin,
-    LoadMixin,
-    LayoutMixin,
-    ChromeMixin,
-    LifecycleMixin,
-    InspectMixin,
-    FileWatchMixin,
-    ExportMixin,
-    Adw.ApplicationWindow,
-):
-    __gtype_name__ = 'Viewer3dWindow'
+@Gtk.Template(resource_path='/io/github/nokse22/Exhibit/window.ui')
+class ExbWindow(Adw.ApplicationWindow):
+    __gtype_name__ = 'ExbWindow'
 
-    loading_label = Gtk.Template.Child()
-    error_status_page = Gtk.Template.Child()
-    recent_files_box = Gtk.Template.Child()
-    recent_files_list = Gtk.Template.Child()
-    clear_recent_button = Gtk.Template.Child()
+    settings_dialog = Gtk.Template.Child()
 
     split_view = Gtk.Template.Child()
+
+    viewer = Gtk.Template.Child()
+    engine = Gtk.Template.Child()
 
     title_widget = Gtk.Template.Child()
     stack = Gtk.Template.Child()
     toolbar_view = Gtk.Template.Child()
-    tab_view = Gtk.Template.Child()
-    tab_bar = Gtk.Template.Child()
 
     view_drop_target = Gtk.Template.Child()
     loading_drop_target = Gtk.Template.Child()
 
     toast_overlay = Gtk.Template.Child()
-    split_compare_main_paned = Gtk.Template.Child()
-    split_compare_revealer = Gtk.Template.Child()
-    split_compare_column = Gtk.Template.Child()
-    split_compare_paned = Gtk.Template.Child()
-    split_compare_pin_check = Gtk.Template.Child()
-    split_compare_swap_button = Gtk.Template.Child()
-    split_compare_primary_label = Gtk.Template.Child()
-
-    grid_switch = Gtk.Template.Child()
-    absolute_grid_switch = Gtk.Template.Child()
-
-    translucency_switch = Gtk.Template.Child()
-    tone_mapping_switch = Gtk.Template.Child()
-    ambient_occlusion_switch = Gtk.Template.Child()
-    anti_aliasing_switch = Gtk.Template.Child()
-    hdri_ambient_switch = Gtk.Template.Child()
-    light_intensity_spin = Gtk.Template.Child()
-
-    edges_switch = Gtk.Template.Child()
-    edges_width_spin = Gtk.Template.Child()
-
-    use_skybox_switch = Gtk.Template.Child()
 
     hdri_file_row = Gtk.Template.Child()
-    blur_switch = Gtk.Template.Child()
-    blur_coc_spin = Gtk.Template.Child()
-
-    use_color_switch = Gtk.Template.Child()
-    background_color_button = Gtk.Template.Child()
-
-    point_up_switch = Gtk.Template.Child()
     up_direction_combo = Gtk.Template.Child()
-    nav_invert_y_switch = Gtk.Template.Child()
-    nav_invert_x_switch = Gtk.Template.Child()
-    nav_zoom_to_cursor_switch = Gtk.Template.Child()
-    nav_orbit_around_cursor_switch = Gtk.Template.Child()
-    nav_touchpad_orbit_switch = Gtk.Template.Child()
-    nav_mmb_click_pivot_switch = Gtk.Template.Child()
-    nav_orbit_sensitivity_spin = Gtk.Template.Child()
-    nav_zoom_sensitivity_spin = Gtk.Template.Child()
-    nav_pan_sensitivity_spin = Gtk.Template.Child()
-
-    automatic_settings_switch = Gtk.Template.Child()
-    restore_session_switch = Gtk.Template.Child()
-    focus_existing_tab_switch = Gtk.Template.Child()
-
-    automatic_reload_switch = Gtk.Template.Child()
-
-    preferences_dialog = Gtk.Template.Child()
-    preferences_button = Gtk.Template.Child()
-    theme_toggle_button = Gtk.Template.Child()
-    home_button_headerbar = Gtk.Template.Child()
-    open_button_headerbar = Gtk.Template.Child()
-    play_button_headerbar = Gtk.Template.Child()
-    orthographic_button_headerbar = Gtk.Template.Child()
-    sync_cameras_button_headerbar = Gtk.Template.Child()
-    export_image_button_headerbar = Gtk.Template.Child()
-
-    points_group = Gtk.Template.Child()
-    spheres_switch = Gtk.Template.Child()
-    points_size_spin = Gtk.Template.Child()
-    point_sprites_type_combo = Gtk.Template.Child()
-    sprite_size_spin = Gtk.Template.Child()
-
-    material_group = Gtk.Template.Child()
-
-    model_roughness_spin = Gtk.Template.Child()
-    model_metallic_spin = Gtk.Template.Child()
-    model_color_button = Gtk.Template.Child()
-    model_opacity_spin = Gtk.Template.Child()
-
-    armature_switch = Gtk.Template.Child()
-    checkerboard_switch = Gtk.Template.Child()
-    normal_glyphs_switch = Gtk.Template.Child()
-    normal_glyphs_scale_spin = Gtk.Template.Child()
-    display_depth_switch = Gtk.Template.Child()
-    skin_weights_switch = Gtk.Template.Child()
-    skin_weights_mode_combo = Gtk.Template.Child()
-    skin_weights_joint_combo = Gtk.Template.Child()
-    stats_overlay_switch = Gtk.Template.Child()
-
-    model_color_row = Gtk.Template.Child()
     model_scivis_component_combo = Gtk.Template.Child()
-    color_group = Gtk.Template.Child()
 
     startup_stack = Gtk.Template.Child()
-
     settings_section = Gtk.Template.Child()
 
-    save_dialog = Gtk.Template.Child()
-    settings_column_view = Gtk.Template.Child()
-    settings_column_view_name_column = Gtk.Template.Child()
-    settings_column_view_value_column = Gtk.Template.Child()
-    save_settings_button = Gtk.Template.Child()
-    save_settings_name_entry = Gtk.Template.Child()
-    save_settings_extensions_entry = Gtk.Template.Child()
-    save_settings_expander = Gtk.Template.Child()
-
+    animation_combo_model = Gtk.Template.Child()
     animation_group = Gtk.Template.Child()
-    animation_combo = Gtk.Template.Child()
-    animation_time_adj = Gtk.Template.Child()
-    animation_time_scale = Gtk.Template.Child()
     play_button = Gtk.Template.Child()
 
-    sidebar_stack = Gtk.Template.Child()
-    object_tree_overlay_shell = Gtk.Template.Child()
-    object_tree_toggle = Gtk.Template.Child()
-    object_tree_revealer = Gtk.Template.Child()
-    object_tree_panel = Gtk.Template.Child()
-    object_tree_view = Gtk.Template.Child()
+    loading_status_page = Gtk.Template.Child()
+
+    primary_menu_button = Gtk.Template.Child()
 
     width = 600
     height = 600
     distance = 0
 
+    file_name = ""
+    filepath = ""
     no_file_loaded = True
+
+    _cached_time_stamp = 0
 
     def __init__(self, application=None, startup_filepath=None):
         super().__init__(application=application)
 
-        self.logger = logger_lib.logger
-
         # Flags
         self.applying_breakpoint = False
         self.block_reload = True
-        self._anim_bindings = []
-        self._playing_handler_id = 0
-        self._switching_tab = False
-        self._closed_tabs: list[str] = []
-        self._tab_menu_page = None
-        self._pending_open_paths: list[str] = []
-        self._mesh_stats = None
-        self._armature_xray_restore = None
-        self._depth_opacity_restore = None
-        self._skin_weights_scivis_restore = None
-        self._skin_weights_base_path = None
-        self._skin_weights_heat_temp = None
-        self._skin_weights_joints = []
-        self.filepath = ""
-        self.file_name = ""
-        self._cached_time_stamp = 0.0
 
-        # Settings
-        self.window_settings = WindowSettings()
-        self.saved_settings = Gio.Settings.new('io.github.nokse22.Exhibit')
-
-        builder = Gtk.Builder.new_from_resource(_HELP_OVERLAY_RESOURCE)
-        self.set_help_overlay(builder.get_object("help_overlay"))
-
-        self._setup_window_actions()
-
-        # Initialize the change checker
-        self.change_checker = PeriodicChecker(
-            self.periodic_check_for_file_change)
-
-        # Saving all the useful paths
-        data_home = os.environ.get("XDG_DATA_HOME") or os.path.join(
-            os.path.expanduser("~"), ".local", "share", "exhibit"
-        )
-
-        self.hdri_path = os.path.join(data_home, "HDRIs") + "/"
-        self.hdri_thumbnails_path = self.hdri_path + "thumbnails/"
-
-        self.user_configurations_path = os.path.join(
-            data_home, "configurations"
-        ) + "/"
-        # Alias used by the app action open-configs-folder.
-        self.configs_path = self.user_configurations_path
-
-        os.makedirs(self.user_configurations_path, exist_ok=True)
-        os.makedirs(os.path.join(data_home, "other files"), exist_ok=True)
-
-        # Create the hdri folder and add the default if there are none
-        self.setup_hdri_folder()
-
-        # Loading the saved configurations
-        self.setup_configurations()
-
-        # Setting drop target type
-        self.view_drop_target.set_gtypes([Gdk.FileList])
-        self.loading_drop_target.set_gtypes([Gdk.FileList])
-        self._refresh_recent_files_ui()
-
-        # Setting the window to the last state
-        self.set_default_size(
-            self.saved_settings.get_int("startup-width"),
-            self.saved_settings.get_int("startup-height")
-        )
-        self.split_view.set_show_sidebar(
-            self.saved_settings.get_boolean("startup-sidebar-show"))
-        self.window_settings.set_setting(
-            "sidebar-show",
-            self.saved_settings.get_boolean("startup-sidebar-show"))
-
-        # Getting the saved HDRI and generating thumbnails
-        self.hdri_file_row.file_patterns = image_patterns
-        self.hdri_file_row.window = self
-
-        for filename in list_files(self.hdri_path):
-            name, _ext = os.path.splitext(filename)
-
-            thumbnail = self.hdri_thumbnails_path + name + ".jpeg"
-            filepath = self.hdri_path + filename
-            try:
-                if not os.path.isfile(thumbnail):
-                    thumbnail = self.generate_thumbnail(filepath)
-                self.hdri_file_row.add_suggested_file(thumbnail, filepath)
-            except Exception:
-                self.logger.warning(f"Couldn't open HDRI file {filepath}, skipping")
-
-        # First empty viewer tab (bindings + settings target).
-        self._add_viewer_tab(title=_("Untitled"), select=True)
-        # close-page is connected in code: signals nested under GtkPaned
-        # start-child are not always seen by Gtk.Template.Callback scanning.
-        self.tab_view.connect("close-page", self.on_tab_close_page)
-        self.tab_view.connect(
-            "notify::selected-page", self.on_tab_selected_page)
-
-        if self.window_settings.get_setting("orthographic").value:
-            self.f3d_viewer.orthographic = (
-                self.window_settings.get_setting("orthographic").value)
-
-        self.style_manager = Adw.StyleManager.get_default()
-        self.style_manager.connect(
-            "notify::dark", self.update_background_color)
-
-        self.update_background_color()
-
-        # Setting up the save settings dialog
-        def _on_factory_setup(_factory, list_item):
-            label = Gtk.Label(xalign=0, ellipsize=Pango.EllipsizeMode.END)
-            list_item.set_child(label)
-
-        def _on_factory_bind(_factory, list_item, what):
-            label_widget = list_item.get_child()
-            setting = list_item.get_item()
-            label_widget.set_label(str(getattr(setting, what)))
-
-        self.settings_column_view_name_column.get_factory().connect(
-            "setup", _on_factory_setup)
-        self.settings_column_view_name_column.get_factory().connect(
-            "bind", _on_factory_bind, "name")
-        self.settings_column_view_value_column.get_factory().connect(
-            "setup", _on_factory_setup)
-        self.settings_column_view_value_column.get_factory().connect(
-            "bind", _on_factory_bind, "value")
-
-        selection = Gtk.NoSelection.new(model=self.window_settings)
-        self.settings_column_view.set_model(model=selection)
-
-        self.save_settings_button.connect(
-            "clicked", self.on_save_settings_button_clicked)
-        self.save_settings_name_entry.connect(
-            "changed", self.on_save_settings_name_entry_changed)
-        self.save_settings_extensions_entry.connect(
-            "changed", self.on_save_settings_extensions_entry_changed)
-
-        self._wire_settings_widgets()
-
-        self.play_button.connect("clicked", self.on_play_button_clicked)
-        play_header = getattr(self, "play_button_headerbar", None)
-        if play_header is not None:
-            play_header.connect("clicked", self.on_play_button_clicked)
-        self._bind_animation_controls(self.f3d_viewer)
-
-        self._block_animation_combo = False
-        self.animation_combo.connect(
-            "notify::selected", self.on_animation_combo_changed)
-
-        self._block_object_tree = False
-        self._scene_tree_roots: list[ObjectTreeItem] = []
-        self._object_tree_row_handlers: dict[int, int] = {}
-        self._setup_object_tree_view()
-
-        self.block_reload = True
-
-        # Sync the UI with the settings (batched → one viewer options update)
-        self.window_settings.sync_all_settings()
-        self._update_all_viewers_options(self.window_settings.get_view_settings())
-
-        self.block_reload = False
-        self._update_tab_bar_visibility()
-
-        self.connect("notify::is-active", self.on_window_is_active)
-
-        if startup_filepath:
-            self.logger.info(f"startup file detected: {startup_filepath}")
-            self.load_file(filepath=startup_filepath)
-        else:
-            self._restore_session_files()
-
-        GLib.timeout_add(250, self._maybe_restore_split_compare)
-
-        self.logger.info("Started")
-
-    # Functions to set the settings
-
-    # Functions related to the save settings dialog
-
-    def on_tab_close_page(self, tab_view, page):
-        return TabsMixin.on_tab_close_page(self, tab_view, page)
-
-
-    def _setup_window_actions(self) -> None:
-        """Register window Gio actions and keyboard accelerators."""
+        # Defining all the actions
         self.save_as_action = self.create_action(
             'save-as-image', self.open_save_file_chooser)
         self.open_new_action = self.create_action(
             'open-new', self.open_file_chooser)
-        self.open_new_action = self.create_action(
-            'add-new', self.open_file_chooser)
-        self.create_action('open-folder', self.open_folder_chooser)
 
         self.orthographic_action = Gio.SimpleAction.new_stateful(
             "orthographic",
             None,
-            GLib.Variant(
-                "b", self.window_settings.get_setting("orthographic").value))
-        self.orthographic_action.connect(
-            "change-state", self.orthographic_state_changed)
-        self.window_settings.get_setting("orthographic").connect(
-            "changed", self.on_orthographic_changed)
+            GLib.Variant("b", False))
         self.add_action(self.orthographic_action)
-
-        # Compare: keep peer-tab cameras matched to the active view.
-        self._camera_sync = False
-        self._syncing_cameras = False
-        self.sync_cameras_action = Gio.SimpleAction.new_stateful(
-            "sync-cameras", None, GLib.Variant("b", False)
-        )
-        self.sync_cameras_action.connect(
-            "change-state", self._on_sync_cameras_change
-        )
-        self.add_action(self.sync_cameras_action)
-
-        self._split_compare = False
-        self._split_compare_pinned = False
-        self._split_compare_pin_filepath = None
-        self._split_compare_pin_prepared = None
-        self._split_compare_sizing = False
-        self._split_compare_sash_save_id = 0
-        self._split_compare_restoring = False
-        self._split_restore_attempts = 0
-        self.split_compare_action = Gio.SimpleAction.new_stateful(
-            "split-compare", None, GLib.Variant("b", False)
-        )
-        self.split_compare_action.connect(
-            "change-state", self._on_split_compare_change
-        )
-        self.add_action(self.split_compare_action)
-        self.split_compare_swap_action = Gio.SimpleAction.new(
-            "split-compare-swap", None
-        )
-        self.split_compare_swap_action.connect(
-            "activate", self._on_split_compare_swap
-        )
-        self.split_compare_swap_action.set_enabled(False)
-        self.add_action(self.split_compare_swap_action)
-        self.split_compare_pin_check.connect(
-            "notify::active", self._on_split_compare_pin_toggled
-        )
-        if self.split_compare_main_paned is not None:
-            self.split_compare_main_paned.connect(
-                "notify::position", self._on_split_compare_sash_changed
-            )
-
-        app = self.get_application()
-        if app is not None:
-            app.set_accels_for_action(
-                "win.sync-cameras", ["<Primary><Shift>c"]
-            )
-            app.set_accels_for_action(
-                "win.open-new", ["<Primary>o"]
-            )
-            app.set_accels_for_action(
-                "win.open-folder", ["<Primary><Shift>o"]
-            )
-            app.set_accels_for_action(
-                "win.split-compare", ["<Primary><Shift>d"]
-            )
-            app.set_accels_for_action(
-                "win.split-compare-swap", ["<Primary><Shift>x"]
-            )
 
         self.settings_action = Gio.SimpleAction.new_stateful(
             "settings",
@@ -498,154 +133,328 @@ class Viewer3dWindow(
 
         self.save_settings_action = self.create_action(
             'save-settings', self.on_save_settings)
+        # self.save_settings_action.set_enabled(False)
+
+        theme_action = Gio.SimpleAction.new_stateful(
+            "theme",
+            GLib.VariantType.new("s"),
+            GLib.Variant("s", settings.get_string("theme")),
+        )
+        theme_action.connect("activate", self.set_theme_action)
+        self.add_action(theme_action)
+
+        popover = self.primary_menu_button.get_popover()
+        theme_switcher = ThemeSwitcher()
+        popover.add_child(theme_switcher, "theme")
+
+        # Creating folders if needed
+        Path(PRESETS_PATH).mkdir(parents=True, exist_ok=True)
+        Path(HDRI_PATH).mkdir(parents=True, exist_ok=True)
+        Path(HDRI_TN_PATH).mkdir(parents=True, exist_ok=True)
+
+        self.presets = Exb.Presets.new_with_paths([PRESETS_PATH])
+
+        # Create the hdri folder and add the default if there are none
+        self.setup_hdri_folder()
+
+        # Setting drop target type
+        self.view_drop_target.set_gtypes([Gdk.FileList])
+        self.loading_drop_target.set_gtypes([Gdk.FileList])
+
+        # Setting the window to the last state
+        self.set_default_size(
+            settings.get_int("startup-width"),
+            settings.get_int("startup-height")
+        )
+        self.sidebar_default_visible = settings.get_boolean("startup-sidebar-show")
+        self.split_view.set_show_sidebar(self.sidebar_default_visible)
+
+        # Getting the saved HDRI and generating thumbnails
+        self.hdri_file_row.file_patterns = image_patt
+        self.hdri_file_row.window = self
+
+        for filename in Path(HDRI_PATH).iterdir():
+            try:
+                filepath = Path(HDRI_PATH) / filename
+                self.hdri_file_row.add_suggested_file(filepath)
+            except Exception as e:
+                log.warning(f"Couldn't open HDRI file {filepath}: {e}")
+
+        self.style_manager = Adw.StyleManager().get_default()
+        self.style_manager.connect(
+            "notify::dark", self.update_background_color)
+
+        self.update_background_color()
+
+        self.play_button.connect("clicked", self.on_play_button_clicked)
+
+        if startup_filepath:
+            log.info(f"startup file detected: {startup_filepath}")
+            self.load_file(filepath=startup_filepath)
+
+        log.info("Started")
+
+    def setup_hdri_folder(self):
+        hdri_names = ["city.hdr", "meadow.hdr", "field.hdr", "sky.hdr"]
+        for hdri_filename in hdri_names:
+            if not os.path.isfile(HDRI_PATH + hdri_filename):
+                hdri = Gio.resources_lookup_data(
+                    RESOURCES_PREFIX + "HDRIs/" + hdri_filename,
+                    Gio.ResourceLookupFlags.NONE).get_data()
+                hdri_bytes = bytearray(hdri)
+                with open(Path(HDRI_PATH) / hdri_filename, 'wb') as output_file:
+                    output_file.write(hdri_bytes)
+                log.info(f"Added {hdri_filename}")
+
+    def set_theme_action(self, action, variant):
+        manager = Adw.StyleManager().get_default()
+        value = variant.get_string()
+        match value:
+            case "default":
+                manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
+            case "light":
+                manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+            case "dark":
+                manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+
+        settings.set_string("theme", value)
+
+    #
+    #
+
+    def update_background_color(self, *args):
+        if self.style_manager.get_dark():
+            self.engine.set_property("background-color", Gdk.RGBA(0.117, 0.117, 0.117, 1.0))
+        else:
+            self.engine.set_property("background-color", Gdk.RGBA(1.0, 1.0, 1.0, 1.0))
+
+    def change_setting_state(self, state):
+        log.debug(f"Requested changing settings to {state}")
+
+        if state.get_string() == "custom":
+            self.save_settings_action.set_enabled(True)
+            self.settings_action.set_state(state)
+            return
+
+        self.set_propertys_from_name(state.get_string())
+
+        self.settings_action.set_state(state)
+
         self.save_settings_action.set_enabled(False)
-        self._setup_tab_context_menu()
-        self._init_preferences_actions()
-        self._init_home_button()
 
-    def _wire_settings_widgets(self) -> None:
-        """Connect sidebar settings widgets to WindowSettings."""
-        self.window_settings.connect(
-            "changed-other", self.on_other_setting_changed)
-        self.window_settings.connect(
-            "changed-internal", self.on_internal_setting_changed)
-        self.window_settings.connect(
-            "changed-view", self.on_view_setting_changed)
+        self.update_background_color()
 
-        switches = [
-            (self.grid_switch, "grid"),
-            (self.absolute_grid_switch, "grid-absolute"),
-            (self.translucency_switch, "translucency-support"),
-            (self.tone_mapping_switch, "tone-mapping"),
-            (self.ambient_occlusion_switch, "ambient-occlusion"),
-            (self.anti_aliasing_switch, "anti-aliasing"),
-            (self.hdri_ambient_switch, "hdri-ambient"),
-            (self.edges_switch, "show-edges"),
-            (self.spheres_switch, "sprite-enabled"),
-            (self.use_skybox_switch, "hdri-skybox"),
-            (self.blur_switch, "blur-background"),
-            (self.use_color_switch, "use-color"),
-            (self.automatic_settings_switch, "auto-best"),
-            (self.automatic_reload_switch, "auto-reload"),
-            (self.point_up_switch, "point-up"),
-            (self.nav_invert_y_switch, "nav-invert-y"),
-            (self.nav_invert_x_switch, "nav-invert-x"),
-            (self.nav_zoom_to_cursor_switch, "nav-zoom-to-cursor"),
-            (self.nav_orbit_around_cursor_switch, "nav-orbit-around-cursor"),
-            (self.nav_touchpad_orbit_switch, "nav-touchpad-orbit"),
-            (self.nav_mmb_click_pivot_switch, "nav-mmb-click-pivot"),
-            (self.armature_switch, "armature-enable"),
-            (self.checkerboard_switch, "checkerboard-enable"),
-            (self.normal_glyphs_switch, "normal-glyphs"),
-            (self.display_depth_switch, "display-depth"),
-            (self.skin_weights_switch, "skin-weights"),
-            (self.stats_overlay_switch, "stats-overlay"),
-        ]
+    def on_save_settings(self, *args):
+        self.settings_dialog.present(self)
 
-        for switch, name in switches:
-            switch.connect("notify::active", self.on_switch_toggled, name)
-            setting = self.window_settings.get_setting(name)
-            setting.connect("changed", self.set_switch_to, switch)
+    def open_file_chooser(self, *args):
+        file_filter = Gtk.FileFilter(name=_("All supported formats"))
 
-        spins = [
-            (self.edges_width_spin, "edges-width"),
-            (self.points_size_spin, "point-size"),
-            (self.sprite_size_spin, "sprites-size"),
-            (self.model_roughness_spin, "model-roughness"),
-            (self.model_metallic_spin, "model-metallic"),
-            (self.model_opacity_spin, "model-opacity"),
-            (self.normal_glyphs_scale_spin, "normal-glyphs-scale"),
-            (self.blur_coc_spin, "blur-coc"),
-            (self.light_intensity_spin, "light-intensity"),
-            (self.nav_orbit_sensitivity_spin, "nav-orbit-sensitivity"),
-            (self.nav_zoom_sensitivity_spin, "nav-zoom-sensitivity"),
-            (self.nav_pan_sensitivity_spin, "nav-pan-sensitivity"),
-        ]
+        for patt in model_patt:
+            file_filter.add_pattern("*." + patt)
 
-        for spin, name in spins:
-            spin.connect("notify::value", self.on_spin_changed, name)
-            setting = self.window_settings.get_setting(name)
-            setting.connect("changed", self.set_spin_to, spin)
+        filter_list = Gio.ListStore.new(Gtk.FileFilter())
+        filter_list.append(file_filter)
 
-        self.model_color_button.connect(
-            "notify::rgba", self.on_color_changed, "model-color")
-        self.background_color_button.connect(
-            "notify::rgba", self.on_color_changed, "bg-color")
-        self.window_settings.get_setting("model-color").connect(
-            "changed", self.set_color_button, self.model_color_button)
-        self.window_settings.get_setting("bg-color").connect(
-            "changed", self.set_color_button, self.background_color_button)
+        dialog = Gtk.FileDialog(
+            title=_("Open File"),
+            filters=filter_list)
 
-        self.hdri_file_row.connect(
-            "delete-file", self.on_delete_skybox)
-        self.hdri_file_row.connect(
-            "file-added", lambda row, filepath: self.load_hdri(filepath))
-        self.window_settings.get_setting("hdri-file").connect(
-            "changed", self.set_hdri_file_row)
+        dialog.open(self, None, self.on_open_file_response)
 
-        self.model_scivis_component_combo.connect(
-            "notify::selected", self.on_scivis_component_combo_changed)
-        self.window_settings.get_setting("up").connect(
-            "changed", self.set_up_direction_combo)
-        self.window_settings.get_setting("scivis-component").connect(
-            "changed", self.set_scivis_component_combo)
-        self.window_settings.get_setting("cells").connect(
-            "changed", self.set_scivis_component_combo)
-        self.point_sprites_type_combo.connect(
-            "notify::selected", self.point_sprites_type_combo_changed)
-        self.window_settings.get_setting("sprites-type").connect(
-            "changed", self.set_point_sprites_type_combo_changed)
+    def on_open_file_response(self, dialog, response):
+        try:
+            file = dialog.open_finish(response)
+        except Exception as e:
+            log.error(f"Exception Opening file: {e}")
+            return
 
-        self.skin_weights_mode_combo.connect(
-            "notify::selected", self.on_skin_weights_mode_combo_changed)
-        self.skin_weights_joint_combo.connect(
-            "notify::selected", self.on_skin_weights_joint_combo_changed)
-        self.window_settings.get_setting("skin-weights-mode").connect(
-            "changed", self.set_skin_weights_mode_combo)
-        self.window_settings.get_setting("skin-weights").connect(
-            "changed", lambda *_: self._refresh_skin_weights_joint_combo())
+        self.load_file(file)
 
-        self.background_color_button.connect(
-            "notify::rgba", self.update_background_color)
+    def load_file(self, file):
+        if not file:
+            return
 
-        self.up_direction_combo.connect(
-            "notify::selected", self.on_up_direction_combo_changed)
+        filepath = file.get_path()
 
-        self.window_settings.set_setting(
-            "auto-best", self.saved_settings.get_boolean("auto-best"))
+        self.engine.reset()
+        preset = self.presets.get_default_for(filepath)
+        self.engine.apply_preset(preset)
 
-        self.saved_settings.bind(
-            "restore-session",
-            self.restore_session_switch,
-            "active",
-            Gio.SettingsBindFlags.DEFAULT,
+        try:
+            result = self.engine.load_file(file)
+        except Exception as e:
+            log.warn(e)
+            self.on_file_not_opened(filepath)
+            return
+
+        self.on_file_opened()
+
+        self.loading_status_page.set_description(
+            _("Loading {}").format(os.path.basename(filepath)))
+
+    def on_file_opened(self):
+        log.debug("on file opened")
+
+        self.file_name = os.path.basename(self.filepath)
+
+        self.set_title(_("Exhibit - {}").format(self.file_name))
+        self.title_widget.set_subtitle(self.file_name)
+        self.stack.set_visible_child_name("3d_page")
+        self.viewer.grab_focus()
+
+        self.no_file_loaded = False
+
+        self.update_background_color()
+        self.update_animation_ui()
+
+    def on_file_not_opened(self, filepath):
+        log.debug("on file not opened")
+
+        self.set_title(_("Exhibit"))
+        if self.no_file_loaded:
+            self.stack.set_visible_child_name("startup_page")
+            self.startup_stack.set_visible_child_name("error_page")
+        else:
+            self.send_toast(_("Can't open") + " " + os.path.basename(filepath))
+
+        self.update_background_color()
+
+    def update_animation_ui(self):
+        if self.engine.get_animations_n() == 0:
+            self.animation_group.set_visible(False)
+
+            for i, s in enumerate(self.animation_combo_model):
+                self.animation_combo_model.remove(i)
+        else:
+            self.animation_group.set_visible(True)
+
+    def send_toast(self, message):
+        toast = Adw.Toast(title=message, timeout=2)
+        self.toast_overlay.add_toast(toast)
+
+    def save_as_image(self, filepath):
+        img = self.viewer.render_image()
+        img.save(filepath)
+
+    def open_save_file_chooser(self, *args):
+        dialog = Gtk.FileDialog(
+            title=_("Save File"),
+            initial_name=self.file_name.split(".")[0] + ".png",
         )
-        self.restore_session_switch.connect(
-            "notify::active", self.on_restore_session_toggled)
-        self.saved_settings.bind(
-            "focus-existing-tab",
-            self.focus_existing_tab_switch,
-            "active",
-            Gio.SettingsBindFlags.DEFAULT,
-        )
+        dialog.save(self, None, self.on_save_file_response)
 
-        self._load_nav_settings_from_gschema()
-        # Push defaults into switch/spin widgets without fighting gschema bind.
-        for key in (
-            "nav-invert-x",
-            "nav-invert-y",
-            "nav-zoom-to-cursor",
-            "nav-orbit-around-cursor",
-            "nav-touchpad-orbit",
-            "nav-mmb-click-pivot",
-            "nav-orbit-sensitivity",
-            "nav-zoom-sensitivity",
-            "nav-pan-sensitivity",
-            "point-up",
-        ):
-            setting = self.window_settings.get_setting(key)
-            setting.emit("changed", setting.name, setting.type)
-        self._sync_theme_toggle_button()
+    def on_save_file_response(self, dialog, response):
+        try:
+            file = dialog.save_finish(response)
+        except Exception:
+            return
+
+        if file:
+            file_path = file.get_path()
+            self.save_as_image(file_path)
+            toast = Adw.Toast(
+                title="Image Saved",
+                timeout=2,
+                button_label="Open",
+                action_name="app.show-image-externally",
+                action_target=GLib.Variant("s", file_path)
+            )
+            self.toast_overlay.add_toast(toast)
+
+    @Gtk.Template.Callback("on_home_clicked")
+    def on_home_clicked(self, btn):
+        self.engine.reset_camera()
+
+    @Gtk.Template.Callback("on_open_button_clicked")
+    def on_open_button_clicked(self, btn):
+        self.open_file_chooser()
+
+    def orthographic_state_changed(self, action, state):
+        action.set_state(state)
+        self.engine.set_property("orthographic", state.get_boolean())
+
+    def on_orthographic_changed(self, setting, *args):
+        self.orthographic_action.set_state(
+            GLib.Variant(
+                "b", self.engine.get_property("orthographic").value))
+
+    def toggle_orthographic(self, *args):
+        self.engine.set_property(
+            "orthographic",
+            not self.engine.get_property("orthographic").value)
+
+    @Gtk.Template.Callback("on_drop_received")
+    def on_drop_received(self, drop, value, x, y):
+        file = value.get_files()[0]
+        extension = os.path.splitext(file)[1][1:].lower()
+
+        if extension in image_patt:
+            self.load_hdri(file)
+        elif extension in model_patt:
+            log.info("drop received")
+            self.load_file(file=file)
+
+    @Gtk.Template.Callback("on_drop_enter")
+    def on_drop_enter(self, drop_target, *args):
+        drop_target.get_widget().set_visible_child_name("drop")
+
+    @Gtk.Template.Callback("on_drop_leave")
+    def on_drop_leave(self, drop_target, *args):
+        drop_target.get_widget().set_visible_child_name("content")
+
+    @Gtk.Template.Callback("on_close_sidebar_clicked")
+    def on_close_sidebar_clicked(self, *args):
+        self.split_view.set_show_sidebar(False)
+
+    def open_with_external_app(self):
+        file = self.engine.get_file()
+        if file:
+            launcher = Gtk.FileLauncher.new(file)
+            launcher.set_always_ask(True)
+            launcher.launch(self, None, None)
+
+    @Gtk.Template.Callback("on_apply_breakpoint")
+    def on_apply_breakpoint(self, *args):
+        self.applying_breakpoint = True
+        self.split_view.set_collapsed(True)
+        self.split_view.set_show_sidebar(False)
+        self.applying_breakpoint = False
+
+    @Gtk.Template.Callback("on_unapply_breakpoint")
+    def on_unapply_breakpoint(self, *args):
+        self.applying_breakpoint = True
+        self.split_view.set_collapsed(False)
+        self.split_view.set_show_sidebar(self.sidebar_default_visible)
+        self.applying_breakpoint = False
+
+    @Gtk.Template.Callback("on_split_view_show_sidebar_changed")
+    def on_split_view_show_sidebar_changed(self, *args):
+        if self.applying_breakpoint:
+            return
+        self.sidebar_default_visible = self.split_view.get_show_sidebar()
+
+    def on_play_button_clicked(self, btn):
+        self.engine.play_animation()
+
+    def on_playing_changed(self, *args):
+        if self.viewer.playing:
+            self.play_button.set_icon_name("media-playback-pause-symbolic")
+            self.play_button.set_tooltip_text(_("Stop"))
+        else:
+            self.play_button.set_icon_name("media-playback-start-symbolic")
+            self.play_button.set_tooltip_text(_("Start"))
+
+    #
+    # Function called when the HDRI is deleted/added...
+
+    def on_delete_skybox(self, *args):
+        self.engine.set_property("hdri-file", None)
+        self.engine.set_property("hdri-skybox", False)
+
+    def load_hdri(self, filepath):
+        self.engine.set_property("hdri-file", file)
+        self.engine.set_property("hdri-skybox", True)
 
     def create_action(self, name, callback):
         action = Gio.SimpleAction.new(name, None)
@@ -653,15 +462,18 @@ class Viewer3dWindow(
         self.add_action(action)
         return action
 
+    @Gtk.Template.Callback("enum_name")
+    def enum_name (self, item):
+        return item.get_nick().title().replace("-", " ")
 
-Viewer3dWindow = Gtk.Template(
-    resource_path="/io/github/nokse22/Exhibit/ui/window.ui"
-)(_hoist_template_callbacks(Viewer3dWindow))
-
-
-def list_files(directory):
-    items = os.listdir(directory)
-    files = [
-        item for item in items if os.path.isfile(os.path.join(directory, item))
-    ]
-    return files
+    @Gtk.Template.Callback("on_close_request")
+    def on_close_request(self, window):
+        log.debug("window closed, saving settings")
+        settings.set_int(
+            "startup-width", window.get_width())
+        settings.set_int(
+            "startup-height", window.get_height())
+        settings.set_boolean(
+            "startup-sidebar-show", window.split_view.get_show_sidebar())
+        settings.set_boolean(
+            "auto-best", settings.get_boolean("auto-best"))

@@ -1,0 +1,28 @@
+- [ ] light intensity default value
+- [ ] edges width increase
+- [ ] sprite size increase and default
+- [ ] point size?
+- [ ] model opacity/roughness/metallic default
+- [ ] coloration follow scivis
+- [ ] blur coc and blur background default
+- [ ] set hdri as bg when hdri image changes
+- [ ] use custom color ineffective
+- [ ] always point up should update camera
+- [ ] automatic settings
+- [ ] reload on change
+- [ ] orthographic menu not working
+- [ ] configurations folder rename
+- [ ] other files folder remove
+- [ ] check folders for non-flatpak
+- [ ] remove add-file-to-scene action
+- [ ] up direction combo not properly updating
+- [ ] export image empty filename, only extension
+- [ ] open in external app not working
+- [ ] keyboard shortcuts broken
+- [ ] help ugly
+- [ ] dark/light menu use libpanel
+- [ ] save current settings broken
+- [ ] empty presets menu
+- [ ] open configurations folder action error: no attribute 'configs_path'
+- [ ] animations list use animations names
+- [ ] animations hide when none available

@@ -21,29 +21,16 @@ import sys
 import os
 import webbrowser
 
-import gi
-
-gi.require_version("Gtk", "4.0")
-gi.require_version("Adw", "1")
-
-from gi.repository import Gtk, Gdk, Gio, Adw, GLib
-
-GLib.setenv("GDK_DEBUG", "gl-prefer-gl", True)
-
-import f3d
-
-from .window import Viewer3dWindow
-from . import logger_lib
-from .about_info import FORK_ISSUES, FORK_REPO, UPSTREAM_REPO, about_comments
+from gi.repository import Gtk, Gio, Adw, GLib
+from .window import ExbWindow
 
 from gettext import gettext as _
 
-_STYLE_RESOURCE = "/io/github/nokse22/Exhibit/style.css"
-_STYLE_DARK_RESOURCE = "/io/github/nokse22/Exhibit/style-dark.css"
 
-
-class Viewer3dApplication(Adw.Application):
+class ExhibitApplication(Adw.Application):
     """The main application singleton class."""
+
+    open_filepath = None
 
     def __init__(self):
         super().__init__(
@@ -51,15 +38,8 @@ class Viewer3dApplication(Adw.Application):
             flags=Gio.ApplicationFlags.HANDLES_OPEN,
         )
 
-        logger_lib.init()
-        self.logger = logger_lib.logger
-
-        self.lib_info = f3d.Engine.get_lib_info()
-        self.backends = f3d.Engine.get_rendering_backend_list()
-
-        self._css_provider = None
-        self._dark_css_provider = None
-        self._css_loaded = False
+        self.lib_info = "" #f3d.Engine.get_lib_info()
+        # self.backends = f3d.Engine.get_rendering_backend_list()
 
         self.create_action("quit", lambda *_: self.quit(), ["<primary>q"])
         self.create_action("about", self.on_about_action)
@@ -67,21 +47,21 @@ class Viewer3dApplication(Adw.Application):
 
         self.create_action(
             "open-hdri-folder",
-            self._on_open_hdri_folder,
+            lambda *_: webbrowser.open(self.props.active_window.hdri_path),
         )
         self.create_action(
             "open-configs-folder",
-            self._on_open_configs_folder,
+            lambda *_: webbrowser.open(self.props.active_window.configs_path),
         )
 
         self.create_action(
             "open-new-window",
-            lambda *_: Viewer3dWindow(application=self).present(),
+            lambda *_: ExbWindow(application=self).present(),
             ["<primary><shift>n"],
         )
         self.create_action(
             "open-external",
-            self._on_open_external,
+            lambda *_: self.props.active_window.open_with_external_app(),
             ["<primary><shift>e"],
         )
 
@@ -96,102 +76,11 @@ class Viewer3dApplication(Adw.Application):
 
         self.saved_settings = Gio.Settings.new("io.github.nokse22.Exhibit")
 
-        theme_action = Gio.SimpleAction.new_stateful(
-            "theme",
-            GLib.VariantType.new("s"),
-            GLib.Variant("s", self.saved_settings.get_string("theme")),
-        )
-        # Menu radio items use change-state; code paths may use activate.
-        theme_action.connect("activate", self.on_theme_setting_changed)
-        theme_action.connect("change-state", self.on_theme_setting_changed)
-        self.update_theme()
-        self.add_action(theme_action)
-
-    def _on_open_hdri_folder(self, *_args):
-        win = self.props.active_window
-        if win is None:
-            return
-        webbrowser.open(win.hdri_path)
-
-    def _on_open_configs_folder(self, *_args):
-        win = self.props.active_window
-        if win is None:
-            return
-        webbrowser.open(win.user_configurations_path)
-
-    def _on_open_external(self, *_args):
-        win = self.props.active_window
-        if win is None:
-            return
-        win.open_with_external_app()
-
-    def do_startup(self):
-        Adw.Application.do_startup(self)
-        self._load_css()
-
-    def _load_css(self):
-        if self._css_loaded:
-            return
-
-        display = Gdk.Display.get_default()
-        if display is None:
-            return
-
-        # Custom symbolic icons live under the app gresource.
-        Gtk.IconTheme.get_for_display(display).add_resource_path(
-            "/io/github/nokse22/Exhibit/icons"
-        )
-
-        self._css_provider = Gtk.CssProvider()
-        self._css_provider.load_from_resource(_STYLE_RESOURCE)
-        Gtk.StyleContext.add_provider_for_display(
-            display,
-            self._css_provider,
-            Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION,
-        )
-
-        self._dark_css_provider = Gtk.CssProvider()
-        self._dark_css_provider.load_from_resource(_STYLE_DARK_RESOURCE)
-
-        style_manager = Adw.StyleManager.get_default()
-        style_manager.connect("notify::dark", self._on_dark_changed)
-        self._on_dark_changed(style_manager)
-        self._css_loaded = True
-
-    def _on_dark_changed(self, style_manager, *_args):
-        display = Gdk.Display.get_default()
-        if display is None or self._dark_css_provider is None:
-            return
-
-        if style_manager.get_dark():
-            Gtk.StyleContext.add_provider_for_display(
-                display,
-                self._dark_css_provider,
-                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION + 1,
-            )
-        else:
-            Gtk.StyleContext.remove_provider_for_display(
-                display, self._dark_css_provider
-            )
-
     def do_open(self, files, n_files, hint):
-        paths = []
-        for i in range(n_files):
-            path = files[i].get_path()
-            if path:
-                paths.append(path)
-        if not paths:
-            return
-        win = self.props.active_window
-        if win is None:
-            win = Viewer3dWindow(application=self, startup_filepath=paths[0])
+        for file in files:
+            file_path = file.get_path()
+            win = ExbWindow(application=self, startup_filepath=file_path)
             win.present()
-            # Rest join the sequential open queue (warm-load / realize safe).
-            if len(paths) > 1:
-                win._open_model_paths(paths[1:])
-            return
-        win.present()
-        win._open_model_paths(paths)
 
     def show_image_external(self, _action, image_path: GLib.Variant, *args):
         try:
@@ -215,23 +104,18 @@ class Viewer3dApplication(Adw.Application):
             application_icon="io.github.nokse22.Exhibit",
             developer_name="Nokse",
             version="1.6.0",
-            website=UPSTREAM_REPO,
-            issue_url=FORK_ISSUES,
-            developers=["Nokse", "maikramer"],
+            website="https://github.com/Nokse22/Exhibit",
+            issue_url="https://github.com/Nokse22/Exhibit/issues",
+            developers=["Nokse"],
             license_type="GTK_LICENSE_GPL_3_0",
             copyright="© 2024-2025 Nokse",
             artists=["Jakub Steiner https://jimmac.eu"],
-            comments=about_comments(),
         )
 
         about.add_link(_("Checkout F3D"), "https://f3d.app")
-        about.add_link(_("This fork on GitHub"), FORK_REPO)
+
         about.add_link(_("Donate with Ko-Fi"), "https://ko-fi.com/nokse22")
         about.add_link(_("Donate with Github"), "https://github.com/sponsors/Nokse22")
-        about.add_acknowledgement_section(
-            _("Upstream"),
-            ["Nokse22/Exhibit — original app"],
-        )
 
         about.set_debug_info(
             f"GDK_DEBUG: {GLib.getenv('GDK_DEBUG')}\n"
@@ -242,15 +126,15 @@ class Viewer3dApplication(Adw.Application):
             + f"GTK_THEME: {GLib.getenv('GTK_THEME')}\n"
             + f"GTK Version: {Gtk.MAJOR_VERSION}.{Gtk.MINOR_VERSION}.{Gtk.MICRO_VERSION}\n"
             + "\n"
-            + f"F3D Version: {self.lib_info.version_full}\n"
-            + f"Build Date: {self.lib_info.build_date}\n"
-            + f"Build System: {self.lib_info.build_system}\n"
-            + f"VTK Version: {self.lib_info.vtk_version}\n"
-            + f"F3D License: {self.lib_info.license}\n"
-            + "\n"
-            + f"Modules:\n{'\n'.join([f'- {key}: {val}' for key, val in self.lib_info.modules.items()])}\n"
-            + f"Backends:\n{'\n'.join([f'- {key}: {val}' for key, val in self.backends.items()])}"
-            + f"\nF3D Copyrights:\n- {'\n- '.join(self.lib_info.copyrights)}\n"
+            # + f"F3D Version: {self.lib_info.version_full}\n"
+            # + f"Build Date: {self.lib_info.build_date}\n"
+            # + f"Build System: {self.lib_info.build_system}\n"
+            # + f"VTK Version: {self.lib_info.vtk_version}\n"
+            # + f"F3D License: {self.lib_info.license}\n"
+            # + "\n"
+            # + f"Modules:\n{'\n'.join([f'- {key}: {val}' for key, val in self.lib_info.modules.items()])}\n"
+            # + f"Backends:\n{'\n'.join([f'- {key}: {val}' for key, val in self.backends.items()])}"
+            # + f"\nF3D Copyrights:\n- {'\n- '.join(self.lib_info.copyrights)}\n"
         )
 
         about.present(self.props.active_window)
@@ -258,30 +142,15 @@ class Viewer3dApplication(Adw.Application):
     def on_help_action(self, *args):
         Gio.AppInfo.launch_default_for_uri("help:exhibit")
 
-    def on_theme_setting_changed(self, action, state):
-        action.set_state(state)
-        self.saved_settings.set_string("theme", state.get_string())
-        self.update_theme()
-        for win in self.get_windows():
-            sync = getattr(win, "_sync_theme_toggle_button", None)
-            if callable(sync):
-                sync()
-
-    def update_theme(self):
-        # DEFAULT = follow OS (portal): Ubuntu prefer-dark + accent (Yaru orange).
-        manager = Adw.StyleManager.get_default()
-        match self.saved_settings.get_string("theme"):
-            case "follow":
-                manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
-            case "light":
-                manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
-            case "dark":
-                manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
-
     def do_activate(self):
         win = self.props.active_window
         if not win:
-            win = Viewer3dWindow(application=self)
+            if self.open_filepath:
+                win = ExbWindow(
+                    application=self, startup_filepath=self.open_filepath
+                )
+            else:
+                win = ExbWindow(application=self)
         win.present()
 
     def create_action(self, name, callback, shortcuts=None, *args):
@@ -297,10 +166,5 @@ class Viewer3dApplication(Adw.Application):
 
 def main(version):
     """The application's entry point."""
-    if len(sys.argv) > 1 and sys.argv[1] == "render":
-        from . import cli_render
-
-        return cli_render.main(sys.argv[2:])
-
-    app = Viewer3dApplication()
+    app = ExhibitApplication()
     return app.run(sys.argv)

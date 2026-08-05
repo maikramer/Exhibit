@@ -1,14 +1,3 @@
-pkgdatadir = get_option('prefix') / get_option('datadir') / meson.project_name()
-moduledir = pkgdatadir / 'exhibit'
-gnome = import('gnome')
-
-gnome.compile_resources('exhibit',
-  'exhibit.gresource.xml',
-  gresource_bundle: true,
-  install: true,
-  install_dir: pkgdatadir,
-)
-
 desktop_file = i18n.merge_file(
         input: 'io.github.nokse22.Exhibit.desktop.in',
        output: 'io.github.nokse22.Exhibit.desktop',

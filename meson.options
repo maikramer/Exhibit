@@ -1,0 +1,7 @@
+option('thumbnailer',
+       type: 'boolean',
+       value: true)
+
+option('docs',
+       type: 'boolean',
+       value: false)
