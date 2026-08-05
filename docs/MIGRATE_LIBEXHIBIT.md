@@ -18,7 +18,7 @@ Branches:
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [ ] File watch / reload prompt
 - [~] Headless CLI render + video encode (entry in exhibit.in; needs Exb standalone port)
-- [ ] Animation names combo + default bind pose
+- [~] Animation names combo (glTF names wired); bind pose still TODO on Exb
 - [ ] Split compare
 - [ ] Session restore / recent files
 - [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
