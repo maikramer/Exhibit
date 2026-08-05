@@ -10,6 +10,8 @@ graphify-out/
 .profile/
 *.flatpak
 .flatpak-builder/
+build-migrate/
+repo-migrate/
 
 # Editor / OS
 .idea/

@@ -35,14 +35,15 @@ Branches:
 5. Sem PR para Nokse22 — fork separado
 
 
-## Bloqueios Exb C API
+## API Exb C adicionada no fork
 
-Estas features do fork precisam de API nova em `libexhibit` (C), não só Python:
+- `scivis-array-name` no engine (inspect skin weights)
+- Nav no view: `invert-x/y`, sensitivities, Shift-pan / Ctrl-zoom, `orbit-around-cursor`
+- Zoom/orbit sob o cursor via focal-plane NDC (`_exb_engine_zoom_at_ndc` / `_exb_engine_rotate_at_ndc`) — não é ray-pick na malha
 
-- Blender-like nav (pointer world hit, orbit around cursor) — hoje Exb.View tem orbit/pan/zoom simples
-- Warm-load multi-engine prepare race (parcialmente possível em Python)
+## Verificação (2026-08-05)
 
-## Em andamento
-
-Checklist de features: completo (focal-plane NDC ≈ cursor nav).  
-Flatpak build local (runtime 50) — VTK ainda compilando; falta F3D/libexhibit/app para validar runtime.
+- Flatpak local (runtime 50) compilou e instalou via `repo-migrate` (`exhibit-migrate`)
+- GI: `scivis-array-name`, nav props e `Exb.View` ok no runtime instalado
+- `exhibit --help` ok; pytest green (1 skip legado)
+- Branch: `migrate-libexhibit` — merge em `main` / push só quando pedido
