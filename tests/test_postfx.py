@@ -55,6 +55,17 @@ def test_engine_fanout_includes_effect_props():
     src = TABS.read_text(encoding="utf-8")
     for prop in ('"bloom"', '"godrays"', '"ao-radius"', '"ao-intensity"'):
         assert prop in src
+    # Fanout alone is not enough — presets need WindowSettings sync.
+    mapping = src.split("_ENGINE_PROP_TO_SETTING", 1)[1].split("}", 1)[0]
+    for key in (
+        '"godrays": "godrays"',
+        '"godrays-intensity": "godrays-intensity"',
+        '"ao-radius": "ao-radius"',
+        '"ao-bias": "ao-bias"',
+        '"ao-kernel-size": "ao-kernel-size"',
+        '"ao-intensity": "ao-intensity"',
+    ):
+        assert key in mapping
 
 
 def test_effects_ui_uses_expander_rows():

@@ -72,6 +72,10 @@ class LifecycleMixin:
             "auto-reload",
             self.window_settings.get_setting("auto-reload").value,
         )
+        self.saved_settings.set_boolean(
+            "use-color",
+            self.window_settings.get_setting("use-color").value,
+        )
         try:
             self.saved_settings.set_boolean(
                 "split-compare-enabled",

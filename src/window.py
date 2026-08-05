@@ -140,6 +140,7 @@ class ExbWindow(
     restore_session_switch = Gtk.Template.Child()
     focus_existing_tab_switch = Gtk.Template.Child()
     automatic_reload_switch = Gtk.Template.Child()
+    use_color_switch = Gtk.Template.Child()
     tab_view = Gtk.Template.Child()
     tab_bar = Gtk.Template.Child()
     viewport_overlay = Gtk.Template.Child()
@@ -379,6 +380,7 @@ class ExbWindow(
         switches = [
             (self.automatic_settings_switch, "auto-best"),
             (self.automatic_reload_switch, "auto-reload"),
+            (self.use_color_switch, "use-color"),
             (self.armature_switch, "armature-enable"),
             (self.checkerboard_switch, "checkerboard-enable"),
             (self.normal_glyphs_switch, "normal-glyphs"),
@@ -429,6 +431,9 @@ class ExbWindow(
         # Mirror auto-best: gschema key existed but was never seeded/persisted.
         self.window_settings.set_setting(
             "auto-reload", self.saved_settings.get_boolean("auto-reload")
+        )
+        self.window_settings.set_setting(
+            "use-color", self.saved_settings.get_boolean("use-color")
         )
         self.saved_settings.bind(
             "restore-session",
