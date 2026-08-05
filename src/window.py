@@ -40,6 +40,8 @@ from .widgets.settings_dialog import SettingsDialog
 from .config import *
 from .widgets.theme_switcher import ThemeSwitcher
 from .meshopt_decompress import prepare_glb_for_load, release_prepared
+from .mesh_stats import collect_mesh_stats, format_overlay_text
+from .periodic_checker import PeriodicChecker
 
 from gettext import gettext as _
 
@@ -195,9 +197,37 @@ class ExbWindow(Adw.ApplicationWindow):
 
         self.play_button.connect("clicked", self.on_play_button_clicked)
 
+        # Fork: mesh stats HUD + external file-change poller (single doc).
+        self._stats_overlay = Gtk.Label(
+            visible=False,
+            halign=Gtk.Align.START,
+            valign=Gtk.Align.END,
+            margin_start=16,
+            margin_bottom=16,
+            xalign=0,
+            selectable=True,
+        )
+        self._stats_overlay.add_css_class("stats-overlay")
+        parent = self.viewer.get_parent()
+        if isinstance(parent, Gtk.Overlay):
+            parent.add_overlay(self._stats_overlay)
+        else:
+            log.debug("stats overlay: viewer parent is not Gtk.Overlay")
+
+        self._file_checker = PeriodicChecker(self._periodic_check_file_change)
+        self._auto_reload = True
+        try:
+            self._auto_reload = settings.get_boolean("auto-reload")
+        except Exception:
+            pass
+
         if startup_filepath:
             log.info(f"startup file detected: {startup_filepath}")
-            self.load_file(filepath=startup_filepath)
+            # upstream passes path string; normalize to Gio.File
+            if isinstance(startup_filepath, str):
+                self.load_file(Gio.File.new_for_path(startup_filepath))
+            else:
+                self.load_file(startup_filepath)
 
         log.info("Started")
 
@@ -338,6 +368,12 @@ class ExbWindow(Adw.ApplicationWindow):
 
         self.update_background_color()
         self.update_animation_ui()
+        self._update_stats_overlay()
+        self.update_time_stamp()
+        try:
+            self._file_checker.run()
+        except Exception as exc:
+            log.debug("file checker: %s", exc)
 
     def on_file_not_opened(self, filepath):
         log.debug("on file not opened")
@@ -537,9 +573,64 @@ class ExbWindow(Adw.ApplicationWindow):
     def enum_name (self, item):
         return item.get_nick().title().replace("-", " ")
 
+    def _file_mtime(self, path):
+        if not path:
+            return None
+        try:
+            return os.path.getmtime(path)
+        except OSError:
+            return None
+
+    def update_time_stamp(self):
+        mtime = self._file_mtime(self.filepath)
+        if mtime is not None:
+            self._cached_time_stamp = mtime
+        return False
+
+    def _periodic_check_file_change(self):
+        if self.block_reload or self.no_file_loaded or not self.filepath:
+            return True
+        disk_mtime = self._file_mtime(self.filepath)
+        if disk_mtime is None:
+            return True
+        if not self._cached_time_stamp:
+            self._cached_time_stamp = disk_mtime
+            return True
+        if disk_mtime <= self._cached_time_stamp:
+            return True
+        self._cached_time_stamp = disk_mtime
+        auto = getattr(self, "_auto_reload", True)
+        try:
+            auto = settings.get_boolean("auto-reload")
+        except Exception:
+            pass
+        if auto:
+            log.info("auto-reload %s", self.filepath)
+            self.load_file(Gio.File.new_for_path(self.filepath))
+        else:
+            self.send_toast(_("File changed on disk"))
+        return True
+
+    def _update_stats_overlay(self):
+        label = getattr(self, "_stats_overlay", None)
+        if label is None or not self.filepath:
+            return
+        try:
+            stats = collect_mesh_stats(self.filepath)
+            text = format_overlay_text(stats)
+            label.set_label(text)
+            label.set_visible(bool(text))
+        except Exception as exc:
+            log.debug("stats overlay: %s", exc)
+            label.set_visible(False)
+
     @Gtk.Template.Callback("on_close_request")
     def on_close_request(self, window):
         log.debug("window closed, saving settings")
+        try:
+            self._file_checker.stop()
+        except Exception:
+            pass
         prepared = getattr(self, "_prepared_load_path", None)
         if prepared:
             release_prepared(prepared)

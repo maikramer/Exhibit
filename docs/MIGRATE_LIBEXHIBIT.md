@@ -13,11 +13,11 @@ Branches:
 - [ ] Bone/armature kinds + X-ray skeleton
 - [ ] Viewport tool rail / chrome header
 - [ ] Inspect overlays + skin-weight heat maps
-- [ ] Mesh stats overlay
+- [~] Mesh stats overlay (label on GtkOverlay; needs polish)
 - [ ] Blender-like touchpad navigation + camera presets
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
-- [ ] File watch / reload prompt
-- [~] Headless CLI render + video encode (entry in exhibit.in; needs Exb standalone port)
+- [~] File watch / auto-reload (single-doc; prompt UI TODO)
+- [~] Headless CLI render (Exb standalone fallback); video encode still f3d-path
 - [~] Animation names combo (glTF names wired); bind pose still TODO on Exb
 - [ ] Split compare
 - [ ] Session restore / recent files

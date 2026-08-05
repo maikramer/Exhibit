@@ -311,7 +311,128 @@ def _expand_view_jobs(
     return jobs
 
 
+def _render_model_exb(args: argparse.Namespace) -> str:
+    """Headless render via libexhibit (no Python f3d bindings)."""
+    import gi
+
+    gi.require_version("Exb", "0.0")
+    from gi.repository import Exb, Gio
+
+    model_path = os.path.abspath(args.model)
+    if not os.path.isfile(model_path):
+        raise SystemExit(f"Model not found: {model_path}")
+
+    out_dir = os.path.abspath(args.output)
+    os.makedirs(out_dir, exist_ok=True)
+    stem = os.path.splitext(os.path.basename(model_path))[0]
+    jobs = _expand_view_jobs(list(args.views), int(args.orbit))
+
+    print(f"Loading {model_path} (Exb standalone)", file=sys.stderr)
+    load_path = model_path
+    prepare_temp = None
+    retained = False
+    try:
+        load_path, prepare_temp = prepare_glb_for_load(model_path)
+        retained = load_path != model_path and prepare_temp is None
+    except MeshoptError as exc:
+        raise SystemExit(f"Failed to prepare model: {exc}") from exc
+    except Exception as exc:
+        raise SystemExit(f"Failed to prepare model: {exc}") from exc
+
+    try:
+        stats = collect_mesh_stats(
+            load_path, already_prepared=True, up=str(args.up)
+        )
+        width, height = args.size
+        eng = Exb.Engine.new_standalone()
+        eng.set_size(width, height)
+        try:
+            eng.set_property("show-grid", bool(args.grid))
+            eng.set_property("show-armature", bool(args.armature))
+            eng.set_property("show-edges", bool(args.edges))
+            eng.set_property("animation-index", int(args.animation_index))
+        except Exception as exc:
+            print(f"option apply partial: {exc}", file=sys.stderr)
+
+        try:
+            eng.load_file(Gio.File.new_for_path(load_path))
+        except Exception as exc:
+            raise SystemExit(f"Failed to load model: {exc}") from exc
+
+        cleanup_decompressed(prepare_temp)
+        prepare_temp = None
+
+        # Approximate named views with Exb rotate/reset until camera API lands.
+        view_yaw = {
+            "front": 0.0,
+            "right": 90.0,
+            "back": 180.0,
+            "left": -90.0,
+            "top": 0.0,
+            "isometric": 45.0,
+        }
+        view_entries: list[dict[str, Any]] = []
+        for job in jobs:
+            name = job["name"]
+            eng.reset_camera()
+            if job["kind"] == "preset":
+                yaw = view_yaw.get(name, 0.0)
+                if name == "top":
+                    eng.rotate(0.0, -80.0)
+                elif name == "isometric":
+                    eng.rotate(35.0, -30.0)
+                else:
+                    eng.rotate(yaw, 0.0)
+            else:
+                eng.rotate(float(job["yaw_deg"]), 0.0)
+
+            filename = f"{stem}_{name}.{args.format}"
+            out_path = os.path.join(out_dir, filename)
+            print(f"Rendering {name} -> {out_path}", file=sys.stderr)
+            texture = eng.render_texture()
+            if texture is None:
+                raise SystemExit(f"render_texture failed for {name}")
+            texture.save_to_filename(out_path)
+            entry: dict[str, Any] = {"name": name, "file": filename}
+            if "yaw_deg" in job:
+                entry["yaw_deg"] = job["yaw_deg"]
+            view_entries.append(entry)
+
+        manifest = {
+            "model": model_path,
+            "prepared": load_path != model_path,
+            "has_skins": glb_has_skins(model_path),
+            "animation_names": [],
+            "stats": stats.to_dict(),
+            "backend": "exb",
+            "options": {
+                "armature": bool(args.armature),
+                "edges": bool(args.edges),
+                "grid": bool(args.grid),
+                "size": [width, height],
+                "up": args.up,
+                "animation_index": int(args.animation_index),
+            },
+            "views": view_entries,
+            "video": None,
+        }
+        manifest_path = os.path.join(out_dir, "manifest.json")
+        with open(manifest_path, "w", encoding="utf-8") as handle:
+            json.dump(manifest, handle, indent=2)
+            handle.write("\n")
+        return manifest_path
+    finally:
+        cleanup_decompressed(prepare_temp)
+        if retained:
+            release_prepared(load_path)
+
+
 def render_model(args: argparse.Namespace) -> str:
+    try:
+        import f3d  # noqa: F401
+    except ImportError:
+        return _render_model_exb(args)
+
     import f3d
 
     model_path = os.path.abspath(args.model)

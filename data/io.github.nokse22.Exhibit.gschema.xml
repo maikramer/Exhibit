@@ -109,5 +109,10 @@
       <summary>Pan sensitivity</summary>
       <description>Multiplier for pan pointer/scroll deltas (0.25–4.0).</description>
     </key>
+	  <key name="auto-reload" type="b">
+      <default>true</default>
+      <summary>Auto-reload on disk change</summary>
+      <description>Reload the open model when its file changes on disk.</description>
+    </key>
 	</schema>
 </schemalist>
