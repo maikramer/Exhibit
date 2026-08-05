@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: Exhibit\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2026-08-01 19:11+0200\n"
+"POT-Creation-Date: 2026-08-05 13:44-0300\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -16,10 +16,12 @@ msgstr ""
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=INTEGER; plural=EXPRESSION;\n"
 
 #: data/io.github.nokse22.Exhibit.desktop.in:2
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:7 src/window.py:444
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:7 src/window.py:721
 #: src/window.ui:11 src/window.ui:53 src/window.ui:90 src/window.ui:173
+#: src/window_load.py:637 src/window_tabs.py:1040 src/window_tabs.py:1144
 msgid "Exhibit"
 msgstr ""
 
@@ -28,7 +30,9 @@ msgid "3D Model Viewer"
 msgstr ""
 
 #: data/io.github.nokse22.Exhibit.desktop.in:10
-msgid "fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;pbr;rendering;3d-model;3d-viewer;"
+msgid ""
+"fbx;step;stl;dcm;ex2;gml;obj;3ds;gltf;glb;pbr;rendering;3d-model;3d-"
+"viewer;tabs;gamedev;meshopt;ktx2;turntable;split;compare;split-compare;"
 msgstr ""
 
 #: data/io.github.nokse22.Exhibit.metainfo.xml.in:8 src/window.ui:86
@@ -46,81 +50,445 @@ msgid ""
 "or a custom color as a background."
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:50
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:18
+msgid ""
+"This fork adds multi-tab previews, recent files, optional last-session "
+"restore, open folder batch import, camera sync across tabs for comparing "
+"models, experimental side-by-side Split Compare, packed-GLB preparation "
+"(meshopt / quantization / KTX2 / skin.skeleton), Inspect overlays (armature, "
+"checkerboard, normal glyphs, linearized depth, skin-weight heat maps, "
+"stats), animation defaulting to bind pose with keyframe scrubber marks, in-"
+"memory part visibility, and a headless render CLI with optional turntable "
+"video. Built on F3D 3.5 / VTK 9.6 with OpenEXR and WebP."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:59
 msgid "3D Benchy"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:56
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:65
 msgid "Retro Computer Setup with a HDRI skybox"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:62
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:71
 msgid "Green Metallic Suzanne"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:68
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:77
 msgid "Cow with an HDRI background and dark theme"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:74
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:83
 msgid "Vase 3d scan with HDRI skybox"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:80
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:89
 msgid "Point cloud of a boat with dark theme"
 msgstr ""
 
-#: data/io.github.nokse22.Exhibit.metainfo.xml.in:86
+#: data/io.github.nokse22.Exhibit.metainfo.xml.in:95
 msgid "Rigged model showing armature with dark theme"
 msgstr ""
 
-#: src/main.py:124
+#: data/io.github.nokse22.Exhibit.gschema.xml:29
+msgid "Recent model files"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:30
+msgid "Absolute paths of recently opened 3D models."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:34
+msgid "Last session model files"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:35
+msgid "Absolute paths of models open in the last closed window session."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:39
+msgid "Restore last session"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:40
+msgid ""
+"When enabled, reopen the last session’s model tabs on startup (unless a file "
+"is passed on the command line)."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:44
+msgid "Focus existing tab"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:45
+msgid ""
+"When opening a model that is already open, switch to that tab and briefly "
+"highlight it instead of opening a duplicate tab."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:49
+msgid "Split Compare sash ratio"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:50
+msgid ""
+"Fraction of window width used by the primary tab view when Split Compare is "
+"enabled (0.45–0.80)."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:54
+msgid "Split Compare enabled"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:55
+msgid ""
+"Remember whether Split Compare was on, and reopen it after startup when "
+"models are available."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:59
+msgid "Split Compare pin enabled"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:60
+msgid "Whether the secondary Split Compare model was pinned."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:64
+msgid "Split Compare pinned file"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:65
+msgid ""
+"Absolute path of the pinned secondary model. Cleared automatically if the "
+"file is missing on restore."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:69
+msgid "Invert navigation X"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:70
+msgid "Flip horizontal orbit/pan deltas."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:74
+msgid "Invert navigation Y"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:75
+msgid "Flip vertical orbit/pan/zoom-drag deltas."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:79
+msgid "Zoom to cursor"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:80
+msgid "Zoom toward the point under the pointer instead of the view center."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:84
+msgid "Orbit around cursor"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:85
+msgid ""
+"Orbit around the point under the pointer on the focal plane. Off keeps the "
+"classic view-center orbit. Hold Alt to temporarily toggle."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:89
+msgid "Touchpad two-finger orbit"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:90
+msgid ""
+"When enabled, touchpad two-finger scroll orbits; otherwise it zooms like a "
+"mouse wheel."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:94
+msgid "Middle-click sets orbit pivot"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:95
+msgid ""
+"A middle-mouse click without drag recenters the orbit target under the "
+"cursor."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:99
+msgid "Orbit sensitivity"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:100
+msgid "Multiplier for orbit pointer deltas (0.25–4.0)."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:104
+msgid "Zoom sensitivity"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:105
+msgid "Multiplier for zoom pointer/scroll deltas (0.25–4.0)."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:109
+msgid "Pan sensitivity"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:110
+msgid "Multiplier for pan pointer/scroll deltas (0.25–4.0)."
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:114
+msgid "Auto-reload on disk change"
+msgstr ""
+
+#: data/io.github.nokse22.Exhibit.gschema.xml:115
+msgid "Reload the open model when its file changes on disk."
+msgstr ""
+
+#: data/gtk/help-overlay.ui:11 src/shortcuts-dialog.ui:6
+msgctxt "shortcut window"
+msgid "General"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:14 src/shortcuts-dialog.ui:15
+msgctxt "shortcut window"
+msgid "Show Shortcuts"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:20 src/shortcuts-dialog.ui:21
+msgctxt "shortcut window"
+msgid "Quit"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:27
+msgctxt "shortcut window"
+msgid "Open"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:34 src/window_load.py:51
+msgid "Open Folder"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:44
+msgctxt "shortcut window"
+msgid "Tabs"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:47
+msgid "Close Tab (right-click tab)"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:53
+msgid "Close Other Tabs (right-click tab)"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:59 src/window_tabs.py:54
+msgid "Reopen Closed Tab"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:69 src/shortcuts-dialog.ui:31
+msgctxt "shortcut window"
+msgid "Camera"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:72 src/shortcuts-dialog.ui:34
+msgid "Front View"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:78 src/shortcuts-dialog.ui:40
+msgid "Right View"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:84 src/shortcuts-dialog.ui:46
+msgid "Top View"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:90 src/shortcuts-dialog.ui:52
+msgid "Isometric View"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:96 src/shortcuts-dialog.ui:58
+msgid "Toggle Orthographic"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:102
+msgid "Sync Cameras Across Tabs"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:109
+msgid "Split Compare (Experimental)"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:116
+msgid "Swap Active ↔ Pinned"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:123
+msgid "Pin secondary model (Split Compare checkbox)"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:128
+msgid "Split Compare and pin reopen silently on next launch"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:137 src/shortcuts-dialog.ui:68
+msgid "Camera Movements"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:142 src/shortcuts-dialog.ui:73
+msgid "Move Forward"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:148 src/shortcuts-dialog.ui:79
+msgid "Move Left"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:154 src/shortcuts-dialog.ui:85
+msgid "Move Backward"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:160 src/shortcuts-dialog.ui:91
+msgid "Move Right"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:168 src/shortcuts-dialog.ui:99
+msgid "Tilt Left"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:174 src/shortcuts-dialog.ui:105
+msgid "Tilt Right"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:180 src/shortcuts-dialog.ui:111
+msgid "Tilt Up"
+msgstr ""
+
+#: data/gtk/help-overlay.ui:186 src/shortcuts-dialog.ui:117
+msgid "Tilt Down"
+msgstr ""
+
+#: src/main.py:118
 msgid "Checkout F3D"
 msgstr ""
 
-#: src/main.py:126
+#: src/main.py:119
+msgid "Upstream Exhibit"
+msgstr ""
+
+#: src/main.py:121
 msgid "Donate with Ko-Fi"
 msgstr ""
 
-#: src/main.py:127
+#: src/main.py:122
 msgid "Donate with Github"
 msgstr ""
 
-#: src/window.py:373
-msgid "All supported formats"
+#: src/about_info.py:16
+msgid ""
+"Gamedev fork: multi-tab previews, packed-GLB prepare (meshopt / KTX2), "
+"session restore, camera sync, experimental Split Compare, and exhibit render "
+"CLI with turntable video."
 msgstr ""
 
-#: src/window.py:384
-msgid "Open File"
+#: src/window.py:269 src/window_load.py:173 src/window_tabs.py:290
+#: src/window_tabs.py:342 src/window_tabs.py:1036
+msgid "Untitled"
 msgstr ""
 
-#: src/window.py:417
-#, python-brace-format
-msgid "Loading {}"
+#: src/window.py:323
+msgid "Split Compare: full UI port still in progress"
 msgstr ""
 
-#: src/window.py:427
-#, python-brace-format
+#: src/window.py:329
+msgid "Open a model first"
+msgstr ""
+
+#: src/window.py:336
+msgid "No skins in this model"
+msgstr ""
+
+#: src/window.py:342 src/window.py:366
+msgid "Skin-weight inspect failed"
+msgstr ""
+
+#: src/window.py:359
+msgid "Skin weights (joint 0) — scivis array may be limited"
+msgstr ""
+
+#: src/window.py:376 src/window.py:379 src/window.py:694 src/window_load.py:581
+#: src/window_tabs.py:1037
 msgid "Exhibit - {}"
 msgstr ""
 
-#: src/window.py:449
+#: src/window.py:405
+msgid "Toggle Sidebar"
+msgstr ""
+
+#: src/window.py:418 src/window.ui:828
+msgid "Reset to Bounds"
+msgstr ""
+
+#: src/window.py:428
+msgid "Outliner"
+msgstr ""
+
+#. Keep 3d_page mapped so the tab GLArea can realize — F3D
+#. create_external needs a current Gtk GL context. Full-page
+#. startup loading unmaps the viewer and makes init impossible.
+#: src/window.py:485 src/window.py:660 src/window_load.py:222
+msgid "Loading {}"
+msgstr ""
+
+#: src/window.py:500 src/window.py:726
 msgid "Can't open"
 msgstr ""
 
-#: src/window.py:463
+#: src/window.py:575 src/window_load.py:36 src/widgets/file_row.py:131
+msgid "All supported formats"
+msgstr ""
+
+#: src/window.py:584 src/window_load.py:45 src/widgets/file_row.py:140
+msgid "Open File"
+msgstr ""
+
+#: src/window.py:772
+msgid "Couldn't save image"
+msgstr ""
+
+#: src/window.py:778 src/window_export.py:49
 msgid "Save File"
 msgstr ""
 
-#: src/window.py:569
+#: src/window.py:890 src/window_chrome.py:54
 msgid "Stop"
 msgstr ""
 
-#: src/window.py:572
+#: src/window.py:893 src/window_chrome.py:57
 msgid "Start"
 msgstr ""
 
-#: src/window.ui:63 src/window.ui:190 src/window.ui:197 src/window.ui:804
+#: src/window.py:1005 src/window_tabs.py:399
+msgid "File changed on disk"
+msgstr ""
+
+#: src/window.py:1006
+msgid "Reload {}?"
+msgstr ""
+
+#: src/window.py:1008
+msgid "Ignore"
+msgstr ""
+
+#: src/window.py:1009 src/window_tabs.py:405
+msgid "Reload"
+msgstr ""
+
+#: src/window.ui:63 src/window.ui:190 src/window.ui:197 src/window.ui:817
 msgid "Menu"
 msgstr ""
 
@@ -153,305 +521,539 @@ msgid "Rendering"
 msgstr ""
 
 #: src/window.ui:239
-msgid "Translucency"
+msgid "Blending"
 msgstr ""
 
-#: src/window.ui:247
+#: src/window.ui:255
 msgid "Tone Mapping"
 msgstr ""
 
-#: src/window.ui:248
+#: src/window.ui:256
 msgid "Map colors properly to the monitor colors"
 msgstr ""
 
-#: src/window.ui:256
+#: src/window.ui:264
 msgid "Ambient Occlusion"
 msgstr ""
 
-#: src/window.ui:257
+#: src/window.ui:265
 msgid "Provides approximate shadows"
 msgstr ""
 
-#: src/window.ui:265
+#: src/window.ui:273
 msgid "Anti Aliasing"
 msgstr ""
 
-#: src/window.ui:273
+#: src/window.ui:289
 msgid "Light with HDRI"
 msgstr ""
 
-#: src/window.ui:274
+#: src/window.ui:290
 msgid "Light the scene using a the loaded HDRI or the default"
 msgstr ""
 
-#: src/window.ui:290
+#: src/window.ui:306
 msgid "Light Intensity"
 msgstr ""
 
-#: src/window.ui:299
+#: src/window.ui:315
 msgid "Model Rendering"
 msgstr ""
 
-#: src/window.ui:304
+#: src/window.ui:320
 msgid "Show All Edges"
 msgstr ""
 
-#: src/window.ui:312
+#: src/window.ui:328
 msgid "Edges Width"
 msgstr ""
 
-#: src/window.ui:332
-msgid "Show Point Sprites"
-msgstr ""
-
-#: src/window.ui:338
+#: src/window.ui:346
 msgid "Point Sprites Type"
 msgstr ""
 
-#: src/window.ui:342
-msgid "Sphere"
-msgstr ""
-
-#: src/window.ui:343
-msgid "Gaussian"
-msgstr ""
-
-#: src/window.ui:351
+#: src/window.ui:360
 msgid "Sprite Size"
 msgstr ""
 
-#: src/window.ui:364
+#: src/window.ui:373
 msgid "Points Size"
 msgstr ""
 
-#: src/window.ui:387
+#: src/window.ui:396
 msgid "Model"
 msgstr ""
 
-#: src/window.ui:401
+#: src/window.ui:410
 msgid "Material"
 msgstr ""
 
-#: src/window.ui:406
+#: src/window.ui:415
 msgid "Model Metallic"
 msgstr ""
 
-#: src/window.ui:422
+#: src/window.ui:431
 msgid "Model Roughness"
 msgstr ""
 
-#: src/window.ui:439
+#: src/window.ui:447
 msgid "Model Opacity"
 msgstr ""
 
-#: src/window.ui:457
+#: src/window.ui:465
 msgid "Color"
 msgstr ""
 
-#: src/window.ui:463
+#: src/window.ui:471
 msgid "Coloration"
 msgstr ""
 
-#: src/window.ui:467
+#: src/window.ui:475
 msgid "Custom"
 msgstr ""
 
-#: src/window.ui:468
+#: src/window.ui:476
 msgid "Normal"
 msgstr ""
 
-#: src/window.ui:469
+#: src/window.ui:477
 msgid "Magnitude"
 msgstr ""
 
-#: src/window.ui:470
+#: src/window.ui:478
 msgid "Direct"
 msgstr ""
 
-#: src/window.ui:480 src/window.ui:487
+#: src/window.ui:488 src/window.ui:495
 msgid "Model Color"
 msgstr ""
 
-#: src/window.ui:501
+#: src/window.ui:509
 msgid "Show Armature"
 msgstr ""
 
-#: src/window.ui:517
+#: src/window.ui:525
 msgid "Scene"
 msgstr ""
 
-#: src/window.ui:531
+#: src/window.ui:539
 msgid "Grid"
 msgstr ""
 
-#: src/window.ui:536
+#: src/window.ui:544
 msgid "View Grid"
 msgstr ""
 
-#: src/window.ui:544
+#: src/window.ui:552
 msgid "Grid Absolute"
 msgstr ""
 
-#: src/window.ui:554
+#: src/window.ui:562
 msgid "Background"
 msgstr ""
 
-#: src/window.ui:559
+#: src/window.ui:567
 msgid "HDRI as Background"
 msgstr ""
 
-#: src/window.ui:560
+#: src/window.ui:568
 msgid "Use the loaded HDRI or the default one as a background"
 msgstr ""
 
-#: src/window.ui:568
+#: src/window.ui:576
 msgid "HDRI Image"
 msgstr ""
 
-#: src/window.ui:576
+#: src/window.ui:584
 msgid "Blur Background"
 msgstr ""
 
-#: src/window.ui:584
+#: src/window.ui:592
 msgid "Blur Circle Of Confusion"
 msgstr ""
 
-#: src/window.ui:606
+#: src/window.ui:614
 msgid "Use Custom Color"
 msgstr ""
 
-#: src/window.ui:607
+#: src/window.ui:615
 msgid "HDRI background takes priority over this"
 msgstr ""
 
-#: src/window.ui:614 src/window.ui:621
+#: src/window.ui:622 src/window.ui:629
 msgid "Background Color"
 msgstr ""
 
-#: src/window.ui:641
+#: src/window.ui:649
 msgid "More"
 msgstr ""
 
-#: src/window.ui:655
+#: src/window.ui:663
 msgid "Navigation"
 msgstr ""
 
-#: src/window.ui:660
+#: src/window.ui:668
 msgid "Always Point Up"
 msgstr ""
 
-#: src/window.ui:668
+#: src/window.ui:676
 msgid "Up Direction"
 msgstr ""
 
-#: src/window.ui:669
-msgid "Changing it will reload the file"
-msgstr ""
-
-#: src/window.ui:676
+#: src/window.ui:692 src/window.ui:695
 msgid "Animation"
 msgstr ""
 
-#: src/window.ui:679
-msgid "Animation Index"
-msgstr ""
-
-#: src/window.ui:701
+#: src/window.ui:714
 msgid "Play"
 msgstr ""
 
-#: src/window.ui:722
+#: src/window.ui:735
 msgid "Loading"
 msgstr ""
 
-#: src/window.ui:727
+#: src/window.ui:740
 msgid "Automatic Settings"
 msgstr ""
 
-#: src/window.ui:728
+#: src/window.ui:741
 msgid "When loading choose the best presets for the file"
 msgstr ""
 
-#: src/window.ui:741
+#: src/window.ui:754
 msgid "Reload On Change"
 msgstr ""
 
-#: src/window.ui:742
+#: src/window.ui:755
 msgid "Check for file change"
 msgstr ""
 
-#: src/window.ui:792
+#: src/window.ui:805
 msgid "Reveal Sidebar"
 msgstr ""
 
-#: src/window.ui:815
-msgid "Reset to Bounds"
-msgstr ""
-
-#: src/window.ui:889
-msgid "Follow System"
-msgstr ""
-
-#: src/window.ui:894
-msgid "Light Theme"
-msgstr ""
-
-#: src/window.ui:899
-msgid "Dark Theme"
-msgstr ""
-
-#: src/window.ui:904 src/window.ui:968
+#: src/window.ui:905 src/window.ui:965
 msgid "_New Window"
 msgstr ""
 
-#: src/window.ui:908
+#: src/window.ui:909
 msgid "_Load New File"
 msgstr ""
 
-#: src/window.ui:912
-msgid "_Add File to Scene"
-msgstr ""
-
-#: src/window.ui:916
+#: src/window.ui:913
 msgid "_Export Image"
 msgstr ""
 
-#: src/window.ui:920
-msgid "_Open In External App"
+#: src/window.ui:917
+msgid "_Open Externally"
 msgstr ""
 
-#: src/window.ui:926 src/window.ui:974
+#: src/window.ui:923 src/window.ui:971
 msgid "_Help"
 msgstr ""
 
-#: src/window.ui:930 src/window.ui:978
+#: src/window.ui:927 src/window.ui:975
 msgid "_Keyboard Shortcuts"
 msgstr ""
 
-#: src/window.ui:934 src/window.ui:982
+#: src/window.ui:931 src/window.ui:979
 msgid "_About Exhibit"
 msgstr ""
 
-#: src/window.ui:944
+#: src/window.ui:941
 msgid "Save Current Settings"
 msgstr ""
 
-#: src/window.ui:950
+#: src/window.ui:947
 msgid "Orthonographic"
 msgstr ""
 
-#: src/window.ui:956
+#: src/window.ui:953
 msgid "Open HDRI Folder"
 msgstr ""
 
-#: src/window.ui:960
+#: src/window.ui:957
 msgid "Open Configurations Folder"
 msgstr ""
 
-#: src/file_row.ui:83
+#: src/window_animation.py:94
+msgid "None"
+msgstr ""
+
+#: src/window_animation.py:95
+msgid "All animations"
+msgstr ""
+
+#: src/window_animation.py:101
+msgid "Animation {}"
+msgstr ""
+
+#: src/window_animation.py:149
+msgid "Couldn't reset animation pose"
+msgstr ""
+
+#: src/window_chrome.py:35
+msgid "No file to open"
+msgstr ""
+
+#. Remote/URI-only locations have no local path; Pillow needs one.
+#: src/window_export.py:22 src/window_export.py:28 src/window_export.py:71
+msgid "Could not save image"
+msgstr ""
+
+#: src/window_export.py:77
+msgid "Image Saved"
+msgstr ""
+
+#: src/window_export.py:79
+msgid "Open"
+msgstr ""
+
+#: src/window_inspect.py:57
+msgid "No stats available"
+msgstr ""
+
+#: src/window_inspect.py:115
+msgid "No armature found in this model"
+msgstr ""
+
+#: src/window_inspect.py:170
+msgid "Rebuilding armature…"
+msgstr ""
+
+#: src/window_inspect.py:381
+msgid "Couldn't restore model after skin weights"
+msgstr ""
+
+#: src/window_inspect.py:415
+msgid "No joints"
+msgstr ""
+
+#: src/window_inspect.py:494
+msgid "No model loaded"
+msgstr ""
+
+#: src/window_inspect.py:504
+msgid "No skin weights in this model"
+msgstr ""
+
+#: src/window_inspect.py:531
+msgid "No joints in this model"
+msgstr ""
+
+#: src/window_inspect.py:539
+msgid "Can't build skin weight view: {}"
+msgstr ""
+
+#: src/window_inspect.py:555
+msgid "Can't load skin weight view"
+msgstr ""
+
+#: src/window_load.py:64 src/window_load.py:141 src/window_load.py:534
+#: src/window_load.py:630 src/window_load.py:682 src/window_load.py:696
+msgid "Unknown"
+msgstr ""
+
+#: src/window_load.py:71
+msgid "No supported models in {}"
+msgstr ""
+
+#: src/window_load.py:94
+msgid "Opening first {} of {} models"
+msgstr ""
+
+#. Folders / unsupported picks: do not call load_file on raw paths.
+#: src/window_load.py:155
+msgid "No supported models in selection"
+msgstr ""
+
+#: src/window_load.py:501
+msgid "Restoring {} model from last session"
+msgid_plural "Restoring {} models from last session"
+msgstr[0] ""
+msgstr[1] ""
+
+#: src/window_load.py:631
+msgid "Can't prepare {}: {}"
+msgstr ""
+
+#: src/window_load.py:632
+msgid "Can't open {}: {}"
+msgstr ""
+
+#: src/window_load.py:633
+msgid "Can't open {}"
+msgstr ""
+
+#: src/window_object_tree.py:199 src/window_object_tree.py:216
+msgid "Couldn't update object visibility"
+msgstr ""
+
+#: src/window_tabs.py:48
+msgid "Close Tab"
+msgstr ""
+
+#: src/window_tabs.py:49
+msgid "Close Other Tabs"
+msgstr ""
+
+#: src/window_tabs.py:50
+msgid "Close Tabs to the Left"
+msgstr ""
+
+#: src/window_tabs.py:51
+msgid "Close Tabs to the Right"
+msgstr ""
+
+#: src/window_tabs.py:294
+msgid "Already open: {}"
+msgstr ""
+
+#: src/window_tabs.py:342 src/window_tabs.py:1036
+msgid "modified"
+msgstr ""
+
+#: src/window_tabs.py:347
+#, python-brace-format
+msgid "{path} — changed on disk"
+msgstr ""
+
+#: src/window_tabs.py:400
+#, python-brace-format
+msgid "“{name}” was modified outside Exhibit. Reload the new version?"
+msgstr ""
+
+#: src/window_tabs.py:404
+msgid "Keep current"
+msgstr ""
+
+#: src/window_tabs.py:481
+msgid "Camera sync on"
+msgstr ""
+
+#: src/window_tabs.py:485
+msgid "Camera sync off"
+msgstr ""
+
+#: src/window_tabs.py:509
+msgid "Split compare on"
+msgstr ""
+
+#: src/window_tabs.py:520
+msgid "Split compare off"
+msgstr ""
+
+#: src/window_tabs.py:639 src/window_tabs.py:651
+msgid "Swap active and pinned models"
+msgstr ""
+
+#: src/window_tabs.py:641 src/window_tabs.py:663
+msgid "Turn on Split Compare first"
+msgstr ""
+
+#: src/window_tabs.py:643
+msgid "Pin another model, then swap with the active tab"
+msgstr ""
+
+#: src/window_tabs.py:645 src/window_tabs.py:677
+msgid "Pinned file is missing"
+msgstr ""
+
+#: src/window_tabs.py:647
+msgid "Pin another file to enable swap"
+msgstr ""
+
+#: src/window_tabs.py:649
+msgid "Open a model in the active tab first"
+msgstr ""
+
+#: src/window_tabs.py:666
+msgid "Pin a secondary model first"
+msgstr ""
+
+#: src/window_tabs.py:671
+msgid "Nothing to swap"
+msgstr ""
+
+#: src/window_tabs.py:674
+msgid "Active and pinned are the same file"
+msgstr ""
+
+#: src/window_tabs.py:708
+msgid "Swapped active and pinned"
+msgstr ""
+
+#: src/window_tabs.py:737
+msgid "Secondary model pinned"
+msgstr ""
+
+#: src/window_tabs.py:878
+msgid "Secondary (stub)"
+msgstr ""
+
+#: src/window_tabs.py:915
+msgid ""
+"Pinned: {}\n"
+"Active: {}"
+msgstr ""
+
+#: src/window_tabs.py:918
+msgid "Pinned: {}"
+msgstr ""
+
+#: src/window_tabs.py:920
+msgid "Following: {}"
+msgstr ""
+
+#: src/window_tabs.py:964
+msgid "Couldn't load split compare view"
+msgstr ""
+
+#: src/window_tabs.py:1041 src/window_tabs.py:1145
+msgid "Asset preview"
+msgstr ""
+
+#: src/shortcuts-dialog.ui:9
+msgctxt "shortcut window"
+msgid "Preferences"
+msgstr ""
+
+#: src/widgets/file_row.ui:83
 msgid "Open HDRI"
 msgstr ""
 
-#: src/settings_dialog.ui:34
+#: src/widgets/object_tree_row.py:21
+msgid "Mesh"
+msgstr ""
+
+#: src/widgets/object_tree_row.py:22
+msgid "Empty"
+msgstr ""
+
+#: src/widgets/object_tree_row.py:23
+msgid "Bone"
+msgstr ""
+
+#: src/widgets/object_tree_row.py:24
+msgid "Armature"
+msgstr ""
+
+#: src/widgets/object_tree_row.py:69
+msgid "Toggle visibility"
+msgstr ""
+
+#: src/widgets/settings_dialog.ui:34
 msgid "Comma separated list of the supported extensions"
+msgstr ""
+
+#: src/widgets/theme_switcher.ui:20
+msgid "Follow System Style"
+msgstr ""
+
+#: src/widgets/theme_switcher.ui:34
+msgid "Light Style"
+msgstr ""
+
+#: src/widgets/theme_switcher.ui:48
+msgid "Dark Style"
 msgstr ""

@@ -319,6 +319,52 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         except Exception as exc:
             log.debug("named view %s: %s", name, exc)
 
+    def _on_split_compare_toggle(self, *args):
+        self.send_toast(_("Split Compare: full UI port still in progress"))
+
+    def _on_inspect_skin_weights(self, *args):
+        """Best-effort joint heat map via temp GLB + Exb scivis."""
+        path = self.filepath
+        if not path:
+            self.send_toast(_("Open a model first"))
+            return
+        try:
+            from .gltf_scene_graph import glb_has_skins
+            from .skin_weights import write_skin_weight_heat_temp
+
+            if not glb_has_skins(path):
+                self.send_toast(_("No skins in this model"))
+                return
+            source = getattr(self._viewer_bridge, "_prepared_path", None) or path
+            temp = write_skin_weight_heat_temp(source, 0)
+        except Exception as exc:
+            log.warning("skin weight heat failed: %s", exc)
+            self.send_toast(_("Skin-weight inspect failed"))
+            return
+
+        try:
+            self.engine.reset()
+            self.engine.load_file(Gio.File.new_for_path(temp))
+            try:
+                self.engine.set_property("scivis", True)
+            except Exception:
+                pass
+            prev = getattr(self, "_skinw_temp", None)
+            if prev and prev != temp:
+                try:
+                    os.unlink(prev)
+                except OSError:
+                    pass
+            self._skinw_temp = temp
+            self.send_toast(_("Skin weights (joint 0) — scivis array may be limited"))
+        except Exception as exc:
+            log.warning("skin weight load failed: %s", exc)
+            try:
+                os.unlink(temp)
+            except OSError:
+                pass
+            self.send_toast(_("Skin-weight inspect failed"))
+
     def _on_tab_selected(self, *args):
         page = self.tab_view.get_selected_page() if self.tab_view else None
         if page is None:
@@ -945,8 +991,32 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             log.info("auto-reload %s", self.filepath)
             self.load_file(Gio.File.new_for_path(self.filepath))
         else:
-            self.send_toast(_("File changed on disk"))
+            self._prompt_reload_changed_file()
         return True
+
+    def _prompt_reload_changed_file(self):
+        if getattr(self, "_reload_dialog_open", False):
+            return
+        path = self.filepath
+        if not path:
+            return
+        self._reload_dialog_open = True
+        dialog = Adw.AlertDialog(
+            heading=_("File changed on disk"),
+            body=_("Reload {}?").format(os.path.basename(path)),
+        )
+        dialog.add_response("ignore", _("Ignore"))
+        dialog.add_response("reload", _("Reload"))
+        dialog.set_response_appearance("reload", Adw.ResponseAppearance.SUGGESTED)
+        dialog.set_default_response("reload")
+
+        def _on_response(_dialog, response):
+            self._reload_dialog_open = False
+            if response == "reload":
+                self.load_file(Gio.File.new_for_path(path))
+
+        dialog.connect("response", _on_response)
+        dialog.present(self)
 
     def _update_stats_overlay(self):
         label = getattr(self, "_stats_overlay", None)
