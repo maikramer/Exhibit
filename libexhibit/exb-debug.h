@@ -19,25 +19,42 @@
  * SPDX-License-Identifier: GPL-3.0-or-later
  */
 
+#include <glib.h>
+
 #ifndef EXB_LOG_LEVEL_TRACE
 # define EXB_LOG_LEVEL_TRACE ((GLogLevelFlags)(1 << G_LOG_LEVEL_USER_SHIFT))
 #endif
 
+/* Silent unless EXB_TRACE is set. Cached — property get/set is a hot path. */
+static inline gboolean
+exb_trace_enabled (void)
+{
+  static gssize cached = -1;
+
+  if (G_UNLIKELY (cached < 0))
+    cached = g_getenv ("EXB_TRACE") != NULL ? 1 : 0;
+  return cached > 0;
+}
+
 # define EXB_ENTRY                                                       \
-   g_log(G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE, "ENTRY: %s():%d",            \
-           G_STRFUNC, __LINE__)
+   G_STMT_START {                                                        \
+     if (G_UNLIKELY (exb_trace_enabled ()))                              \
+       g_log (G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE, "ENTRY: %s():%d",       \
+              G_STRFUNC, __LINE__);                                      \
+   } G_STMT_END
 # define EXB_EXIT                                                        \
    G_STMT_START {                                                        \
-     g_log(G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE,                            \
-         "EXIT: %s()" G_GINT64_FORMAT,                                   \
-         G_STRFUNC);                                                     \
+     if (G_UNLIKELY (exb_trace_enabled ()))                              \
+       g_log (G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE,                         \
+              "EXIT: %s()" G_GINT64_FORMAT, G_STRFUNC);                  \
       return;                                                            \
    } G_STMT_END
 # define EXB_RETURN(_r)                                                  \
    G_STMT_START {                                                        \
       __typeof__(_r) __trace_retval = (_r);                              \
-      g_log(G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE,                           \
-            "EXIT: %s() = %" G_GINT64_FORMAT,                            \
-            G_STRFUNC, (gint64)__trace_retval);                          \
+      if (G_UNLIKELY (exb_trace_enabled ()))                             \
+        g_log (G_LOG_DOMAIN, EXB_LOG_LEVEL_TRACE,                        \
+               "EXIT: %s() = %" G_GINT64_FORMAT,                         \
+               G_STRFUNC, (gint64) __trace_retval);                      \
       return __trace_retval;                                             \
    } G_STMT_END

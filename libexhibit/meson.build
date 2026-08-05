@@ -84,6 +84,7 @@ libexhibit_sources = [
   'exb-global.c',
   'exb-preset.c',
   'exb-presets.c',
+  'exb-postfx.c',
 ]
 
 libexhibit_headers = [

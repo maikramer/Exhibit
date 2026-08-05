@@ -36,6 +36,7 @@ typedef struct
 
   GtkGesture *drag_gesture;
   GtkGesture *zoom_gesture;
+  GtkGesture *click_gesture;
   GtkEventController *scroll_controller;
   GtkEventController *motion_controller;
 
@@ -45,6 +46,8 @@ typedef struct
   bool invert_y;
   bool zoom_to_cursor;
   bool orbit_around_cursor;
+  bool touchpad_orbit;
+  bool mmb_click_pivot;
   gdouble orbit_sensitivity;
   gdouble zoom_sensitivity;
   gdouble pan_sensitivity;
@@ -52,6 +55,7 @@ typedef struct
   gdouble prev_scale;
   gdouble drag_prev_x;
   gdouble drag_prev_y;
+  gdouble drag_total;
   gdouble pointer_x;
   gdouble pointer_y;
   bool pointer_valid;
@@ -71,6 +75,8 @@ typedef enum
   PROP_INVERT_Y,
   PROP_ZOOM_TO_CURSOR,
   PROP_ORBIT_AROUND_CURSOR,
+  PROP_TOUCHPAD_ORBIT,
+  PROP_MMB_CLICK_PIVOT,
   PROP_ORBIT_SENSITIVITY,
   PROP_ZOOM_SENSITIVITY,
   PROP_PAN_SENSITIVITY,
@@ -79,6 +85,8 @@ typedef enum
 static GParamSpec *props[PROP_PAN_SENSITIVITY + 1];
 
 static void on_pointer_motion (ExbView *self, gdouble x, gdouble y);
+static void on_click_pressed (ExbView *self, gint n_press, gdouble x, gdouble y);
+static void on_click_released (ExbView *self, gint n_press, gdouble x, gdouble y);
 
 static void
 exb_view_pointer_to_ndc (ExbView *self,
@@ -160,6 +168,14 @@ exb_view_get_property (GObject    *object,
       g_value_set_boolean (value, priv->orbit_around_cursor);
       break;
 
+    case PROP_TOUCHPAD_ORBIT:
+      g_value_set_boolean (value, priv->touchpad_orbit);
+      break;
+
+    case PROP_MMB_CLICK_PIVOT:
+      g_value_set_boolean (value, priv->mmb_click_pivot);
+      break;
+
     case PROP_ORBIT_SENSITIVITY:
       g_value_set_double (value, priv->orbit_sensitivity);
       break;
@@ -212,6 +228,14 @@ exb_view_set_property (GObject      *object,
 
     case PROP_ORBIT_AROUND_CURSOR:
       priv->orbit_around_cursor = g_value_get_boolean (value);
+      break;
+
+    case PROP_TOUCHPAD_ORBIT:
+      priv->touchpad_orbit = g_value_get_boolean (value);
+      break;
+
+    case PROP_MMB_CLICK_PIVOT:
+      priv->mmb_click_pivot = g_value_get_boolean (value);
       break;
 
     case PROP_ORBIT_SENSITIVITY:
@@ -333,33 +357,79 @@ exb_view_snapshot (GtkWidget   *widget,
 }
 
 static gboolean
-on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
-           gdouble                   dx G_GNUC_UNUSED,
+on_scroll (GtkEventControllerScroll *controller,
+           gdouble                   dx,
            gdouble                   dy,
            ExbView                  *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  GdkModifierType mods;
+  gboolean alt;
+  gboolean orbit;
+  gboolean zoom_cursor;
+  gdouble limit;
 
   g_return_val_if_fail (EXB_IS_VIEW (self), TRUE);
 
   if (!priv->interactive)
     return TRUE;
 
-  {
-    gdouble factor = 1.0 - (0.1 * dy * priv->zoom_sensitivity);
-    if (priv->invert_y)
-      factor = 1.0 - (0.1 * (-dy) * priv->zoom_sensitivity);
-    if (priv->zoom_to_cursor)
-      {
-        gdouble ndc_x, ndc_y;
-        exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
-        _exb_engine_zoom_at_ndc (priv->engine, factor, ndc_x, ndc_y);
-      }
-    else
-      {
-        exb_engine_zoom (priv->engine, factor);
-      }
-  }
+  /* Clamp so one touchpad event cannot fling the camera (camera_nav.py). */
+  limit = 8.0;
+  dx = CLAMP (dx, -limit, limit);
+  dy = CLAMP (dy, -limit, limit);
+
+  mods = gtk_event_controller_get_current_event_state (
+      GTK_EVENT_CONTROLLER (controller));
+  alt = (mods & GDK_ALT_MASK) != 0;
+  /* Alt temporarily XOR-toggles touchpad-orbit / zoom-to-cursor prefs. */
+  orbit = priv->touchpad_orbit ^ alt;
+  zoom_cursor = priv->zoom_to_cursor ^ alt;
+
+  if (orbit)
+    {
+      gdouble odx = dx * priv->orbit_sensitivity;
+      gdouble ody = dy * priv->orbit_sensitivity;
+      gboolean around_cursor;
+
+      if (priv->invert_x)
+        odx = -odx;
+      if (priv->invert_y)
+        ody = -ody;
+
+      around_cursor = priv->orbit_around_cursor ^ alt;
+      if (around_cursor)
+        {
+          gdouble ndc_x, ndc_y;
+          exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
+          _exb_engine_rotate_at_ndc (priv->engine, odx, ody, ndc_x, ndc_y,
+                                    priv->always_point_up);
+        }
+      else if (!priv->always_point_up)
+        {
+          exb_engine_rotate (priv->engine, odx, ody);
+        }
+      else
+        {
+          exb_engine_rotate_with_limit (priv->engine, odx, ody);
+        }
+    }
+  else
+    {
+      gdouble factor = 1.0 - (0.1 * dy * priv->zoom_sensitivity);
+      if (priv->invert_y)
+        factor = 1.0 - (0.1 * (-dy) * priv->zoom_sensitivity);
+      if (zoom_cursor)
+        {
+          gdouble ndc_x, ndc_y;
+          exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
+          _exb_engine_zoom_at_ndc (priv->engine, factor, ndc_x, ndc_y);
+        }
+      else
+        {
+          exb_engine_zoom (priv->engine, factor);
+        }
+    }
 
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
   return TRUE;
@@ -401,6 +471,7 @@ on_drag_begin (ExbView *self)
 
   priv->drag_prev_x = 0;
   priv->drag_prev_y = 0;
+  priv->drag_total = 0;
 }
 
 static void
@@ -420,6 +491,7 @@ on_drag_update (ExbView        *self,
 
   dx = offset_x - priv->drag_prev_x;
   dy = offset_y - priv->drag_prev_y;
+  priv->drag_total += fabs (dx) + fabs (dy);
 
   if (priv->invert_x)
     dx = -dx;
@@ -433,6 +505,8 @@ on_drag_update (ExbView        *self,
         GTK_EVENT_CONTROLLER (gesture));
     gboolean shift = (mods & GDK_SHIFT_MASK) != 0;
     gboolean ctrl = (mods & GDK_CONTROL_MASK) != 0;
+    gboolean alt = (mods & GDK_ALT_MASK) != 0;
+    gboolean around_cursor = priv->orbit_around_cursor ^ alt;
 
     /* Blender-ish: Shift+drag pans, Ctrl+drag zooms, else orbit / MMB pan. */
     if (ctrl && (button == 1 || button == 2))
@@ -449,7 +523,7 @@ on_drag_update (ExbView        *self,
       {
         dx *= priv->orbit_sensitivity;
         dy *= priv->orbit_sensitivity;
-        if (priv->orbit_around_cursor)
+        if (around_cursor)
           {
             gdouble ndc_x, ndc_y;
             exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
@@ -474,6 +548,55 @@ on_drag_update (ExbView        *self,
 }
 
 static void
+on_click_pressed (ExbView *self,
+                  gint     n_press G_GNUC_UNUSED,
+                  gdouble  x,
+                  gdouble  y)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  priv->pointer_x = x;
+  priv->pointer_y = y;
+  priv->pointer_valid = TRUE;
+  priv->drag_total = 0;
+}
+
+static void
+on_click_released (ExbView *self,
+                   gint     n_press,
+                   gdouble  x G_GNUC_UNUSED,
+                   gdouble  y G_GNUC_UNUSED)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  guint button;
+
+  g_return_if_fail (EXB_IS_VIEW (self));
+
+  if (!priv->interactive || !priv->engine)
+    return;
+
+  button = gtk_gesture_single_get_current_button (
+      GTK_GESTURE_SINGLE (priv->click_gesture));
+
+  /* Double-click LMB → reset to bounds (docs/NAVIGATION.md). */
+  if (button == 1 && n_press >= 2)
+    {
+      exb_engine_reset_camera (priv->engine);
+      gtk_gl_area_queue_render (GTK_GL_AREA (self));
+      return;
+    }
+
+  /* Middle-click without drag → recenter orbit pivot under cursor. */
+  if (button == 2 && n_press == 1 && priv->mmb_click_pivot && priv->drag_total < 4.0)
+    {
+      gdouble ndc_x, ndc_y;
+      exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
+      _exb_engine_pivot_at_ndc (priv->engine, ndc_x, ndc_y);
+      gtk_gl_area_queue_render (GTK_GL_AREA (self));
+    }
+}
+
+static void
 exb_view_init (ExbView *self)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
@@ -484,12 +607,16 @@ exb_view_init (ExbView *self)
   priv->interactive = TRUE;
   priv->invert_x = FALSE;
   priv->invert_y = FALSE;
-  priv->zoom_to_cursor = FALSE;
+  /* Match gschema / NAV_SETTING_DEFAULTS. */
+  priv->zoom_to_cursor = TRUE;
   priv->orbit_around_cursor = FALSE;
+  priv->touchpad_orbit = TRUE;
+  priv->mmb_click_pivot = TRUE;
   priv->orbit_sensitivity = 1.0;
   priv->zoom_sensitivity = 1.0;
   priv->pan_sensitivity = 1.0;
   priv->pointer_valid = FALSE;
+  priv->drag_total = 0;
   priv->engine_is_initialized = FALSE;
 
   gtk_gl_area_set_allowed_apis (GTK_GL_AREA (self), GDK_GL_API_GL);
@@ -520,13 +647,22 @@ exb_view_init (ExbView *self)
   gtk_widget_add_controller (GTK_WIDGET (self),
                              GTK_EVENT_CONTROLLER (priv->zoom_gesture));
 
-  /* Smooth + discrete so touchpads and mice both work (fork touchpad nav). */
+  /* Both axes: touchpad two-finger orbit uses dx+dy when touchpad-orbit is on. */
   priv->scroll_controller =
-      gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
+      gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES);
   g_signal_connect_object (priv->scroll_controller, "scroll",
                            G_CALLBACK (on_scroll), self, G_CONNECT_DEFAULT);
   gtk_widget_add_controller (GTK_WIDGET (self),
                              priv->scroll_controller);
+
+  priv->click_gesture = gtk_gesture_click_new ();
+  gtk_gesture_single_set_button (GTK_GESTURE_SINGLE (priv->click_gesture), 0);
+  g_signal_connect_object (priv->click_gesture, "pressed",
+                           G_CALLBACK (on_click_pressed), self, G_CONNECT_SWAPPED);
+  g_signal_connect_object (priv->click_gesture, "released",
+                           G_CALLBACK (on_click_released), self, G_CONNECT_SWAPPED);
+  gtk_widget_add_controller (GTK_WIDGET (self),
+                             GTK_EVENT_CONTROLLER (priv->click_gesture));
 
   priv->motion_controller = GTK_EVENT_CONTROLLER (gtk_event_controller_motion_new ());
   g_signal_connect_object (priv->motion_controller, "motion",
@@ -590,13 +726,25 @@ exb_view_class_init (ExbViewClass *klass)
   props[PROP_ZOOM_TO_CURSOR] =
       g_param_spec_boolean ("zoom-to-cursor",
                             NULL, NULL,
-                            FALSE,
+                            TRUE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_ORBIT_AROUND_CURSOR] =
       g_param_spec_boolean ("orbit-around-cursor",
                             NULL, NULL,
                             FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_TOUCHPAD_ORBIT] =
+      g_param_spec_boolean ("touchpad-orbit",
+                            NULL, NULL,
+                            TRUE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_MMB_CLICK_PIVOT] =
+      g_param_spec_boolean ("mmb-click-pivot",
+                            NULL, NULL,
+                            TRUE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_ORBIT_SENSITIVITY] =

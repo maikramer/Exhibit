@@ -1,0 +1,195 @@
+diff -ruN a/library/options.json b/library/options.json
+--- a/library/options.json	2026-08-05 18:46:09.977305025 -0300
++++ b/library/options.json	2026-08-05 18:46:09.986396603 -0300
+@@ -149,6 +149,48 @@
+         "type": "bool",
+         "default_value": "false"
+       },
++      "ssao": {
++        "radius": {
++          "type": "double",
++          "default_value": "1.0",
++          "domain": {
++            "style": "range",
++            "min": "0.1",
++            "max": "5.0",
++            "increment": "0.1"
++          }
++        },
++        "bias": {
++          "type": "double",
++          "default_value": "1.0",
++          "domain": {
++            "style": "range",
++            "min": "0.1",
++            "max": "5.0",
++            "increment": "0.1"
++          }
++        },
++        "kernel_size": {
++          "type": "int",
++          "default_value": "200",
++          "domain": {
++            "style": "range",
++            "min": "16",
++            "max": "512",
++            "increment": "16"
++          }
++        },
++        "intensity": {
++          "type": "double",
++          "default_value": "1.0",
++          "domain": {
++            "style": "range",
++            "min": "0.0",
++            "max": "3.0",
++            "increment": "0.1"
++          }
++        }
++      },
+       "tone_mapping": {
+         "type": "bool",
+         "default_value": "false"
+diff -ruN a/library/src/window_impl.cxx b/library/src/window_impl.cxx
+--- a/library/src/window_impl.cxx	2026-08-05 18:46:09.979347726 -0300
++++ b/library/src/window_impl.cxx	2026-08-05 18:46:09.987128357 -0300
+@@ -601,6 +601,10 @@
+   }
+ 
+   renderer->SetUseSSAOPass(opt.render.effect.ambient_occlusion);
++  renderer->SetSSAORadiusMultiplier(opt.render.effect.ssao.radius);
++  renderer->SetSSAOBiasMultiplier(opt.render.effect.ssao.bias);
++  renderer->SetSSAOKernelSize(opt.render.effect.ssao.kernel_size);
++  renderer->SetSSAOIntensity(opt.render.effect.ssao.intensity);
+   renderer->SetAntiAliasingMode(aaMode);
+   renderer->SetUseToneMappingPass(opt.render.effect.tone_mapping);
+   renderer->SetDisplayDepth(opt.render.effect.display_depth);
+diff -ruN a/vtkext/private/module/vtkF3DRenderer.cxx b/vtkext/private/module/vtkF3DRenderer.cxx
+--- a/vtkext/private/module/vtkF3DRenderer.cxx	2026-08-05 18:46:09.982938262 -0300
++++ b/vtkext/private/module/vtkF3DRenderer.cxx	2026-08-05 18:46:09.986919253 -0300
+@@ -480,6 +480,10 @@
+   newPass->SetUseRaytracing(this->UseRaytracing);
+ #endif
+   newPass->SetUseSSAOPass(this->UseSSAOPass);
++  newPass->SetSSAORadiusMultiplier(this->SSAORadiusMultiplier);
++  newPass->SetSSAOBiasMultiplier(this->SSAOBiasMultiplier);
++  newPass->SetSSAOKernelSize(this->SSAOKernelSize);
++  newPass->SetSSAOIntensity(this->SSAOIntensity);
+   newPass->SetUseBlurBackground(this->UseBlurBackground);
+   newPass->SetCircleOfConfusionRadius(this->CircleOfConfusionRadius);
+   newPass->SetForceOpaqueBackground(this->HDRISkyboxVisible);
+@@ -1739,6 +1743,46 @@
+   }
+ }
+ 
++void vtkF3DRenderer::SetSSAORadiusMultiplier(double multiplier)
++{
++  if (this->SSAORadiusMultiplier != multiplier)
++  {
++    this->SSAORadiusMultiplier = multiplier;
++    this->RenderPassesConfigured = false;
++  }
++}
++
++//----------------------------------------------------------------------------
++void vtkF3DRenderer::SetSSAOBiasMultiplier(double multiplier)
++{
++  if (this->SSAOBiasMultiplier != multiplier)
++  {
++    this->SSAOBiasMultiplier = multiplier;
++    this->RenderPassesConfigured = false;
++  }
++}
++
++//----------------------------------------------------------------------------
++void vtkF3DRenderer::SetSSAOKernelSize(int kernelSize)
++{
++  if (this->SSAOKernelSize != kernelSize)
++  {
++    this->SSAOKernelSize = kernelSize;
++    this->RenderPassesConfigured = false;
++  }
++}
++
++//----------------------------------------------------------------------------
++void vtkF3DRenderer::SetSSAOIntensity(double intensity)
++{
++  if (this->SSAOIntensity != intensity)
++  {
++    this->SSAOIntensity = intensity;
++    this->RenderPassesConfigured = false;
++  }
++}
++
++//----------------------------------------------------------------------------
+ //----------------------------------------------------------------------------
+ void vtkF3DRenderer::SetFinalShader(const std::optional<std::string>& finalShader)
+ {
+diff -ruN a/vtkext/private/module/vtkF3DRenderer.h b/vtkext/private/module/vtkF3DRenderer.h
+--- a/vtkext/private/module/vtkF3DRenderer.h	2026-08-05 18:46:09.980898230 -0300
++++ b/vtkext/private/module/vtkF3DRenderer.h	2026-08-05 18:46:09.986659781 -0300
+@@ -155,6 +155,10 @@
+   void SetBlendingMode(BlendingMode mode);
+   BlendingMode GetBlendingMode() const;
+   void SetUseSSAOPass(bool use);
++  void SetSSAORadiusMultiplier(double multiplier);
++  void SetSSAOBiasMultiplier(double multiplier);
++  void SetSSAOKernelSize(int kernelSize);
++  void SetSSAOIntensity(double intensity);
+   void SetAntiAliasingMode(AntiAliasingMode mode);
+   AntiAliasingMode GetAntiAliasingMode() const;
+   void SetUseToneMappingPass(bool use);
+@@ -793,6 +797,10 @@
+   AntiAliasingMode AntiAliasingModeEnabled = AntiAliasingMode::NONE;
+   BlendingMode BlendingModeEnabled = BlendingMode::NONE;
+   bool UseSSAOPass = false;
++  double SSAORadiusMultiplier = 1.0;
++  double SSAOBiasMultiplier = 1.0;
++  int SSAOKernelSize = 200;
++  double SSAOIntensity = 1.0;
+   bool UseToneMappingPass = false;
+   bool DisplayDepth = false;
+   bool UseBlurBackground = false;
+diff -ruN a/vtkext/private/module/vtkF3DRenderPass.cxx b/vtkext/private/module/vtkF3DRenderPass.cxx
+--- a/vtkext/private/module/vtkF3DRenderPass.cxx	2026-08-05 18:46:09.986199275 -0300
++++ b/vtkext/private/module/vtkF3DRenderPass.cxx	2026-08-05 18:46:09.986559947 -0300
+@@ -184,9 +184,11 @@
+         ssaoCamP->SetDelegatePass(opaqueP);
+ 
+         vtkNew<vtkSSAOPass> ssaoP;
+-        ssaoP->SetRadius(0.1 * bbox.GetDiagonalLength());
+-        ssaoP->SetBias(0.001 * bbox.GetDiagonalLength());
+-        ssaoP->SetKernelSize(200);
++        ssaoP->SetRadius(0.1 * bbox.GetDiagonalLength() * this->SSAORadiusMultiplier);
++        ssaoP->SetBias(0.001 * bbox.GetDiagonalLength() * this->SSAOBiasMultiplier);
++        ssaoP->SetKernelSize(this->SSAOKernelSize);
++        ssaoP->SetIntensityScale(this->SSAOIntensity);
++        ssaoP->SetBlur(true);
+         ssaoP->SetDelegatePass(ssaoCamP);
+ 
+         collection->AddItem(ssaoP);
+diff -ruN a/vtkext/private/module/vtkF3DRenderPass.h b/vtkext/private/module/vtkF3DRenderPass.h
+--- a/vtkext/private/module/vtkF3DRenderPass.h	2026-08-05 18:46:09.984525852 -0300
++++ b/vtkext/private/module/vtkF3DRenderPass.h	2026-08-05 18:46:09.986461023 -0300
+@@ -40,6 +40,10 @@
+   vtkSetMacro(ArmatureVisible, bool);
+   vtkSetMacro(UseRaytracing, bool);
+   vtkSetMacro(UseSSAOPass, bool);
++  vtkSetMacro(SSAORadiusMultiplier, double);
++  vtkSetMacro(SSAOBiasMultiplier, double);
++  vtkSetMacro(SSAOKernelSize, int);
++  vtkSetMacro(SSAOIntensity, double);
+   vtkSetMacro(UseBlurBackground, bool);
+   vtkSetMacro(ForceOpaqueBackground, bool);
+   vtkSetVector6Macro(Bounds, double);
+@@ -66,6 +70,10 @@
+   bool ArmatureVisible = false;
+   bool UseRaytracing = false;
+   bool UseSSAOPass = false;
++  double SSAORadiusMultiplier = 1.0;
++  double SSAOBiasMultiplier = 1.0;
++  int SSAOKernelSize = 200;
++  double SSAOIntensity = 1.0;
+   bool UseBlurBackground = false;
+   bool ForceOpaqueBackground = false;
+   bool RenderReflection = false;

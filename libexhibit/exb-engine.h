@@ -48,6 +48,7 @@ void        exb_engine_set_size          (ExbEngine *self,
 GFile *     exb_engine_get_file          (ExbEngine *self);
 int         exb_engine_get_animations_n  (ExbEngine *self);
 void        exb_engine_play_animation    (ExbEngine *self);
+void        exb_engine_stop_animation    (ExbEngine *self);
 GdkTexture *exb_engine_render_texture    (ExbEngine *self);
 gboolean    exb_engine_render            (ExbEngine *self);
 void        exb_engine_zoom              (ExbEngine *self,
@@ -62,6 +63,21 @@ void        exb_engine_rotate_with_limit (ExbEngine *self,
                                           gdouble     dx,
                                           gdouble     dy);
 void        exb_engine_reset_camera      (ExbEngine *self);
+/**
+ * exb_engine_get_camera_state:
+ * @self: an #ExbEngine
+ *
+ * Returns: (transfer full) (nullable): GVariant "(ddddddddd)" —
+ * position[3], focal[3], view_up[3]
+ */
+GVariant *  exb_engine_get_camera_state  (ExbEngine *self);
+/**
+ * exb_engine_set_camera_state:
+ * @self: an #ExbEngine
+ * @state: (transfer none): GVariant "(ddddddddd)"
+ */
+void        exb_engine_set_camera_state  (ExbEngine *self,
+                                          GVariant  *state);
 void        exb_engine_apply_preset      (ExbEngine *self,
                                           ExbPreset *preset);
 gboolean    exb_engine_get_loading_file  (ExbEngine *self);

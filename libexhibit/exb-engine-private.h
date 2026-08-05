@@ -39,5 +39,9 @@ void     _exb_engine_rotate_at_ndc (ExbEngine *self,
                                     gdouble     ndc_x,
                                     gdouble     ndc_y,
                                     gboolean    with_limit);
+/* Recenter orbit focal under NDC (middle-click pivot; keep camera plane). */
+void     _exb_engine_pivot_at_ndc  (ExbEngine *self,
+                                    gdouble     ndc_x,
+                                    gdouble     ndc_y);
 
 G_END_DECLS

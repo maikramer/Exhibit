@@ -28,6 +28,7 @@
 #include "exb-preset-private.h"
 #include "exb-engine-private.h"
 #include "exb-engine.h"
+#include "exb-postfx.h"
 
 #include "math.h"
 
@@ -61,6 +62,8 @@ typedef struct
   guint animation_handler_id;
 
   GFile *file;
+
+  ExbPostFxState postfx;
 } ExbEnginePrivate;
 
 G_DEFINE_TYPE_WITH_PRIVATE (ExbEngine, exb_engine, G_TYPE_OBJECT)
@@ -102,6 +105,8 @@ typedef enum
   PROP_MODEL_ROUGHNESS,
   PROP_MODEL_OPACITY,
   PROP_MODEL_CHECKERBOARD,
+  PROP_NORMAL_GLYPHS,
+  PROP_NORMAL_GLYPHS_SCALE,
   PROP_MODEL_UNLIT,
   PROP_TEXTURE_MATCAP,
   PROP_TEXTURE_BASE_COLOR,
@@ -119,6 +124,19 @@ typedef enum
   PROP_SCIVIS_COMPONENT,
   PROP_SCIVIS_CELLS,
   PROP_SCIVIS_ARRAY_NAME,
+  PROP_BLOOM,
+  PROP_BLOOM_THRESHOLD,
+  PROP_BLOOM_INTENSITY,
+  PROP_BLOOM_RADIUS,
+  PROP_GODRAYS,
+  PROP_GODRAYS_INTENSITY,
+  PROP_GODRAYS_DECAY,
+  PROP_GODRAYS_DENSITY,
+  PROP_GODRAYS_WEIGHT,
+  PROP_AO_RADIUS,
+  PROP_AO_BIAS,
+  PROP_AO_KERNEL_SIZE,
+  PROP_AO_INTENSITY,
   PROP_LOADING_FILE,
 } ExbEngineProps;
 
@@ -144,10 +162,14 @@ static const OptionMap option_maps[] = {
   { "grid-unit",              "render.grid.unit"                  },
   { "grid-color",             "render.grid.color"                 },
   { "grid-subdivisions",      "render.grid.subdivisions"          },
-  { "grid-reflection"         "render.grid.reflection"            },
+  { "grid-reflection",        "render.grid.reflection"            },
   { "blending",               "render.effect.blending.mode"       },
   { "tone-mapping",           "render.effect.tone_mapping"        },
   { "ambient-occlusion",      "render.effect.ambient_occlusion"   },
+  { "ao-radius",              "render.effect.ssao.radius"         },
+  { "ao-bias",                "render.effect.ssao.bias"           },
+  { "ao-kernel-size",         "render.effect.ssao.kernel_size"    },
+  { "ao-intensity",           "render.effect.ssao.intensity"      },
   { "anti-aliasing",          "render.effect.antialiasing.mode"   },
   { "display-depth",          "render.effect.display_depth"       },
   { "hdri-ambient",           "render.hdri.ambient"               },
@@ -167,6 +189,8 @@ static const OptionMap option_maps[] = {
   { "model-roughness",        "model.material.roughness"          },
   { "model-opacity",          "model.color.opacity"               },
   { "model-checkerboard",     "model.checkerboard.enable"         },
+  { "normal-glyphs",          "model.normal_glyphs.enable"        },
+  { "normal-glyphs-scale",    "model.normal_glyphs.scale"         },
   { "model-unlit",            "model.unlit"                       },
   { "texture-matcap",         "model.matcap.texture"              },
   { "texture-base-color",     "model.color.texture"               },
@@ -279,6 +303,8 @@ load_file_func (gpointer user_data)
   f3d_scene_clear (priv->scene);
   if (!f3d_scene_add (priv->scene, file_path))
     {
+      priv->is_loading = FALSE;
+      g_object_notify_by_pspec (G_OBJECT (self), props[PROP_LOADING_FILE]);
       EXB_RETURN (dex_future_new_for_error (g_error_new (G_IO_ERROR,
                                                          G_IO_ERROR_FAILED,
                                                          "Error while loading file '%s'",
@@ -296,6 +322,9 @@ load_file_func (gpointer user_data)
     }
 }
 
+/* Adj units are milliseconds; timeout interval must match the step. */
+#define EXB_ANIMATION_TICK_MS 16
+
 static gboolean
 advance_animation (gpointer self)
 {
@@ -309,7 +338,7 @@ advance_animation (gpointer self)
   pre_value = gtk_adjustment_get_value (priv->animation_adj);
   max_value = gtk_adjustment_get_upper (priv->animation_adj);
 
-  new_value = pre_value + 1;
+  new_value = pre_value + (gfloat) EXB_ANIMATION_TICK_MS;
 
   if (new_value >= max_value)
     {
@@ -334,7 +363,28 @@ exb_engine_play_animation (ExbEngine *self)
       EXB_EXIT;
     }
 
-  priv->animation_handler_id = g_timeout_add (1, advance_animation, self);
+  /* ~60 Hz; step == interval so playback stays near real-time (ms adj). */
+  priv->animation_handler_id =
+      g_timeout_add (EXB_ANIMATION_TICK_MS, advance_animation, self);
+
+  EXB_EXIT;
+}
+
+void
+exb_engine_stop_animation (ExbEngine *self)
+{
+  ExbEnginePrivate *priv;
+
+  EXB_ENTRY;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  priv = exb_engine_get_instance_private (self);
+  if (priv->animation_handler_id > 0)
+    {
+      g_source_remove (priv->animation_handler_id);
+      priv->animation_handler_id = 0;
+    }
 
   EXB_EXIT;
 }
@@ -479,10 +529,17 @@ f3d_options_map_lookup (ExbEngine   *self,
 
   for (gsize i = 0; i < option_maps_len; i++)
     {
-      if (g_str_equal(option_maps[i].prop_name, option_id))
+      if (g_str_equal (option_maps[i].prop_name, option_id))
         {
           f3d_option_id = g_strdup (option_maps[i].f3d_key);
+          break;
         }
+    }
+
+  if (f3d_option_id == NULL)
+    {
+      g_warning ("ExbEngine: No f3d mapping for '%s'", option_id);
+      EXB_RETURN (NULL);
     }
 
   if (!f3d_has_option (self, f3d_option_id))
@@ -547,7 +604,17 @@ f3d_set_rgb_option (ExbEngine  *self,
 
   options = f3d_engine_get_options (priv->engine);
 
-  rgba_string = g_strdup_printf ("%lf,%lf,%lf", rgba->red, rgba->green, rgba->blue);
+  /* ASCII decimals only — locale %lf (pt_BR commas) breaks F3D color_t parse. */
+  {
+    gchar r[G_ASCII_DTOSTR_BUF_SIZE];
+    gchar g[G_ASCII_DTOSTR_BUF_SIZE];
+    gchar b[G_ASCII_DTOSTR_BUF_SIZE];
+
+    g_ascii_formatd (r, sizeof r, "%.6f", rgba->red);
+    g_ascii_formatd (g, sizeof g, "%.6f", rgba->green);
+    g_ascii_formatd (b, sizeof b, "%.6f", rgba->blue);
+    rgba_string = g_strdup_printf ("%s,%s,%s", r, g, b);
+  }
   f3d_options_set_as_string_representation (options, f3d_key, rgba_string);
 
   EXB_RETURN (TRUE);
@@ -577,6 +644,37 @@ copy_from_hash_table (GHashTable *hash_table,
   EXB_RETURN (TRUE);
 }
 
+static void
+fill_option_default (ExbEngine   *self,
+                     const gchar *option_id,
+                     GType        type,
+                     GValue      *value)
+{
+  GParamSpec *pspec;
+
+  pspec = g_object_class_find_property (G_OBJECT_GET_CLASS (self), option_id);
+  if (pspec != NULL)
+    {
+      g_param_value_set_default (pspec, value);
+      return;
+    }
+
+  /* Fallback when pspec missing (should not happen for mapped keys). */
+  if (type == GDK_TYPE_RGBA)
+    {
+      GdkRGBA rgba = { 1.0, 1.0, 1.0, 1.0 };
+      g_value_set_boxed (value, &rgba);
+    }
+  else if (type == G_TYPE_BOOLEAN)
+    g_value_set_boolean (value, FALSE);
+  else if (type == G_TYPE_DOUBLE)
+    g_value_set_double (value, 0.0);
+  else if (type == G_TYPE_INT)
+    g_value_set_int (value, 0);
+  else if (type == G_TYPE_STRING)
+    g_value_set_string (value, "");
+}
+
 static bool
 f3d_get_option (ExbEngine  *self,
                 GValue     *value,
@@ -600,7 +698,10 @@ f3d_get_option (ExbEngine  *self,
 
   if (!priv->engine)
     {
-      copy_from_hash_table (priv->pending_options, option_id, value);
+      if (copy_from_hash_table (priv->pending_options, option_id, value))
+        EXB_RETURN (TRUE);
+      /* Pspec defaults — never invent 0.0 for light-intensity (binds go dark). */
+      fill_option_default (self, option_id, type, value);
       EXB_RETURN (TRUE);
     }
 
@@ -614,16 +715,21 @@ f3d_get_option (ExbEngine  *self,
 
   if (!f3d_options_has_value (options, f3d_key))
     {
-      g_warning ("ExbEngine: Key '%s' has no value, default value is returned", f3d_key);
+      /* Must still fill GValue — Gtk ColorDialogButton sync-create crashes on NULL. */
+      fill_option_default (self, option_id, type, value);
       EXB_RETURN (TRUE);
     }
 
   if (g_str_equal (option_id, "animation-index"))
     {
       gint values[64] = {};
-      size_t size;
+      size_t size = 0;
       f3d_options_get_as_int_vector (options, f3d_key, values, &size);
-      g_value_set_int (value, values[0]);
+      /* -2 = empty indices (bind / no clip); -1 = all; >=0 = clip. */
+      if (size == 0)
+        g_value_set_int (value, -2);
+      else
+        g_value_set_int (value, values[0]);
     }
   else if (type == G_TYPE_STRING)
     {
@@ -643,11 +749,12 @@ f3d_get_option (ExbEngine  *self,
     }
   else if (type == GDK_TYPE_RGBA)
     {
-      g_autofree const gchar *rgba_string = NULL;
-      GdkRGBA rgba;
+      GdkRGBA rgba = { 1.0, 1.0, 1.0, 1.0 };
 
       if (!f3d_get_rgb_option (self, f3d_key, &rgba))
-        EXB_RETURN (FALSE);
+        {
+          /* Keep white default — never leave boxed NULL for UI binds. */
+        }
 
       g_value_set_boxed (value, &rgba);
     }
@@ -742,11 +849,19 @@ f3d_set_option (ExbEngine    *self,
       EXB_RETURN (TRUE);
     }
 
-  if (g_hash_table_contains (priv->original_options, option_id))
-    {
-      add_value_to_hash_table (priv->original_options, option_id, value);
-      EXB_RETURN (TRUE);
-    }
+  /* Keys in original_options with a non-NULL value are "parked" (unoverride).
+   * Placeholder NULL entries (overridable_options seed) must still apply to F3D. */
+  {
+    gpointer parked = NULL;
+
+    if (g_hash_table_lookup_extended (priv->original_options, option_id,
+                                      NULL, &parked)
+        && parked != NULL)
+      {
+        add_value_to_hash_table (priv->original_options, option_id, value);
+        EXB_RETURN (TRUE);
+      }
+  }
 
   options = f3d_engine_get_options (priv->engine);
 
@@ -758,11 +873,31 @@ f3d_set_option (ExbEngine    *self,
 
   if (g_str_equal (option_id, "animation-index"))
     {
-      if (g_value_get_int (value) <= (gint)f3d_scene_available_animations (priv->scene))
+      gint idx = g_value_get_int (value);
+      gint avail = priv->scene
+                       ? (gint) f3d_scene_available_animations (priv->scene)
+                       : 0;
+
+      if (idx == -2)
         {
-          const gint values[] = { g_value_get_int (value) };
+          /* Empty vector → no clip (bind pose after reimport). */
+          f3d_options_set_as_string_representation (options, f3d_key, "");
+          if (priv->animation_handler_id > 0)
+            {
+              g_source_remove (priv->animation_handler_id);
+              priv->animation_handler_id = 0;
+            }
+        }
+      else if (idx == -1 || (idx >= 0 && (avail == 0 || idx < avail)))
+        {
+          const gint values[] = { idx };
           f3d_options_set_as_int_vector (options, f3d_key, values, 1);
-          f3d_scene_load_animation_time (priv->scene, 0);
+          if (priv->scene)
+            {
+              f3d_scene_load_animation_time (priv->scene, 0);
+              /* Refresh scrubber range/value for the new clip (was stale). */
+              update_animations_data (self);
+            }
         }
     }
   else if (type == G_TYPE_STRING)
@@ -841,6 +976,34 @@ f3d_set_option (ExbEngine    *self,
 
   g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
   EXB_RETURN (TRUE);
+}
+
+static void
+_exb_engine_apply_postfx (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  g_autofree gchar *shader = NULL;
+  GValue value = G_VALUE_INIT;
+  f3d_options_t *options;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+
+  shader = exb_postfx_build_shader (&priv->postfx);
+  if (shader == NULL || *shader == '\0')
+    {
+      /* Empty string still has_value() in F3D → "must define pixel" warn. */
+      options = f3d_engine_get_options (priv->engine);
+      if (f3d_options_is_optional (options, "render.effect.final_shader"))
+        f3d_options_remove_value (options, "render.effect.final_shader");
+    }
+  else
+    {
+      g_value_init (&value, G_TYPE_STRING);
+      g_value_set_string (&value, shader);
+      f3d_set_option (self, &value, "final-shader", G_TYPE_STRING);
+      g_value_unset (&value);
+    }
+  g_object_notify_by_pspec (G_OBJECT (self), props[PROP_FINAL_SHADER]);
 }
 
 static gfloat
@@ -974,6 +1137,42 @@ exb_engine_get_property (GObject    *object,
       g_value_set_boolean (value, priv->is_loading);
       break;
 
+    case PROP_BLOOM:
+      g_value_set_boolean (value, priv->postfx.bloom);
+      break;
+
+    case PROP_BLOOM_THRESHOLD:
+      g_value_set_double (value, priv->postfx.bloom_threshold);
+      break;
+
+    case PROP_BLOOM_INTENSITY:
+      g_value_set_double (value, priv->postfx.bloom_intensity);
+      break;
+
+    case PROP_BLOOM_RADIUS:
+      g_value_set_double (value, priv->postfx.bloom_radius);
+      break;
+
+    case PROP_GODRAYS:
+      g_value_set_boolean (value, priv->postfx.godrays);
+      break;
+
+    case PROP_GODRAYS_INTENSITY:
+      g_value_set_double (value, priv->postfx.godrays_intensity);
+      break;
+
+    case PROP_GODRAYS_DECAY:
+      g_value_set_double (value, priv->postfx.godrays_decay);
+      break;
+
+    case PROP_GODRAYS_DENSITY:
+      g_value_set_double (value, priv->postfx.godrays_density);
+      break;
+
+    case PROP_GODRAYS_WEIGHT:
+      g_value_set_double (value, priv->postfx.godrays_weight);
+      break;
+
     case PROP_UP:
     case PROP_ORTHOGRAPHIC:
     case PROP_SHOW_GRID:
@@ -1004,6 +1203,8 @@ exb_engine_get_property (GObject    *object,
     case PROP_MODEL_ROUGHNESS:
     case PROP_MODEL_OPACITY:
     case PROP_MODEL_CHECKERBOARD:
+    case PROP_NORMAL_GLYPHS:
+    case PROP_NORMAL_GLYPHS_SCALE:
     case PROP_MODEL_UNLIT:
     case PROP_TEXTURE_MATCAP:
     case PROP_TEXTURE_BASE_COLOR:
@@ -1079,6 +1280,114 @@ exb_engine_set_property (GObject      *object,
       exb_engine_set_animation_adjustment (self, g_value_get_object (value));
       break;
 
+    case PROP_BLOOM:
+      {
+        gboolean enabled = g_value_get_boolean (value);
+
+        if (priv->postfx.bloom == enabled)
+          break;
+        priv->postfx.bloom = enabled;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_BLOOM_THRESHOLD:
+      {
+        gdouble v = CLAMP (g_value_get_double (value), 0.0, 1.0);
+
+        if (priv->postfx.bloom_threshold == v)
+          break;
+        priv->postfx.bloom_threshold = v;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_BLOOM_INTENSITY:
+      {
+        gdouble v = CLAMP (g_value_get_double (value), 0.0, 5.0);
+
+        if (priv->postfx.bloom_intensity == v)
+          break;
+        priv->postfx.bloom_intensity = v;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_BLOOM_RADIUS:
+      {
+        gdouble v = CLAMP (g_value_get_double (value), 1.0, 16.0);
+
+        if (priv->postfx.bloom_radius == v)
+          break;
+        priv->postfx.bloom_radius = v;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_GODRAYS:
+      {
+        gboolean enabled = g_value_get_boolean (value);
+
+        if (priv->postfx.godrays == enabled)
+          break;
+        priv->postfx.godrays = enabled;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_GODRAYS_INTENSITY:
+      {
+        gdouble v = CLAMP (g_value_get_double (value), 0.0, 5.0);
+
+        if (priv->postfx.godrays_intensity == v)
+          break;
+        priv->postfx.godrays_intensity = v;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_GODRAYS_DECAY:
+      {
+        gdouble v = CLAMP (g_value_get_double (value), 0.8, 1.0);
+
+        if (priv->postfx.godrays_decay == v)
+          break;
+        priv->postfx.godrays_decay = v;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_GODRAYS_DENSITY:
+      {
+        gdouble v = CLAMP (g_value_get_double (value), 0.1, 2.0);
+
+        if (priv->postfx.godrays_density == v)
+          break;
+        priv->postfx.godrays_density = v;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
+    case PROP_GODRAYS_WEIGHT:
+      {
+        gdouble v = CLAMP (g_value_get_double (value), 0.0, 1.0);
+
+        if (priv->postfx.godrays_weight == v)
+          break;
+        priv->postfx.godrays_weight = v;
+        _exb_engine_apply_postfx (self);
+        g_object_notify_by_pspec (G_OBJECT (self), pspec);
+        break;
+      }
+
     case PROP_UP:
     case PROP_ORTHOGRAPHIC:
     case PROP_SHOW_GRID:
@@ -1151,7 +1460,11 @@ exb_engine_finalize (GObject *object)
   g_clear_pointer (&priv->pending_options, g_hash_table_unref);
   g_clear_pointer (&priv->original_options, g_hash_table_unref);
 
-  g_source_remove (priv->animation_handler_id);
+  if (priv->animation_handler_id > 0)
+    {
+      g_source_remove (priv->animation_handler_id);
+      priv->animation_handler_id = 0;
+    }
 
   G_OBJECT_CLASS (exb_engine_parent_class)->finalize (object);
 
@@ -1240,6 +1553,7 @@ exb_engine_init (ExbEngine *self)
 
   priv->is_loading = FALSE;
   priv->standalone = FALSE;
+  exb_postfx_state_init_defaults (&priv->postfx);
 
   priv->pending_options = g_hash_table_new_full (g_str_hash,
                                                  g_str_equal,
@@ -1394,7 +1708,7 @@ exb_engine_class_init (ExbEngineClass *klass)
   props[PROP_LIGHT_INTENSITY] =
       g_param_spec_double ("light-intensity",
                            NULL, NULL,
-                           0.0, G_MAXDOUBLE, 1.0,
+                           0.0, G_MAXDOUBLE, 1.8,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_BACKGROUND_COLOR] =
@@ -1469,6 +1783,18 @@ exb_engine_class_init (ExbEngineClass *klass)
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
+  props[PROP_NORMAL_GLYPHS] =
+      g_param_spec_boolean ("normal-glyphs",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_NORMAL_GLYPHS_SCALE] =
+      g_param_spec_double ("normal-glyphs-scale",
+                           NULL, NULL,
+                           0.05, 10.0, 0.5,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
   props[PROP_MODEL_UNLIT] =
       g_param_spec_boolean ("model-unlit",
                             NULL, NULL,
@@ -1536,7 +1862,8 @@ exb_engine_class_init (ExbEngineClass *klass)
   props[PROP_ANIMATION_INDEX] =
       g_param_spec_int ("animation-index",
                         NULL, NULL,
-                        0, 1000, 0,
+                        /* -2=none/bind, -1=all, 0+=clip index */
+                        -2, 1000, -2,
                         G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_ANIMATIONS_N] =
@@ -1585,6 +1912,84 @@ exb_engine_class_init (ExbEngineClass *klass)
       g_param_spec_string ("scivis-array-name",
                            NULL, NULL,
                            NULL,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_BLOOM] =
+      g_param_spec_boolean ("bloom",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_BLOOM_THRESHOLD] =
+      g_param_spec_double ("bloom-threshold",
+                           NULL, NULL,
+                           0.0, 1.0, 0.25,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_BLOOM_INTENSITY] =
+      g_param_spec_double ("bloom-intensity",
+                           NULL, NULL,
+                           0.0, 5.0, 1.25,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_BLOOM_RADIUS] =
+      g_param_spec_double ("bloom-radius",
+                           NULL, NULL,
+                           1.0, 16.0, 5.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_GODRAYS] =
+      g_param_spec_boolean ("godrays",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_GODRAYS_INTENSITY] =
+      g_param_spec_double ("godrays-intensity",
+                           NULL, NULL,
+                           0.0, 5.0, 0.5,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_GODRAYS_DECAY] =
+      g_param_spec_double ("godrays-decay",
+                           NULL, NULL,
+                           0.8, 1.0, 0.94,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_GODRAYS_DENSITY] =
+      g_param_spec_double ("godrays-density",
+                           NULL, NULL,
+                           0.1, 2.0, 1.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_GODRAYS_WEIGHT] =
+      g_param_spec_double ("godrays-weight",
+                           NULL, NULL,
+                           0.0, 1.0, 0.4,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_AO_RADIUS] =
+      g_param_spec_double ("ao-radius",
+                           NULL, NULL,
+                           0.1, 5.0, 1.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_AO_BIAS] =
+      g_param_spec_double ("ao-bias",
+                           NULL, NULL,
+                           0.1, 5.0, 1.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_AO_KERNEL_SIZE] =
+      g_param_spec_int ("ao-kernel-size",
+                        NULL, NULL,
+                        16, 512, 200,
+                        G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_AO_INTENSITY] =
+      g_param_spec_double ("ao-intensity",
+                           NULL, NULL,
+                           0.0, 3.0, 1.0,
                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_LOADING_FILE] =
@@ -1939,6 +2344,61 @@ exb_engine_reset_camera (ExbEngine *self)
   g_signal_emit (self, signals [SIGNAL_CHANGED], 0);
 }
 
+GVariant *
+exb_engine_get_camera_state (ExbEngine *self)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  gdouble position[3];
+  gdouble focal[3];
+  gdouble view_up[3];
+
+  g_return_val_if_fail (EXB_IS_ENGINE (self), NULL);
+  if (!priv->camera)
+    return NULL;
+
+  f3d_camera_get_position (priv->camera, position);
+  f3d_camera_get_focal_point (priv->camera, focal);
+  f3d_camera_get_view_up (priv->camera, view_up);
+
+  return g_variant_ref_sink (
+      g_variant_new ("(ddddddddd)",
+                     position[0], position[1], position[2],
+                     focal[0], focal[1], focal[2],
+                     view_up[0], view_up[1], view_up[2]));
+}
+
+void
+exb_engine_set_camera_state (ExbEngine *self,
+                             GVariant  *state)
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  gdouble position[3];
+  gdouble focal[3];
+  gdouble view_up[3];
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  g_return_if_fail (state != NULL);
+  if (!priv->camera)
+    return;
+
+  if (!g_variant_is_of_type (state, G_VARIANT_TYPE ("(ddddddddd)")))
+    {
+      g_warning ("ExbEngine: camera state must be (ddddddddd)");
+      return;
+    }
+
+  g_variant_get (state, "(ddddddddd)",
+                 &position[0], &position[1], &position[2],
+                 &focal[0], &focal[1], &focal[2],
+                 &view_up[0], &view_up[1], &view_up[2]);
+
+  f3d_camera_set_position (priv->camera, position);
+  f3d_camera_set_focal_point (priv->camera, focal);
+  f3d_camera_set_view_up (priv->camera, view_up);
+
+  g_signal_emit (self, signals [SIGNAL_CHANGED], 0);
+}
+
 /**
  * exb_engine_rotate_with_limit:
  * @self: a #ExbEngine
@@ -2060,14 +2520,18 @@ exb_engine_reset (ExbEngine *self)
   g_return_if_fail (EXB_IS_ENGINE (self));
 
   priv = exb_engine_get_instance_private (self);
+  /* Stop playback before wiping options — otherwise the timeout outlives reset. */
+  exb_engine_stop_animation (self);
   options = f3d_engine_get_options (priv->engine);
 
   for (gsize i = 0; i < option_maps_len; i++)
     {
       if (!f3d_has_option (self, option_maps[i].f3d_key))
         {
-          g_warning ("ExbEngine: Invalid pspec '%s' while getting option", option_maps[i].f3d_key);
-          EXB_EXIT;
+          /* Skip unknown keys — do not abort the whole reset (left lights stuck). */
+          g_warning ("ExbEngine: skip reset for unknown f3d key '%s'",
+                     option_maps[i].f3d_key);
+          continue;
         }
 
       f3d_options_reset (options, option_maps[i].f3d_key);
@@ -2199,5 +2663,61 @@ _exb_engine_rotate_at_ndc (ExbEngine *self,
   else
     exb_engine_rotate (self, dx, dy);
 
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+}
+
+void
+_exb_engine_pivot_at_ndc (ExbEngine *self,
+                          gdouble    ndc_x,
+                          gdouble    ndc_y)
+{
+  ExbEnginePrivate *priv;
+  gdouble position[3];
+  gdouble focal[3];
+  gdouble pivot[3];
+  gdouble foc_v[3];
+  gdouble view[3];
+  gdouble pos_v[3];
+  gdouble view_len2;
+  gdouble proj_scale;
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  priv = exb_engine_get_instance_private (self);
+  if (!priv->camera)
+    return;
+
+  f3d_camera_get_position (priv->camera, position);
+  f3d_camera_get_focal_point (priv->camera, focal);
+  _exb_pivot_on_focal_plane (self, ndc_x, ndc_y, pivot);
+
+  /* pivot_camera_to_point (keep_camera_plane=True) from camera_nav.py */
+  foc_v[0] = pivot[0] - focal[0];
+  foc_v[1] = pivot[1] - focal[1];
+  foc_v[2] = pivot[2] - focal[2];
+  view[0] = focal[0] - position[0];
+  view[1] = focal[1] - position[1];
+  view[2] = focal[2] - position[2];
+  view_len2 = view[0] * view[0] + view[1] * view[1] + view[2] * view[2];
+  pos_v[0] = foc_v[0];
+  pos_v[1] = foc_v[1];
+  pos_v[2] = foc_v[2];
+  if (view_len2 > 1e-18)
+    {
+      proj_scale = (foc_v[0] * view[0] + foc_v[1] * view[1] + foc_v[2] * view[2])
+                   / view_len2;
+      pos_v[0] = foc_v[0] - view[0] * proj_scale;
+      pos_v[1] = foc_v[1] - view[1] * proj_scale;
+      pos_v[2] = foc_v[2] - view[2] * proj_scale;
+    }
+
+  position[0] += pos_v[0];
+  position[1] += pos_v[1];
+  position[2] += pos_v[2];
+  focal[0] = pivot[0];
+  focal[1] = pivot[1];
+  focal[2] = pivot[2];
+
+  f3d_camera_set_position (priv->camera, position);
+  f3d_camera_set_focal_point (priv->camera, focal);
   g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 }
