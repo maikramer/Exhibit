@@ -13,21 +13,31 @@ VIEWER = ROOT / "src" / "widgets" / "f3d_viewer.py"
 
 def test_exb_view_has_orbit_pan_zoom_gestures():
     src = VIEW_C.read_text(encoding="utf-8")
+    eng = (ROOT / "libexhibit" / "exb-engine.c").read_text(encoding="utf-8")
     assert "gtk_gesture_drag_new" in src
     assert "exb_engine_rotate" in src
     assert "exb_engine_pan" in src
     assert "exb_engine_zoom" in src
     assert "gtk_event_controller_scroll_new" in src
+    assert "GTK_EVENT_CONTROLLER_SCROLL_BOTH_AXES" in src
     assert "invert-x" in src
     assert "orbit-sensitivity" in src
     assert "GDK_SHIFT_MASK" in src
     assert "GDK_CONTROL_MASK" in src
+    assert "GDK_ALT_MASK" in src
     assert "zoom-to-cursor" in src
     assert "orbit-around-cursor" in src
-    assert "_exb_engine_zoom_at_ndc" in (
-        VIEW_C.read_text(encoding="utf-8")
-        + (ROOT / "libexhibit" / "exb-engine.c").read_text(encoding="utf-8")
-    )
+    assert "touchpad-orbit" in src
+    assert "mmb-click-pivot" in src
+    assert "gtk_gesture_click_new" in src
+    assert "_exb_engine_zoom_at_ndc" in eng
+    assert "_exb_engine_pivot_at_ndc" in eng
+
+
+def test_shim_wires_touchpad_and_mmb_prefs():
+    src = VIEWER.read_text(encoding="utf-8")
+    assert '"nav-touchpad-orbit": "touchpad-orbit"' in src
+    assert '"nav-mmb-click-pivot": "mmb-click-pivot"' in src
 
 
 def test_shim_stores_nav_settings():

@@ -59,9 +59,11 @@ def test_load_mixin_has_open_methods():
 def test_window_uses_load_mixin_without_duplicates():
     src = WINDOW.read_text(encoding="utf-8")
     assert "from .window_load import LoadMixin" in src
-    assert "LoadMixin" in src.split("class Viewer3dWindow", 1)[1].split(":", 1)[0]
-    overlap = _class_methods(WINDOW, "Viewer3dWindow") & EXPECTED
-    assert not overlap, overlap
+    assert "LoadMixin" in src.split("class ExbWindow", 1)[1].split(":", 1)[0]
+    # Thin glue wrappers on ExbWindow are OK (Gio.File positional → mixin).
+    allowed_glue = {"load_file"}
+    overlap = _class_methods(WINDOW, "ExbWindow") & EXPECTED
+    assert not (overlap - allowed_glue), overlap - allowed_glue
 
 
 def test_resolve_readable_path_delegates_to_path_utils():

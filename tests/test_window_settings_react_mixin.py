@@ -7,15 +7,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MIXIN = ROOT / "src" / "window_settings_react.py"
 WINDOW = ROOT / "src" / "window.py"
-EXPECTED = {
-    "update_background_color",
+# Engine-direct bg/preset live on ExbWindow — not duplicated in the mixin.
+MIXIN_EXPECTED = {
     "on_view_setting_changed",
     "on_other_setting_changed",
     "on_internal_setting_changed",
-    "change_setting_state",
     "get_gimble_limit",
     "_apply_point_up_to_viewer",
     "_apply_point_up_to_viewers",
+}
+WINDOW_OWNED = {
+    "update_background_color",
+    "change_setting_state",
 }
 
 
@@ -32,12 +35,16 @@ def _class_methods(path: Path, class_name: str) -> set[str]:
 
 
 def test_settings_react_mixin_methods():
-    assert not (EXPECTED - _class_methods(MIXIN, "SettingsReactMixin"))
+    assert not (MIXIN_EXPECTED - _class_methods(MIXIN, "SettingsReactMixin"))
+    # No dead duplicate of ExbWindow glue.
+    assert not (WINDOW_OWNED & _class_methods(MIXIN, "SettingsReactMixin"))
 
 
 def test_window_uses_settings_react_without_duplicates():
     assert "SettingsReactMixin" in WINDOW.read_text(encoding="utf-8")
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    win_methods = _class_methods(WINDOW, "ExbWindow")
+    assert not (MIXIN_EXPECTED & win_methods)
+    assert WINDOW_OWNED <= win_methods
 
 
 def test_react_uses_shared_up_dirs():

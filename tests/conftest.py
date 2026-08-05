@@ -66,19 +66,19 @@ def _exhibit_prepare_cache_session():
         )
 
 
-# Legacy Viewer3dWindow mixin structural tests — skipped during libexhibit migrate.
+# Legacy structural tests still asserting pre-migrate glue ownership.
+# Keep skipped until each file is rewritten for ExbWindow + declarative shell.
+# Actively maintained: test_window_init_helpers, test_window_load_mixin,
+# test_window_settings_react_mixin (not listed below).
 _LEGACY_MIXIN_TESTS = {
     "test_window_chrome_mixin.py",
     "test_window_export_mixin.py",
     "test_window_file_watch_mixin.py",
-    "test_window_init_helpers.py",
     "test_window_inspect_mixin.py",
     "test_window_layout_mixin.py",
     "test_window_lifecycle_mixin.py",
-    "test_window_load_mixin.py",
     "test_window_preferences.py",
     "test_window_settings_io_mixin.py",
-    "test_window_settings_react_mixin.py",
     "test_window_tabs_context_menu.py",
     "test_window_tabs_split.py",
 }

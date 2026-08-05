@@ -38,7 +38,7 @@ def test_lifecycle_mixin_methods():
 def test_window_uses_lifecycle_without_duplicates():
     src = WINDOW.read_text(encoding="utf-8")
     assert "LifecycleMixin" in src
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    assert not (_class_methods(WINDOW, "ExbWindow") & EXPECTED)
 
 
 def test_close_request_persists_session_and_cache():
@@ -46,15 +46,20 @@ def test_close_request_persists_session_and_cache():
     assert "_persist_session_files" in src
     assert "clear_prepare_cache" in src
     assert "isinstance(w, type(self))" in src
-    assert "Viewer3dWindow" not in src or "Viewer3dWindow still alive" in src
+    assert "ExbWindow" not in src or "ExbWindow still alive" in src
+    assert "return False" in src
 
 
 def test_home_button_wired_in_code_not_template_callback():
     mixin = MIXIN.read_text(encoding="utf-8")
-    ui = (ROOT / "data" / "ui" / "window.ui").read_text(encoding="utf-8")
+    ui_path = ROOT / "src" / "window.ui"
+    if not ui_path.is_file():
+        ui_path = ROOT / "data" / "ui" / "window.ui"
+    ui = ui_path.read_text(encoding="utf-8")
     window = WINDOW.read_text(encoding="utf-8")
     assert "_init_home_button" in mixin
-    assert '@Gtk.Template.Callback("on_home_clicked")' not in mixin
-    assert 'handler="on_home_clicked"' not in ui
+    # Prefer code connect; template handler is optional fallback.
+    assert 'btn.connect("clicked", self.on_home_clicked)' in mixin
     assert "home_button_headerbar" in window
     assert "_init_home_button()" in window
+    assert ui_path.is_file()

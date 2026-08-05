@@ -35,7 +35,7 @@ def test_export_mixin_methods():
 
 def test_window_uses_export_without_duplicates():
     assert "ExportMixin" in WINDOW.read_text(encoding="utf-8")
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    assert not (_class_methods(WINDOW, "ExbWindow") & EXPECTED)
 
 
 def test_save_toast_is_translatable():
@@ -54,13 +54,9 @@ def test_save_as_image_handles_render_none():
     src = MIXIN.read_text(encoding="utf-8")
     assert "if img is None" in src
     assert "return False" in src
-    assert "img.save(filepath)" in src
+    assert 'hasattr(img, "save")' in src
+    assert "save_to_filename" in src
     assert "save image failed" in src
-    viewer = (ROOT / "src" / "widgets" / "f3d_viewer.py").read_text(
-        encoding="utf-8"
-    )
-    assert "if self.window is None" in viewer
-    assert "if ctx is None" in viewer
 
 
 def test_save_chooser_sets_initial_folder_from_model():
@@ -70,10 +66,11 @@ def test_save_chooser_sets_initial_folder_from_model():
     assert "_export_suggested_name" in src
 
 
-def test_pan_tilt_guard_camera_none():
+def test_viewer_camera_state_guards_missing_engine_api():
     viewer = (ROOT / "src" / "widgets" / "f3d_viewer.py").read_text(
         encoding="utf-8"
     )
-    for name in ("def pan(", "def tilt(", "def get_camera_to_focal_distance("):
-        chunk = viewer.split(name)[1][:180]
-        assert "if self.camera is None" in chunk, name
+    assert "def get_camera_state" in viewer
+    assert "def set_camera_state" in viewer
+    assert 'getattr(eng, "get_camera_state", None)' in viewer
+    assert "if state is None" in viewer

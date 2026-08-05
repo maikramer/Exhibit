@@ -42,7 +42,7 @@ def test_inspect_mixin_methods():
 def test_window_uses_inspect_without_duplicates():
     src = WINDOW.read_text(encoding="utf-8")
     assert "InspectMixin" in src
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    assert not (_class_methods(WINDOW, "ExbWindow") & EXPECTED)
 
 
 def test_armature_and_stats_bodies_intact():

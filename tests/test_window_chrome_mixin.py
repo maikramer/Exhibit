@@ -40,7 +40,7 @@ def test_chrome_mixin_methods():
 def test_window_uses_chrome_without_duplicates():
     src = WINDOW.read_text(encoding="utf-8")
     assert "ChromeMixin" in src
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    assert not (_class_methods(WINDOW, "ExbWindow") & EXPECTED)
 
 
 def test_open_external_guards_empty_filepath():

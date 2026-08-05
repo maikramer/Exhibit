@@ -45,7 +45,22 @@ def test_settings_io_mixin_methods():
 def test_window_uses_settings_io_without_duplicates():
     src = WINDOW.read_text(encoding="utf-8")
     assert "SettingsIOMixin" in src
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    assert not (_class_methods(WINDOW, "ExbWindow") & EXPECTED)
+
+
+def test_save_settings_uses_settings_dialog_widgets():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert "_settings_save_dialog" in src
+    assert "dlg.present(self)" in src
+    assert "self.save_dialog" not in src
+    dialog = (ROOT / "src" / "widgets" / "settings_dialog.py").read_text(
+        encoding="utf-8"
+    )
+    assert "def bind_to_window" in dialog
+    assert "window.on_save_settings_button_clicked" in dialog
+    # Broken self.engine / bare json path must stay gone.
+    assert "self.engine.get_view_settings" not in dialog
+    assert "json.dump" not in dialog
 
 
 def test_setup_hdri_folder_is_clean():

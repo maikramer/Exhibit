@@ -31,9 +31,11 @@ from exhibit.meshopt_decompress import (
     _strip_extensions,
     cleanup_decompressed,
     clear_prepare_cache,
+    is_adhoc_load_temp,
     needs_glb_prepare,
     needs_meshopt_decompress,
     prepare_glb_for_load,
+    release_load_temp,
     release_prepared,
 )
 from tests.glb_factory import (
@@ -355,6 +357,25 @@ def test_cleanup_decompressed_missing_ok(tmp_path: Path):
 
 def test_release_prepared_none_ok():
     release_prepared(None)
+
+
+def test_is_adhoc_load_temp_prefixes():
+    assert is_adhoc_load_temp("/tmp/exhibit-hide-abc.glb")
+    assert is_adhoc_load_temp("/tmp/exhibit-parts-xyz.glb")
+    assert is_adhoc_load_temp("/tmp/exhibit-skinw-1.glb")
+    assert not is_adhoc_load_temp("/tmp/exhibit-prep-abc.glb")
+    assert not is_adhoc_load_temp(None)
+
+
+def test_release_load_temp_unlinks_hide_adhoc(tmp_path: Path):
+    hide = tmp_path / "exhibit-hide-deadbeef.glb"
+    hide.write_bytes(b"glb")
+    release_load_temp(str(hide))
+    assert not hide.exists()
+
+
+def test_release_load_temp_none_ok():
+    release_load_temp(None)
 
 
 def test_prepare_corrupt_glb_raises_or_passthrough(tmp_path: Path):

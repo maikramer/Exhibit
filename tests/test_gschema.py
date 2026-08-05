@@ -16,6 +16,7 @@ def test_gschema_lists_session_and_recent_keys():
         'name="recent-files"',
         'name="session-files"',
         'name="restore-session"',
+        'name="auto-reload"',
         'name="split-compare-sash-ratio"',
         'name="split-compare-enabled"',
         'name="split-compare-pinned"',

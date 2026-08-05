@@ -38,7 +38,7 @@ def test_layout_mixin_methods():
 def test_window_uses_layout_without_duplicates():
     src = WINDOW.read_text(encoding="utf-8")
     assert "LayoutMixin" in src
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    assert not (_class_methods(WINDOW, "ExbWindow") & EXPECTED)
 
 
 def test_layout_methods_are_small():

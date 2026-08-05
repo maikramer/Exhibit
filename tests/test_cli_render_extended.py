@@ -186,6 +186,7 @@ def test_build_parser_up_space_separated_negative_works(up: str):
         ("--display-depth", "display_depth"),
         ("--edges", "edges"),
         ("--overlay", "overlay"),
+        ("--bloom", "bloom"),
     ],
 )
 def test_build_parser_bool_flags(flag, attr):
@@ -244,6 +245,12 @@ def _ns(**kwargs) -> argparse.Namespace:
         checkerboard=False,
         normal_glyphs=False,
         display_depth=False,
+        bloom=False,
+        bloom_threshold=0.25,
+        bloom_intensity=1.25,
+        bloom_radius=5.0,
+        godrays=False,
+        godrays_intensity=0.5,
         animation_index=0,
         overlay=False,
     )
@@ -275,6 +282,14 @@ def test_build_options_overlay_keys():
     opts = _build_options(_ns(overlay=True), overlay_text="hello")
     assert opts["ui.filename_info"] == "hello"
     assert opts["ui.metadata"] is True
+
+
+def test_build_options_bloom_final_shader():
+    opts = _build_options(_ns(bloom=True, bloom_threshold=0.7))
+    assert "render.effect.final_shader" in opts
+    assert "vec4 pixel(vec2 uv)" in opts["render.effect.final_shader"]
+    off = _build_options(_ns(bloom=False))
+    assert "render.effect.final_shader" not in off
 
 
 def test_build_options_overlay_flag_without_text():

@@ -36,3 +36,11 @@ def test_file_row_open_finish_and_drop_guarded():
     assert drop_body is not None
     assert "if not files" in drop_body
     assert "if not filepath" in drop_body
+
+
+def test_file_row_has_set_filename_for_settings_api():
+    src = ROW.read_text(encoding="utf-8")
+    assert "def set_filename" in src
+    assert "Gio.File.new_for_path" in src
+    # Avoid notify storms when rebound to the same path.
+    assert "Same on-disk path" in src

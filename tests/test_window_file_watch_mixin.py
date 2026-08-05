@@ -28,10 +28,15 @@ def test_file_watch_mixin_methods():
 
 def test_window_uses_file_watch_without_duplicates():
     assert "FileWatchMixin" in WINDOW.read_text(encoding="utf-8")
-    assert not (_class_methods(WINDOW, "Viewer3dWindow") & EXPECTED)
+    assert not (_class_methods(WINDOW, "ExbWindow") & EXPECTED)
 
 
 def test_blocked_reload_tracks_peak_mtime():
     src = MIXIN.read_text(encoding="utf-8")
     assert "_blocked_peak_mtime" in src
     assert "auto-reload after blocked window" in src
+    # Auto-reload after unblock must not baseline seen before load succeeds.
+    blocked_auto = src.split("auto-reload after blocked window", 1)[1]
+    ahead, _, _ = blocked_auto.partition("seen_disk_mtime = peak")
+    assert "_reload_tab" in ahead
+    assert "seen_disk_mtime = peak" not in ahead
