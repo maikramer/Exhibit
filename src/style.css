@@ -125,3 +125,340 @@ flowbox flowboxchild {
   background-color: var(--accent-bg-color);
   color: var(--accent-fg-color);
 }
+
+/* ---- fork overlays (migrate-libexhibit) ---- */
+/* Overlay + viewport only. Surfaces/accent come from Adwaita / OS (Yaru). */
+
+.f3d-render {
+  background-color: black;
+}
+
+file-row {
+  border-radius: 12px;
+}
+
+.icon-dropshadow {
+  -gtk-icon-shadow: 0 1px 2px alpha(black, 0.35);
+}
+
+.exhibit-cta {
+  min-width: 148px;
+}
+
+.exhibit-tab-bar {
+  background-color: var(--window-bg-color);
+  border-bottom: 1px solid alpha(var(--border-color), 0.55);
+  padding: 0 4px;
+}
+
+/* Floating chrome over the GL viewport ------------------------------------ */
+
+.preview-headerbar {
+  background: transparent;
+  box-shadow: none;
+}
+
+.preview-headerbar > windowhandle > box {
+  margin: 6px 8px 0 8px;
+}
+
+.preview-headerbar > windowhandle > box > box.start {
+  margin-right: 6px;
+}
+
+.viewer-chrome-row {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
+.viewer-chrome {
+  padding: 2px;
+  border-radius: 9999px;
+  background-color: alpha(var(--window-bg-color), 0.72);
+  border: 1px solid alpha(var(--border-color), 0.7);
+}
+
+/* Vertical tool rail over the viewport (sidebar / home / outliner). */
+.viewer-chrome-rail {
+  border-radius: 9999px;
+  padding: 4px 2px;
+}
+
+.object-tree-overlay-shell {
+  background: none;
+}
+
+.overlay-button {
+  background-color: alpha(var(--window-bg-color), 0.92);
+  border: 1px solid alpha(var(--border-color), 0.8);
+  border-radius: 9999px;
+  box-shadow: 0 1px 2px alpha(black, 0.12);
+}
+
+.overlay-button button {
+  background-color: transparent;
+}
+
+.overlay-button:hover {
+  background-color: alpha(var(--view-fg-color), 0.08);
+}
+
+.overlay-button:active {
+  background-color: alpha(var(--view-fg-color), 0.12);
+}
+
+/* Match OS selection: accent wash when toggled (sidebar open) */
+.overlay-button:checked {
+  background-color: alpha(var(--accent-bg-color), 0.28);
+  border-color: alpha(var(--accent-color), 0.45);
+  color: var(--accent-color);
+}
+
+.overlay-button:checked:hover {
+  background-color: alpha(var(--accent-bg-color), 0.36);
+}
+
+.main-view windowcontrols image {
+  background-color: alpha(var(--window-bg-color), 0.92);
+  border: 1px solid alpha(var(--border-color), 0.8);
+  box-shadow: 0 1px 2px alpha(black, 0.12);
+}
+
+.main-view windowcontrols image:hover {
+  background-color: alpha(var(--view-fg-color), 0.08);
+}
+
+.main-view windowcontrols image:active {
+  background-color: alpha(var(--view-fg-color), 0.12);
+}
+
+/* Stats HUD --------------------------------------------------------------- */
+
+.stats-overlay {
+  padding: 10px 12px;
+  border-radius: 10px;
+  background-color: alpha(var(--window-bg-color), 0.9);
+  border: 1px solid alpha(var(--border-color), 0.75);
+  color: var(--view-fg-color);
+  font-family: monospace;
+  font-size: 0.8rem;
+  font-weight: 500;
+  line-height: 1.4;
+  box-shadow: 0 4px 18px alpha(black, 0.2);
+}
+
+/* Object tree (canvas overlay) ------------------------------------------ */
+/*
+ * No fill anywhere: the GL viewport shows through. Only glyphs are drawn,
+ * with a shadow so they stay readable over bright models.
+ */
+
+.object-tree-overlay-panel,
+.object-tree-overlay-panel box,
+.object-tree-overlay-panel label,
+.object-tree-overlay-panel image,
+.object-tree-overlay-panel scrolledwindow,
+.object-tree-overlay-panel scrolledwindow > viewport,
+.object-tree-overlay-panel scrolledwindow > undershoot.top,
+.object-tree-overlay-panel scrolledwindow > undershoot.bottom,
+.object-tree-overlay-panel scrolledwindow > overshoot.top,
+.object-tree-overlay-panel scrolledwindow > overshoot.bottom,
+.object-tree-overlay-panel listview,
+.object-tree-overlay-panel listview.view,
+.object-tree-overlay-panel listview > row,
+.object-tree-overlay-panel treeexpander,
+.object-tree-overlay-panel objecttreerow {
+  background: none;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: none;
+}
+
+/* Same reset keyed on the classes the code sets, in case the panel class
+   is missing (styles must hold on their own over the GL viewport). */
+.object-tree-scroll,
+.object-tree-scroll > viewport,
+.object-tree-view,
+listview.object-tree-view,
+.object-tree-view > row,
+.object-tree-expander {
+  background: none;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
+  border: none;
+}
+
+.object-tree-overlay-panel {
+  padding: 8px 6px;
+  min-width: 280px;
+}
+
+.object-tree-overlay-panel label,
+.object-tree-overlay-panel .object-tree-name,
+.object-tree-overlay-panel .object-tree-badge {
+  text-shadow:
+    0 0 3px alpha(black, 0.9),
+    0 1px 2px alpha(black, 0.8);
+}
+
+.object-tree-panel {
+  min-height: 0;
+}
+
+.object-tree-view > row {
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0;
+  min-height: 26px;
+}
+
+.object-tree-view > row:hover {
+  background-color: alpha(black, 0.30);
+}
+
+.object-tree-view > row:selected {
+  background-color: alpha(var(--accent-bg-color), 0.45);
+  outline: 1px solid alpha(var(--accent-color), 0.55);
+  outline-offset: -1px;
+}
+
+objecttreerow.object-tree-row {
+  padding: 2px 4px 2px 8px;
+  min-height: 24px;
+}
+
+.object-tree-eye {
+  min-width: 22px;
+  min-height: 22px;
+  padding: 0;
+  opacity: 0.85;
+}
+
+.object-tree-eye:checked,
+.object-tree-eye:active {
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+}
+
+.object-tree-eye:hover {
+  opacity: 1.0;
+  background-color: alpha(black, 0.28);
+}
+
+.object-tree-eye-locked {
+  opacity: 0.28;
+}
+
+.object-tree-icon {
+  margin: 0 1px;
+}
+
+.object-tree-name {
+  font-size: 0.92rem;
+  letter-spacing: 0.01em;
+}
+
+.object-tree-badge {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background-color: alpha(currentColor, 0.08);
+  opacity: 0.78;
+}
+
+/* Kind tints */
+objecttreerow.kind-mesh .object-tree-name,
+.object-tree-name.kind-mesh {
+  font-weight: 500;
+}
+
+objecttreerow.kind-armature .object-tree-name,
+.object-tree-name.kind-armature {
+  font-weight: 700;
+}
+
+objecttreerow.kind-empty .object-tree-name,
+.object-tree-name.kind-empty {
+  opacity: 0.72;
+}
+
+objecttreerow.kind-bone .object-tree-name,
+.object-tree-name.kind-bone {
+  opacity: 0.9;
+}
+
+.object-tree-badge.kind-mesh {
+  color: #6aa8f0;
+  background-color: alpha(#6aa8f0, 0.14);
+}
+
+.object-tree-badge.kind-empty {
+  color: #9a9aa0;
+  background-color: alpha(#9a9aa0, 0.12);
+}
+
+.object-tree-badge.kind-bone {
+  color: #e0b24a;
+  background-color: alpha(#e0b24a, 0.16);
+}
+
+.object-tree-badge.kind-armature {
+  color: #f08a3c;
+  background-color: alpha(#f08a3c, 0.18);
+}
+
+.object-tree-icon.kind-mesh {
+  color: #6aa8f0;
+}
+
+.object-tree-icon.kind-bone {
+  color: #e0b24a;
+}
+
+.object-tree-icon.kind-armature {
+  color: #f08a3c;
+}
+
+.object-tree-icon.kind-empty {
+  color: #9a9aa0;
+  opacity: 0.85;
+}
+
+/* Misc -------------------------------------------------------------------- */
+
+.suggested-picture {
+  border-radius: 8px;
+}
+
+flowbox flowboxchild {
+  padding: 0px;
+}
+
+.drop-target-remove-border {
+  box-shadow: transparent 1px 1px;
+}
+
+.overlay-status {
+  color: var(--accent-color);
+  background-color: alpha(var(--accent-bg-color), 0.16);
+  border: 2px dashed alpha(var(--accent-color), 0.45);
+  border-radius: 10px;
+  margin: 16px;
+}
+
+.overlay-status label {
+  opacity: 1;
+}
+
+.overlay-status image {
+  opacity: 1;
+  color: var(--accent-color);
+}

@@ -467,9 +467,12 @@ class ExbWindow(Adw.ApplicationWindow):
 
     def on_play_button_clicked(self, btn):
         self.engine.play_animation()
+        self.on_playing_changed()
 
     def on_playing_changed(self, *args):
-        if self.viewer.playing:
+        # Exb.View has no playing prop yet; toggle icon on each play click.
+        icon = self.play_button.get_icon_name()
+        if icon == "media-playback-start-symbolic":
             self.play_button.set_icon_name("media-playback-pause-symbolic")
             self.play_button.set_tooltip_text(_("Stop"))
         else:
@@ -484,7 +487,7 @@ class ExbWindow(Adw.ApplicationWindow):
         self.engine.set_property("hdri-skybox", False)
 
     def load_hdri(self, filepath):
-        self.engine.set_property("hdri-file", file)
+        self.engine.set_property("hdri-file", filepath)
         self.engine.set_property("hdri-skybox", True)
 
     def create_action(self, name, callback):
@@ -500,6 +503,10 @@ class ExbWindow(Adw.ApplicationWindow):
     @Gtk.Template.Callback("on_close_request")
     def on_close_request(self, window):
         log.debug("window closed, saving settings")
+        prepared = getattr(self, "_prepared_load_path", None)
+        if prepared:
+            release_prepared(prepared)
+            self._prepared_load_path = None
         settings.set_int(
             "startup-width", window.get_width())
         settings.set_int(

@@ -1,10 +1,10 @@
 {
-    "id" : "io.github.nokse22.Exhibit",
-    "runtime" : "org.gnome.Platform",
-    "runtime-version" : "master",
-    "sdk" : "org.gnome.Sdk",
-    "command" : "exhibit",
-    "finish-args" : [
+    "id": "io.github.nokse22.Exhibit",
+    "runtime": "org.gnome.Platform",
+    "runtime-version": "50",
+    "sdk": "org.gnome.Sdk",
+    "command": "exhibit",
+    "finish-args": [
         "--share=ipc",
         "--socket=wayland",
         "--socket=fallback-x11",
@@ -16,7 +16,7 @@
         "--filesystem=xdg-config/gtk-4.0:ro",
         "--talk-name=org.freedesktop.portal.Desktop"
     ],
-    "cleanup" : [
+    "cleanup": [
         "/include",
         "/lib/pkgconfig",
         "/man",
@@ -26,7 +26,7 @@
         "*.la",
         "*.a"
     ],
-    "modules" : [
+    "modules": [
         "imagemagick.json",
         "libf3d.json",
         "libdex.json",
@@ -52,18 +52,18 @@
         },
         "libktx.json",
         {
-            "name" : "exhibit",
-            "buildsystem" : "meson",
-            "config-opts" : [
+            "name": "exhibit",
+            "buildsystem": "meson",
+            "config-opts": [
                 "-Ddocs=true"
             ],
-            "sources" : [
+            "sources": [
                 {
-                    "type" : "dir",
-                    "path" : "../."
+                    "type": "dir",
+                    "path": "../."
                 }
             ],
-            "builddir" : true
+            "builddir": true
         }
     ]
 }

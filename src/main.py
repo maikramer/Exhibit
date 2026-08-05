@@ -99,20 +99,24 @@ class ExhibitApplication(Adw.Application):
             launcher.launch(self.props.active_window, None, open_image_finish)
 
     def on_about_action(self, *args):
+        from .about_info import FORK_ISSUES, FORK_REPO, about_comments
+
         about = Adw.AboutDialog(
             application_name="Exhibit",
             application_icon="io.github.nokse22.Exhibit",
             developer_name="Nokse",
-            version="1.6.0",
-            website="https://github.com/Nokse22/Exhibit",
-            issue_url="https://github.com/Nokse22/Exhibit/issues",
-            developers=["Nokse"],
+            version=self.get_version() if hasattr(self, "get_version") else "1.9.2",
+            website=FORK_REPO,
+            issue_url=FORK_ISSUES,
+            developers=["Nokse", "maikramer (fork)"],
             license_type="GTK_LICENSE_GPL_3_0",
-            copyright="© 2024-2025 Nokse",
+            copyright="© 2024-2026 Nokse",
             artists=["Jakub Steiner https://jimmac.eu"],
+            comments=about_comments(),
         )
 
         about.add_link(_("Checkout F3D"), "https://f3d.app")
+        about.add_link(_("Upstream Exhibit"), "https://github.com/Nokse22/Exhibit")
 
         about.add_link(_("Donate with Ko-Fi"), "https://ko-fi.com/nokse22")
         about.add_link(_("Donate with Github"), "https://github.com/sponsors/Nokse22")

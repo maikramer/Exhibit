@@ -5,7 +5,10 @@ from __future__ import annotations
 
 import os
 
-import f3d
+try:
+    import f3d
+except ImportError:  # libexhibit migration: no Python f3d
+    f3d = None
 
 from ..meshopt_decompress import (
     MeshoptError,
