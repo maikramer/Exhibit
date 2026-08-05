@@ -32,16 +32,18 @@ Rough order of magnitude: **~1300** collected tests (parametrize-heavy grids inc
 | Vector / camera presets | `test_vector_math*`, `test_camera_views*`, `test_camera_orbit_grid.py` |
 | Viewport nav math | `test_camera_nav.py` — see [NAVIGATION.md](NAVIGATION.md) |
 | GLB prepare / meshopt / KTX2 | `test_meshopt_*`, `test_ktx2_*`, [`glb_factory.py`](../tests/glb_factory.py) |
-| glTF graph / pack | `test_gltf_scene_graph*`, `test_gltf_pack*` |
+| glTF graph / pack / outliner kinds | `test_gltf_scene_graph*` (kinds, armature split, hide helpers), `test_gltf_pack*` — [OUTLINER.md](OUTLINER.md) |
 | Mesh stats | `test_mesh_stats*` |
 | CLI render (headless) | `test_cli_render*` (parsers / jobs / options; no F3D) |
 | Video encode helpers | `test_video_encode.py` |
 | Session / paths | `test_session_*`, `test_path_utils`, `test_open_errors` — [SESSION_RESTORE.md](SESSION_RESTORE.md) |
 | Window mixins (AST) | `test_window_*_mixin.py`, `test_window_init_helpers.py` |
-| Split Compare / i18n | `test_window_tabs_split.py`, `test_help_overlay_i18n.py`, `test_potfiles.py` |
+| Split Compare / tabs / i18n | `test_window_tabs_split.py`, `test_window_tabs_context_menu.py`, `test_focus_existing_tab.py`, `test_help_overlay_i18n.py`, `test_potfiles.py` |
 | Inspect / skins | `test_skin_weights.py`, `test_window_inspect_mixin.py` — [INSPECT_AND_PREPARE.md](INSPECT_AND_PREPARE.md) |
 
 Gtk/Adw template windows are usually checked **structurally** (AST / UI XML), not by launching the full app in CI.
+Outliner overlay chrome (transparent panel over `GLArea`) is **manual Flatpak** —
+host tests cover scene-graph kinds / hide bytes only.
 
 Synthetic assets: [`tests/glb_factory.py`](../tests/glb_factory.py) — `plain_triangle_gltf`, `multipart_gltf`, `quantized_triangle_gltf`, `basisu_fallback_gltf`, translated/scaled/empty/non-indexed helpers, `write_glb` / `glb_bytes`.
 

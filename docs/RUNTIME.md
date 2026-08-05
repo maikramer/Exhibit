@@ -83,6 +83,31 @@ Mapped in `_map_setting_to_f3d` when `animation-index is None`.
 
 ---
 
+## GtkBuilder style classes vanish
+
+### Symptom
+
+`.ui` widgets ignore every `<style><class name="…"/></style>` block.
+Custom CSS never matches. Classic outliner failure: solid black
+`listview.view` panel over the GL viewport even with transparent rules in
+`style.css`.
+
+### Cause
+
+`Viewer3dWindow` puts `@Gtk.Template.Callback` handlers on **mixins**.
+PyGObject only registers callbacks present on the decorated class namespace.
+Unresolved handlers abort template construction; GtkBuilder then drops **all**
+style classes for that template (no loud error in normal runs).
+
+### Fix
+
+`_hoist_template_callbacks` in `src/window.py` copies mixin `CallThing`s onto
+the class **before** `Gtk.Template` runs. Architecture summary:
+[ARCHITECTURE.md](ARCHITECTURE.md#gtktemplate--mixins). Outliner transparency
+notes: [OUTLINER.md](OUTLINER.md#transparency-over-gtkglarea).
+
+---
+
 ## Dense meshes (voxel / MC intermediates)
 
 Assets like VibeGame `_intermediate/*_shape.glb` are often **1–8M verts**,
@@ -114,4 +139,5 @@ Code: `window_file_watch.py`, `viewer_tab.py` (`externally_modified`).
 
 - Build pins / Boost / fast rebuild: [FLATPAK.md](FLATPAK.md)
 - Prepare + Inspect overlays: [INSPECT_AND_PREPARE.md](INSPECT_AND_PREPARE.md)
+- Outliner overlay / kinds: [OUTLINER.md](OUTLINER.md)
 - Session queue / GL realize: [SESSION_RESTORE.md](SESSION_RESTORE.md)

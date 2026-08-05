@@ -31,7 +31,7 @@ App ID stays `io.github.nokse22.Exhibit` so local Flatpak / GSettings stay compa
 |------|---------------------|
 | **GLB prepare** | Expand meshopt + mesh quantization; transcode KTX2/BasisU → PNG; fill missing `skin.skeleton` |
 | **Animation** | Clip combo with default **None** (bind pose); in-place clip switch; reimport when returning to None; **keyframe marks** on scrubber |
-| **Parts** | Object tree hide/show; filtered GLB via F3D `scene.add(bytes)` (no parts temp on happy path) |
+| **Outliner** | Blender-like overlay (mesh/empty/bone/armature); eye hide/show; filtered GLB via F3D `scene.add(bytes)` |
 | **Inspect** | Armature X-ray, UV checkerboard, normal glyphs (+ scale), linearized depth, skin-weight heat maps, stats HUD |
 | **File watch** | On-disk edits → silent reload (active tab) or `(modified)` + prompt |
 | **Tabs** | Multi-document `AdwTabView`: each open/drop adds a tab; shared sidebar; same startup loading UI |
@@ -69,12 +69,13 @@ Self-contained `.glb` and external `.gltf` + URI buffers/images (local or `data:
 - Scrubber shows **keyframe marks** from F3D `get_animation_keyframes` for the current selection.
 - Details: [docs/RUNTIME.md](docs/RUNTIME.md#animation-none--bind-pose).
 
-### 3. Object tree (multipart visibility)
+### 3. Outliner (multipart visibility)
 
-- Header **list** button (next to home/reset) opens a popover with the glTF node hierarchy.
-- Checkboxes hide/show mesh parts. Hidden nodes lose their `mesh` in a filtered GLB; reload keeps **camera and animation time**.
+- Floating **list** toggle on the main canvas opens a transparent overlay tree (slide revealer), not a header popover.
+- Nodes show Blender-like **kinds** (mesh / empty / bone / armature) with icons, badges, and kind accent. Skin joints live under a separate **Armature** branch. Hierarchy starts **collapsed**.
+- **Eye** toggles hide/show mesh and empty nodes (bones / armature roots locked). Hidden nodes lose their `mesh` in a filtered GLB; reload keeps **camera and animation time**.
 - With F3D 3.5 the filtered GLB is loaded from **memory** (`scene.add(bytes)`), not an `exhibit-parts-*` temp. Buffer loads may set `scene.force_reader=GLB` briefly on older VTK (cleared afterward).
-- Flatpak keeps `F3D_MODULE_UI=OFF` — ImGui `ui.scene_hierarchy` is unused; the Gtk tree owns part visibility ([docs/INSPECT_AND_PREPARE.md](docs/INSPECT_AND_PREPARE.md)).
+- Flatpak keeps `F3D_MODULE_UI=OFF` — ImGui `ui.scene_hierarchy` is unused; the Gtk overlay owns part visibility ([docs/OUTLINER.md](docs/OUTLINER.md), [docs/INSPECT_AND_PREPARE.md](docs/INSPECT_AND_PREPARE.md)).
 - Demo asset: [Cesium Milk Truck](https://github.com/KhronosGroup/glTF-Sample-Models/tree/main/2.0/CesiumMilkTruck) (GLB).
 
 ### 4. Inspect overlays (Scene → Inspect)
@@ -165,7 +166,7 @@ Manifest includes model path, whether prepare ran, skins/animation names, `stats
   - `Ctrl+Shift+X` — **Swap** active tab ↔ pinned model
   - Split Compare + pin reopen quietly on the next launch when left on
 - First file: no tab bar. Second file: same startup **Loading…** page, then the model appears and the tab bar reveals with both documents.
-- Sidebar settings apply across tabs; animation scrubber / object tree follow the **active** tab.
+- Sidebar settings apply across tabs; animation scrubber / outliner follow the **active** tab.
 - Closing a tab cancels any in-flight warm load, calls `release_resources()` on that tab’s F3D viewer (scene clear + drop engine), and clears overlays/stats. Closing the last tab returns to the welcome page.
 - `Open with` / `HANDLES_OPEN` reuses the active window and opens extra paths as tabs.
 - Warm open: GLB prepare runs off the main thread in parallel with creating the new tab’s F3D engine; `scene.add` stays on the main thread. Closing mid-prepare must not leak retained temps (see [docs/MEMORY.md](docs/MEMORY.md)).
@@ -174,7 +175,8 @@ Manifest includes model path, whether prepare ran, skins/animation names, `stats
 
 - Color scheme defaults to **Follow System**; accent comes from the desktop portal (e.g. Ubuntu orange on Yaru).
 - Header **theme** `MenuButton`: Follow System / Light / Dark (icons; `app.theme` stateful action). `Ctrl+,` or gear opens **Preferences** (`AdwPreferencesDialog`) for navigation, loading, HDRI/config folders, and save-settings.
-- Custom CSS is limited to viewport chrome (floating header buttons, stats HUD, tab bar) — sidebar/lists stay Adwaita.
+- Custom CSS covers viewport chrome (floating header buttons, stats HUD, tab bar) plus the **outliner overlay** (transparent panel, row accents, `text-shadow`). Sidebar lists stay Adwaita.
+- `.ui` `<style>` classes only apply when every `Gtk.Template.Callback` resolves — mixins need `_hoist_template_callbacks` ([docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#gtktemplate--mixins), [docs/RUNTIME.md](docs/RUNTIME.md#gtkbuilder-style-classes-vanish)).
 - Scene tab groups **Animation** + **Inspect** (see §4). Point sprites: `sphere` / `gaussian` / `circle` / `cross` / `stddev` / `bound`.
 
 ### 8. Viewport navigation
@@ -237,7 +239,7 @@ flatpak run io.github.nokse22.Exhibit /tmp/hero.glb
 ```
 
 - **Animations:** sidebar → Scene → **Active animation** (leave **None** for bind pose; see [docs/RUNTIME.md](docs/RUNTIME.md)).
-- **Parts:** multipart `.glb` → list icon beside home/reset → tree checkboxes.
+- **Outliner:** multipart / skinned `.glb` → list toggle on the canvas → eye hide/show ([docs/OUTLINER.md](docs/OUTLINER.md)).
 - **Inspect:** Scene → **Inspect** (armature, normals, depth, skin weights, stats) — see [docs/INSPECT_AND_PREPARE.md](docs/INSPECT_AND_PREPARE.md).
 - **Tabs:** open a second GLB (dialog or drop) → new tab after the shared loading screen.
 - **Orbit:** two-finger / LMB drag around view center; **Alt** for cursor orbit; **Preferences** (gear / `Ctrl+,`) for nav prefs — see [`docs/NAVIGATION.md`](docs/NAVIGATION.md).

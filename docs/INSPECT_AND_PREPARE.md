@@ -86,15 +86,17 @@ Heat temps use prefix `exhibit-skinw-` and are **not** prepare-cache managed.
 
 ### Part hide — in-memory GLB (F3D 3.5)
 
-Object-tree checkboxes strip `mesh` from hidden nodes (`build_glb_hiding_nodes_bytes`)
-and reload via `scene.add(bytes)` — no `exhibit-parts-*` temp on the happy path.
+Outliner **eye** toggles strip `mesh` from hidden nodes
+(`build_glb_hiding_nodes_bytes`) and reload via `scene.add(bytes)` — no
+`exhibit-parts-*` temp on the happy path. UX / kinds / overlay chrome:
+[OUTLINER.md](OUTLINER.md).
 
 VTK builds older than the stream auto-detect cutoff need `scene.force_reader=GLB`
 for buffers. Exhibit sets it only for the buffer add, then clears it (Python
 bindings lack `options.reset`; fallback rebuilds options without that key).
 
-`F3D_MODULE_UI` / ImGui `ui.scene_hierarchy` stays **off** in Flatpak — Gtk tree
-owns part visibility. Details: [FLATPAK.md](FLATPAK.md).
+`F3D_MODULE_UI` / ImGui `ui.scene_hierarchy` stays **off** in Flatpak — the Gtk
+outliner overlay owns part visibility. Details: [FLATPAK.md](FLATPAK.md).
 
 ### Animation keyframes
 

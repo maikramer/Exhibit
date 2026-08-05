@@ -34,8 +34,9 @@ Ship **libwebp** as a Flatpak module before F3D (see `libf3d.json`). Keep tools 
 
 ### Keep `F3D_MODULE_UI=OFF`
 
-ImGui `ui.scene_hierarchy` would fight the Gtk object tree and the embedded `GLArea`.
-Part hide stays: filter GLB → `scene.add(bytes)` ([INSPECT_AND_PREPARE.md](INSPECT_AND_PREPARE.md)).
+ImGui `ui.scene_hierarchy` would fight the Gtk **outliner overlay** on the
+embedded `GLArea` ([OUTLINER.md](OUTLINER.md)). Part hide stays: filter GLB →
+`scene.add(bytes)` ([INSPECT_AND_PREPARE.md](INSPECT_AND_PREPARE.md)).
 
 ### State dir and build dir on the same filesystem
 
