@@ -58,3 +58,8 @@ def test_armature_and_stats_bodies_intact():
     assert "write_skin_weight_heat_temp" in src
     assert "normal-glyphs-scale" in src
     assert "_handoff_skin_weights_on_tab_change" in src
+    # Stats HUD is Gtk-only under Exb (dead F3D ui.* push removed).
+    overlay = src.split("def _apply_stats_overlay", 1)[1].split("def ", 1)[0]
+    assert 'options.update' not in overlay
+    assert '"ui.metadata"' not in overlay
+    assert "stats_overlay_label" in overlay

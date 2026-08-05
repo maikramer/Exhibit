@@ -55,6 +55,34 @@ def test_blending_syncs_to_translucency_support_setting():
     assert 'prop == "blending"' in tabs
 
 
+def test_aa_and_blending_fanout_preserve_enum_nicks():
+    """Bool collapse True→FXAA / True→DDP must not wipe SSAA / SORT."""
+    tabs = (
+        Path(__file__).resolve().parents[1] / "src" / "window_tabs.py"
+    ).read_text(encoding="utf-8")
+    aa = tabs.split('prop == "anti-aliasing"', 1)[1].split(
+        'prop == "blending"', 1
+    )[0]
+    assert "value_nick" in aa
+    assert "value != Exb.AntiAliasing.NONE" not in aa
+    blend = tabs.split('prop == "blending"', 1)[1].split(
+        'prop == "sprites"', 1
+    )[0]
+    assert "value_nick" in blend
+    assert "value != Exb.Blending.NONE" not in blend
+    viewer = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "widgets"
+        / "f3d_viewer.py"
+    ).read_text(encoding="utf-8")
+    translucency = viewer.split('key == "translucency-support"', 1)[1].split(
+        "prop = mapping.get", 1
+    )[0]
+    assert "isinstance(value, bool)" in translucency
+    assert "getattr(Exb.Blending" in translucency
+
+
 def test_hdri_scene_fanout_props_sync_to_settings():
     tabs = (
         Path(__file__).resolve().parents[1] / "src" / "window_tabs.py"
@@ -72,6 +100,32 @@ def test_hdri_scene_fanout_props_sync_to_settings():
         assert key in tabs
     assert 'prop == "hdri-file"' in tabs
     assert 'prop == "up"' in tabs
+
+
+def test_ortho_unlit_normal_scale_fanout_and_settings():
+    tabs = (
+        Path(__file__).resolve().parents[1] / "src" / "window_tabs.py"
+    ).read_text(encoding="utf-8")
+    fanout = tabs.split("_ENGINE_FANOUT_PROPS", 1)[1].split(")", 1)[0]
+    mapping = tabs.split("_ENGINE_PROP_TO_SETTING", 1)[1].split("}", 1)[0]
+    for prop in ("orthographic", "model-unlit", "normal-scale"):
+        assert f'"{prop}"' in fanout
+        assert f'"{prop}": "{prop}"' in mapping
+    settings = (
+        Path(__file__).resolve().parents[1] / "src" / "settings_manager.py"
+    ).read_text(encoding="utf-8")
+    assert '"model-unlit": False' in settings
+
+
+def test_grid_color_fanout_and_settings_sync():
+    tabs = (
+        Path(__file__).resolve().parents[1] / "src" / "window_tabs.py"
+    ).read_text(encoding="utf-8")
+    fanout = tabs.split("_ENGINE_FANOUT_PROPS", 1)[1].split(")", 1)[0]
+    mapping = tabs.split("_ENGINE_PROP_TO_SETTING", 1)[1].split("}", 1)[0]
+    assert '"grid-color"' in fanout
+    assert '"grid-color": "grid-color"' in mapping
+    assert 'prop in ("background-color", "model-color", "grid-color")' in tabs
 
 
 def test_playing_watches_animation_adjustment_end():

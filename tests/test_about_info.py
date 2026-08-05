@@ -20,6 +20,7 @@ def test_about_comments_mentions_fork_features():
     assert "multi-tab" in text
     assert "session restore" in text
     assert "Split Compare" in text
+    assert "PostFX" in text or "bloom" in text
     assert "turntable" in text
 
 
