@@ -17,14 +17,14 @@ Branches:
 - [ ] Blender-like touchpad navigation + camera presets
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [ ] File watch / reload prompt
-- [ ] Headless CLI render + video encode
+- [~] Headless CLI render + video encode (entry in exhibit.in; needs Exb standalone port)
 - [ ] Animation names combo + default bind pose
 - [ ] Split compare
 - [ ] Session restore / recent files
 - [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
 - [ ] pytest suite + CI
 - [ ] i18n pt_BR + fork strings
-- [ ] Docs fork (ARCHITECTURE, OUTLINER, NAVIGATION, …)
+- [x] Docs fork kept + MIGRATE_LIBEXHIBIT checklist
 
 ## Estratégia
 
