@@ -22,7 +22,13 @@ class ExportMixin:
             self.send_toast(_("Could not save image"))
             return False
         try:
-            img.save(filepath)
+            # Exb may return GdkTexture (save_to_filename) or a .save() adapter.
+            if hasattr(img, "save"):
+                img.save(filepath)
+            elif hasattr(img, "save_to_filename"):
+                img.save_to_filename(filepath)
+            else:
+                raise TypeError(type(img))
         except Exception as exc:
             self.logger.error("save image failed: %s", exc)
             self.send_toast(_("Could not save image"))

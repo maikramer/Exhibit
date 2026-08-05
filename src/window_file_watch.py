@@ -38,13 +38,15 @@ class FileWatchMixin:
                 tab._blocked_peak_mtime = None
                 if peak > (tab.loaded_mtime or 0) and peak >= disk_mtime:
                     # Edit landed while block_reload; surface it now.
-                    tab.seen_disk_mtime = peak
                     if auto and tab is active:
+                        # Same rule as the live auto-reload path: do not
+                        # advance seen_disk_mtime until load succeeds.
                         self.logger.debug(
                             "auto-reload after blocked window: %s", tab.filepath
                         )
                         self._reload_tab(tab, preserve_orientation=True)
                         continue
+                    tab.seen_disk_mtime = peak
                     self._mark_tab_externally_modified(tab, peak)
                     if tab is active:
                         GLib.idle_add(self._prompt_reload_if_modified, tab)
@@ -59,11 +61,13 @@ class FileWatchMixin:
             if disk_mtime <= tab.seen_disk_mtime:
                 continue
 
-            tab.seen_disk_mtime = disk_mtime
             if auto and tab is active:
+                # Do not advance seen_disk_mtime until load succeeds — otherwise
+                # a failed warm-load permanently swallows the on-disk edit.
                 self.logger.debug(f"auto-reload {tab.filepath}")
                 self._reload_tab(tab, preserve_orientation=True)
             else:
+                tab.seen_disk_mtime = disk_mtime
                 self._mark_tab_externally_modified(tab, disk_mtime)
                 if tab is active:
                     GLib.idle_add(self._prompt_reload_if_modified, tab)
@@ -77,9 +81,13 @@ class FileWatchMixin:
         # auto-reload is off).
         return any(t.loaded and t.filepath for t in self._iter_tabs())
 
-    def update_time_stamp(self):
-        """Baseline active tab mtime after a successful load (no change event)."""
-        tab = self._active_tab()
+    def update_time_stamp(self, tab=None):
+        """Baseline mtime after a successful load (no change event).
+
+        Prefer the tab that just finished loading — with batch opens the
+        selected page may already have been restored to a sibling.
+        """
+        tab = tab or self._active_tab()
         path = (tab.filepath if tab else "") or self.filepath
         mtime = self._file_mtime(path)
         if mtime is None:
@@ -87,6 +95,7 @@ class FileWatchMixin:
         self._cached_time_stamp = mtime
         if tab is not None:
             tab.loaded_mtime = mtime
+            tab.seen_disk_mtime = mtime
             if tab.externally_modified:
                 self._clear_tab_modified(tab, mtime)
         return False

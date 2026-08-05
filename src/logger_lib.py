@@ -1,6 +1,9 @@
 import logging
 import os
 
+# Safe default before init() — WindowSettings / mixins import this early.
+logger = logging.getLogger("exhibit")
+
 
 class CustomFormatter(logging.Formatter):
     log_end = ": %(message)s"
@@ -43,10 +46,15 @@ def init():
     )
 
     ch = logging.StreamHandler()
-    ch.setLevel(logging.DEBUG)
+    # Console: INFO by default; EXHIBIT_DEBUG=1 keeps DEBUG spam for agents.
+    console_level = (
+        logging.DEBUG if os.environ.get("EXHIBIT_DEBUG") else logging.INFO
+    )
+    ch.setLevel(console_level)
 
     ch.setFormatter(CustomFormatter())
 
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("exhibit")
     logger.setLevel(logging.DEBUG)
-    logger.addHandler(ch)
+    if not any(isinstance(h, logging.StreamHandler) for h in logger.handlers):
+        logger.addHandler(ch)

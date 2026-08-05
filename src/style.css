@@ -14,32 +14,6 @@ flowbox flowboxchild {
   padding: 0px;
 }
 
-.overlay-button {
-  background-color: alpha(var(--view-bg-color), 0.6);
-  border-radius: 9999px;
-  transition: background-color 200ms ease-in-out;
-}
-
-.overlay-button button {
-  background-color: transparent;
-}
-
-.overlay-button:hover {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.06);
-}
-
-.overlay-button:active {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.14);
-}
-
-.overlay-button:checked {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.08);
-}
-
-.overlay-button:checked:hover {
-  background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.1);
-}
-
 .main-view windowcontrols image{
   background-color: mix(alpha(var(--view-bg-color), 0.7), var(--btn-color), 0.06);
 }
@@ -166,30 +140,12 @@ file-row {
   margin-right: 6px;
 }
 
-.viewer-chrome-row {
-  background: none;
-  border: none;
-  box-shadow: none;
-  padding: 0;
-}
-
-.viewer-chrome {
-  padding: 2px;
-  border-radius: 9999px;
-  background-color: alpha(var(--window-bg-color), 0.72);
-  border: 1px solid alpha(var(--border-color), 0.7);
-}
-
-/* Vertical tool rail over the viewport (sidebar / home / outliner). */
-.viewer-chrome-rail {
-  border-radius: 9999px;
-  padding: 4px 2px;
-}
-
 .object-tree-overlay-shell {
   background: none;
+  min-height: 0;
 }
 
+/* Same floating chrome as header sidebar / home / menu. */
 .overlay-button {
   background-color: alpha(var(--window-bg-color), 0.92);
   border: 1px solid alpha(var(--border-color), 0.8);
@@ -295,6 +251,7 @@ listview.object-tree-view,
 .object-tree-overlay-panel {
   padding: 8px 6px;
   min-width: 280px;
+  min-height: 320px;
 }
 
 .object-tree-overlay-panel label,

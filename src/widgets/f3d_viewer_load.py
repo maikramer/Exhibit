@@ -14,6 +14,7 @@ from ..meshopt_decompress import (
     MeshoptError,
     cleanup_decompressed,
     prepare_glb_for_load,
+    release_load_temp,
     release_prepared,
 )
 from ..gltf_scene_graph import (
@@ -32,13 +33,13 @@ class F3DLoadMixin:
     """Prepare/load/part-visibility methods mixed into ``F3DViewer``."""
 
     def _release_load_path(self, path: str | None) -> None:
-        """Drop prepare-cache retain or unlink exhibit-skinw heat temps."""
+        """Drop prepare-cache retain or unlink hide/skin adhoc temps."""
         if not path or path == getattr(self, "_loaded_filepath", None):
             return
         if os.path.basename(path).startswith("exhibit-skinw-"):
             cleanup_skin_weight_temp(path)
-        else:
-            release_prepared(path)
+            return
+        release_load_temp(path)
 
     def _restore_hdri_ambient(self) -> None:
         """Re-enable ambient after a load path that temporarily disabled it."""

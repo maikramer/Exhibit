@@ -17,13 +17,14 @@
 #
 # SPDX-License-Identifier: GPL-3.0-or-later
 
+import os
+
 from gi.repository import Adw, Gtk, Gdk, Gio, GObject
+from wand.image import Image
 
 from gettext import gettext as _
 
 from ..config import *
-
-import os
 
 
 class ImageThumbnail(Gtk.FlowBoxChild):
@@ -85,19 +86,40 @@ class FileRow(Adw.PreferencesRow):
 
     @file.setter
     def file(self, value):
-        self._file = value
+        def _path(f):
+            if f is None:
+                return None
+            try:
+                return f.get_path()
+            except Exception:
+                return None
 
-        if value is not None:
-            filename = value.get_path()
+        new_path = _path(value)
+        old_path = _path(self._file)
+        if new_path == old_path and (value is None) == (self._file is None):
+            # Same on-disk path — refresh label only, skip notify storms.
+            filename = new_path
+        else:
+            self._file = value
+            filename = new_path
+            self.notify("file")
+
+        if filename:
             self.filename_label.set_label(filename)
             self.filename_label.set_visible(True)
             self.filename_label.set_tooltip_text(filename)
             self.delete_button.set_visible(True)
         else:
             self.filename_label.set_visible(False)
+            self.filename_label.set_tooltip_text("")
             self.delete_button.set_visible(False)
 
-        self.notify("file")
+    def set_filename(self, filepath) -> None:
+        """Settings / load_hdri API: path string → Gio.File property."""
+        if not filepath:
+            self.file = None
+            return
+        self.file = Gio.File.new_for_path(str(filepath))
 
     def on_open_clicked(self, btn):
         self.on_open_file_dialog()
@@ -121,17 +143,21 @@ class FileRow(Adw.PreferencesRow):
             self.file = file
 
     def add_suggested_file(self, filepath):
-        if os.path.isfile(filepath):
-            self.suggestions_box.set_visible(True)
-
+        if not os.path.isfile(filepath):
+            return
+        try:
             file_thumbnail = self.generate_thumbnail(filepath)
-
-            hdri_thumbnail = ImageThumbnail(file_thumbnail, filepath)
-            self.suggestions_box.append(hdri_thumbnail)
-
-            self.suggested_files_n += 1
-            height = ((self.suggested_files_n + 3) // 4) * 70
-            self.suggestions_box.set_size_request(-1, height)
+        except Exception:
+            # Corrupt/unsupported HDRI must not abort suggestion population.
+            return
+        if not file_thumbnail:
+            return
+        self.suggestions_box.set_visible(True)
+        hdri_thumbnail = ImageThumbnail(file_thumbnail, filepath)
+        self.suggestions_box.append(hdri_thumbnail)
+        self.suggested_files_n += 1
+        height = ((self.suggested_files_n + 3) // 4) * 70
+        self.suggestions_box.set_size_request(-1, height)
 
     def on_image_activated(self, flow_box, child):
         self.file = child.hdri_file
@@ -170,13 +196,16 @@ class FileRow(Adw.PreferencesRow):
         thumbnail_filepath = os.path.join(HDRI_TN_PATH, thumbnail_name)
 
         if os.path.isfile(thumbnail_filepath):
-            return
+            return thumbnail_filepath
 
-        with Image(filename=hdri_file_path) as img:
-            img.thumbnail(width, height)
-            img.gamma(1.7)
-            img.brightness_contrast(0, -5)
-            img.format = 'jpeg'
-            img.save(filename=thumbnail_filepath)
+        try:
+            with Image(filename=hdri_file_path) as img:
+                img.thumbnail(width, height)
+                img.gamma(1.7)
+                img.brightness_contrast(0, -5)
+                img.format = "jpeg"
+                img.save(filename=thumbnail_filepath)
+        except Exception:
+            return None
 
         return thumbnail_filepath

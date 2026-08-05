@@ -34,8 +34,9 @@ class SettingsDialog(Adw.Dialog):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
+        self._owner = None
+        self._wired = False
 
-        # Setting up the save settings dialog
         def _on_factory_setup(_factory, list_item):
             label = Gtk.Label(xalign=0, ellipsize=3)
             list_item.set_child(label)
@@ -54,63 +55,20 @@ class SettingsDialog(Adw.Dialog):
         self.settings_column_view_value_column.get_factory().connect(
             "bind", _on_factory_bind, "value")
 
-        selection = Gtk.NoSelection.new()
-        self.settings_column_view.set_model(model=selection)
+        self.settings_column_view.set_model(Gtk.NoSelection.new())
 
-        self.save_settings_button.connect(
-            "clicked", self.on_save_settings_button_clicked)
-        self.save_settings_name_entry.connect(
-            "changed", self.on_save_settings_name_entry_changed)
-        self.save_settings_extensions_entry.connect(
-            "changed", self.on_save_settings_extensions_entry_changed)
-
-    def on_save_settings_button_clicked(self, btn):
-        # Extract view settings, name, and formats
-        view_settings = self.engine.get_view_settings()
-        other_settings = self.engine.get_other_settings()
-        name = self.save_settings_name_entry.get_text()
-        formats = self.save_settings_extensions_entry.get_text()
-
-        # Format the key
-        key = name.lower().replace(' ', '_')
-
-        # Construct the dictionary
-        settings_dict = {
-            key: {
-                "name": name,
-                "formats": f".*({formats.replace(', ', '|')})",
-                "view-settings": view_settings,
-                "other-settings": other_settings
-            }
-        }
-
-        # Save to JSON file
-        with open(self.user_configurations_path + key + '.json', 'w') as j_f:
-            json.dump(settings_dict, j_f, indent=4)
-
-        # Update configurations and menu UI
-        self.configurations.update(settings_dict)
-        item = Gio.MenuItem.new(name, "win.settings")
-        item.set_attribute_value("target", GLib.Variant.new_string(key))
-        self.settings_section.append_item(item)
-
-        self.save_dialog.close()
-
-    def on_save_settings_name_entry_changed(self, entry):
-        if entry.get_text_length() != 0:
-            self.save_settings_button.set_sensitive(True)
-        else:
-            self.save_settings_button.set_sensitive(False)
-
-    def on_save_settings_extensions_entry_changed(self, entry):
-        extensions_text = entry.get_text()
-
-        if extensions_text == "":
-            entry.remove_css_class("error")
+    def bind_to_window(self, window) -> None:
+        """Wire save controls to ``SettingsIOMixin`` on the owning window."""
+        self._owner = window
+        if self._wired or window is None:
             return
+        self.save_settings_button.connect(
+            "clicked", window.on_save_settings_button_clicked)
+        self.save_settings_name_entry.connect(
+            "changed", window.on_save_settings_name_entry_changed)
+        self.save_settings_extensions_entry.connect(
+            "changed", window.on_save_settings_extensions_entry_changed)
+        self._wired = True
 
-        entered_exts = [ext.strip() for ext in extensions_text.split(',')]
-
-        if all(ext in allowed_extensions for ext in entered_exts):
-            entry.remove_css_class("error")
-        # else:
+    def set_settings_model(self, model) -> None:
+        self.settings_column_view.set_model(Gtk.NoSelection.new(model))

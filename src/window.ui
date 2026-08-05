@@ -73,17 +73,60 @@
                                   <property name="child">
                                     <object class="AdwStatusPage">
                                       <property name="child">
-                                        <object class="GtkButton">
-                                          <style>
-                                            <class name="pill"/>
-                                            <class name="suggested-action"/>
-                                          </style>
+                                        <object class="GtkBox">
+                                          <property name="orientation">vertical</property>
+                                          <property name="spacing">18</property>
                                           <property name="halign">center</property>
-                                          <property name="label" translatable="yes">Load</property>
-                                          <signal name="clicked" handler="on_open_button_clicked"/>
+                                          <child>
+                                            <object class="GtkButton">
+                                              <style>
+                                                <class name="pill"/>
+                                                <class name="suggested-action"/>
+                                              </style>
+                                              <property name="halign">center</property>
+                                              <property name="label" translatable="yes">Open Model</property>
+                                              <signal name="clicked" handler="on_open_button_clicked"/>
+                                            </object>
+                                          </child>
+                                          <child>
+                                            <object class="GtkBox" id="recent_files_box">
+                                              <property name="orientation">vertical</property>
+                                              <property name="spacing">6</property>
+                                              <property name="visible">False</property>
+                                              <property name="width-request">320</property>
+                                              <child>
+                                                <object class="GtkLabel">
+                                                  <property name="label" translatable="yes">Recent</property>
+                                                  <property name="halign">start</property>
+                                                  <property name="xalign">0</property>
+                                                  <style>
+                                                    <class name="heading"/>
+                                                  </style>
+                                                </object>
+                                              </child>
+                                              <child>
+                                                <object class="GtkListBox" id="recent_files_list">
+                                                  <property name="selection-mode">none</property>
+                                                  <style>
+                                                    <class name="boxed-list"/>
+                                                  </style>
+                                                </object>
+                                              </child>
+                                              <child>
+                                                <object class="GtkButton" id="clear_recent_button">
+                                                  <property name="halign">end</property>
+                                                  <property name="label" translatable="yes">Clear Recent</property>
+                                                  <signal name="clicked" handler="on_clear_recent_clicked"/>
+                                                  <style>
+                                                    <class name="flat"/>
+                                                  </style>
+                                                </object>
+                                              </child>
+                                            </object>
+                                          </child>
                                         </object>
                                       </property>
-                                      <property name="description" translatable="yes">Preview your 3D models</property>
+                                      <property name="description" translatable="yes">Preview packed GLBs — meshopt, BasisU, armatures and clips. Open Folder (Ctrl+Shift+O) imports a directory; enable Restore Last Session in Loading to reopen tabs next launch.</property>
                                       <property name="hexpand">True</property>
                                       <property name="hexpand-set">True</property>
                                       <property name="icon-name">io.github.nokse22.Exhibit</property>
@@ -258,31 +301,6 @@
                                               </object>
                                             </child>
                                             <child>
-                                              <object class="AdwSwitchRow" id="ambient_occlusion_switch">
-                                                <property name="hexpand">True</property>
-                                                <property name="hexpand-set">True</property>
-                                                <property name="title" translatable="yes">Ambient Occlusion</property>
-                                                <property name="subtitle" translatable="yes">Provides approximate shadows</property>
-                                                <property name="active" bind-source="engine" bind-property="ambient-occlusion" bind-flags="bidirectional | sync-create"></property>
-                                              </object>
-                                            </child>
-                                            <child>
-                                              <object class="AdwComboRow" id="anti_aliasing_combo">
-                                                <property name="hexpand">True</property>
-                                                <property name="hexpand-set">True</property>
-                                                <property name="title" translatable="yes">Anti Aliasing</property>
-                                                <property name="selected" bind-source="engine" bind-property="anti-aliasing" bind-flags="bidirectional | sync-create"></property>
-                                                <property name="model">
-                                                  <object class="AdwEnumListModel">
-                                                    <property name="enum-type">ExbAntiAliasing</property>
-                                                  </object>
-                                                </property>
-                                                <property name="expression">
-                                                  <closure type="gchararray" function="enum_name" />
-                                                </property>
-                                              </object>
-                                            </child>
-                                            <child>
                                               <object class="AdwSwitchRow" id="hdri_ambient_switch">
                                                 <property name="hexpand">True</property>
                                                 <property name="hexpand-set">True</property>
@@ -296,7 +314,7 @@
                                                 <property name="adjustment">
                                                   <object class="GtkAdjustment">
                                                     <property name="upper">50.0</property>
-                                                    <property name="value" bind-source="engine" bind-property="light-intensity" bind-flags="bidirectional | sync-create">1.0</property>
+                                                    <property name="value" bind-source="engine" bind-property="light-intensity" bind-flags="bidirectional | sync-create">1.8</property>
                                                     <property name="step-increment">0.1</property>
                                                   </object>
                                                 </property>
@@ -304,6 +322,220 @@
                                                 <property name="digits">1</property>
                                                 <property name="hexpand-set">True</property>
                                                 <property name="title" translatable="yes">Light Intensity</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="AdwPreferencesGroup">
+                                            <property name="hexpand">True</property>
+                                            <property name="hexpand-set">True</property>
+                                            <property name="title" translatable="yes">Effects</property>
+                                            <property name="description" translatable="yes">Enable an effect, then expand to adjust its parameters</property>
+                                            <child>
+                                              <object class="AdwExpanderRow" id="ao_expander">
+                                                <property name="title" translatable="yes">Ambient Occlusion</property>
+                                                <property name="subtitle" translatable="yes">Approximate contact shadows (SSAO)</property>
+                                                <property name="show-enable-switch">True</property>
+                                                <property name="enable-expansion" bind-source="engine" bind-property="ambient-occlusion" bind-flags="bidirectional | sync-create">False</property>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="ao_intensity_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">3.0</property>
+                                                        <property name="lower">0.0</property>
+                                                        <property name="value" bind-source="engine" bind-property="ao-intensity" bind-flags="bidirectional | sync-create">1.0</property>
+                                                        <property name="step-increment">0.1</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Intensity</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="ao_radius_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">5.0</property>
+                                                        <property name="lower">0.1</property>
+                                                        <property name="value" bind-source="engine" bind-property="ao-radius" bind-flags="bidirectional | sync-create">1.0</property>
+                                                        <property name="step-increment">0.1</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Radius</property>
+                                                    <property name="subtitle" translatable="yes">Sample radius multiplier</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="ao_bias_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">5.0</property>
+                                                        <property name="lower">0.1</property>
+                                                        <property name="value" bind-source="engine" bind-property="ao-bias" bind-flags="bidirectional | sync-create">1.0</property>
+                                                        <property name="step-increment">0.1</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Bias</property>
+                                                    <property name="subtitle" translatable="yes">Self-occlusion bias multiplier</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="ao_kernel_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">512</property>
+                                                        <property name="lower">16</property>
+                                                        <property name="value" bind-source="engine" bind-property="ao-kernel-size" bind-flags="bidirectional | sync-create">200</property>
+                                                        <property name="step-increment">16</property>
+                                                        <property name="page-increment">32</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">0</property>
+                                                    <property name="title" translatable="yes">Samples</property>
+                                                    <property name="subtitle" translatable="yes">Kernel size (higher = smoother, slower)</property>
+                                                  </object>
+                                                </child>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwExpanderRow" id="aa_expander">
+                                                <property name="title" translatable="yes">Anti Aliasing</property>
+                                                <property name="subtitle" translatable="yes">Smooth jagged edges — None disables</property>
+                                                <property name="expanded">False</property>
+                                                <child>
+                                                  <object class="AdwComboRow" id="anti_aliasing_combo">
+                                                    <property name="title" translatable="yes">Mode</property>
+                                                    <property name="selected" bind-source="engine" bind-property="anti-aliasing" bind-flags="bidirectional | sync-create"></property>
+                                                    <property name="model">
+                                                      <object class="AdwEnumListModel">
+                                                        <property name="enum-type">ExbAntiAliasing</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="expression">
+                                                      <closure type="gchararray" function="enum_name" />
+                                                    </property>
+                                                  </object>
+                                                </child>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwExpanderRow" id="bloom_expander">
+                                                <property name="title" translatable="yes">Bloom</property>
+                                                <property name="subtitle" translatable="yes">Glow around bright areas</property>
+                                                <property name="show-enable-switch">True</property>
+                                                <property name="enable-expansion" bind-source="engine" bind-property="bloom" bind-flags="bidirectional | sync-create">False</property>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="bloom_threshold_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">1.0</property>
+                                                        <property name="lower">0.0</property>
+                                                        <property name="value" bind-source="engine" bind-property="bloom-threshold" bind-flags="bidirectional | sync-create">0.25</property>
+                                                        <property name="step-increment">0.05</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Threshold</property>
+                                                    <property name="subtitle" translatable="yes">Minimum brightness that blooms</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="bloom_intensity_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">5.0</property>
+                                                        <property name="lower">0.0</property>
+                                                        <property name="value" bind-source="engine" bind-property="bloom-intensity" bind-flags="bidirectional | sync-create">1.25</property>
+                                                        <property name="step-increment">0.05</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Intensity</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="bloom_radius_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">16.0</property>
+                                                        <property name="lower">1.0</property>
+                                                        <property name="value" bind-source="engine" bind-property="bloom-radius" bind-flags="bidirectional | sync-create">5.0</property>
+                                                        <property name="step-increment">0.5</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">1</property>
+                                                    <property name="title" translatable="yes">Radius</property>
+                                                    <property name="subtitle" translatable="yes">Blur spread in pixels</property>
+                                                  </object>
+                                                </child>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwExpanderRow" id="godrays_expander">
+                                                <property name="title" translatable="yes">God Rays</property>
+                                                <property name="subtitle" translatable="yes">Light shafts from bright regions</property>
+                                                <property name="show-enable-switch">True</property>
+                                                <property name="enable-expansion" bind-source="engine" bind-property="godrays" bind-flags="bidirectional | sync-create">False</property>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="godrays_intensity_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">5.0</property>
+                                                        <property name="lower">0.0</property>
+                                                        <property name="value" bind-source="engine" bind-property="godrays-intensity" bind-flags="bidirectional | sync-create">0.5</property>
+                                                        <property name="step-increment">0.05</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Intensity</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="godrays_decay_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">1.0</property>
+                                                        <property name="lower">0.8</property>
+                                                        <property name="value" bind-source="engine" bind-property="godrays-decay" bind-flags="bidirectional | sync-create">0.94</property>
+                                                        <property name="step-increment">0.01</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Decay</property>
+                                                    <property name="subtitle" translatable="yes">How fast shafts fade along the ray</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="godrays_density_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">2.0</property>
+                                                        <property name="lower">0.1</property>
+                                                        <property name="value" bind-source="engine" bind-property="godrays-density" bind-flags="bidirectional | sync-create">1.0</property>
+                                                        <property name="step-increment">0.05</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Density</property>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="AdwSpinRow" id="godrays_weight_spin">
+                                                    <property name="adjustment">
+                                                      <object class="GtkAdjustment">
+                                                        <property name="upper">1.0</property>
+                                                        <property name="lower">0.0</property>
+                                                        <property name="value" bind-source="engine" bind-property="godrays-weight" bind-flags="bidirectional | sync-create">0.4</property>
+                                                        <property name="step-increment">0.05</property>
+                                                      </object>
+                                                    </property>
+                                                    <property name="digits">2</property>
+                                                    <property name="title" translatable="yes">Weight</property>
+                                                  </object>
+                                                </child>
                                               </object>
                                             </child>
                                           </object>
@@ -504,10 +736,83 @@
                                         </child>
                                         <child>
                                           <object class="AdwPreferencesGroup">
+                                            <property name="title" translatable="yes">Inspect</property>
+                                            <property name="description" translatable="yes">Overlays for asset review</property>
                                             <child>
                                               <object class="AdwSwitchRow" id="armature_switch">
                                                 <property name="title" translatable="yes">Show Armature</property>
-                                                <property name="active" bind-source="engine" bind-property="show-armature" bind-flags="bidirectional | sync-create"></property>
+                                                <property name="subtitle" translatable="yes">X-ray skeleton (needs glTF skins; may reload)</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwSwitchRow" id="checkerboard_switch">
+                                                <property name="title" translatable="yes">Checkerboard</property>
+                                                <property name="subtitle" translatable="yes">Replace textures with UV checker (reload)</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwSwitchRow" id="normal_glyphs_switch">
+                                                <property name="title" translatable="yes">Normal Glyphs</property>
+                                                <property name="subtitle" translatable="yes">Vertex normal arrows (world-sized; disables depth)</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwSpinRow" id="normal_glyphs_scale_spin">
+                                                <property name="title" translatable="yes">Glyph Scale</property>
+                                                <property name="subtitle" translatable="yes">Arrow length relative to mesh size</property>
+                                                <property name="digits">2</property>
+                                                <property name="adjustment">
+                                                  <object class="GtkAdjustment">
+                                                    <property name="lower">0.05</property>
+                                                    <property name="upper">5.0</property>
+                                                    <property name="value">0.5</property>
+                                                    <property name="step-increment">0.05</property>
+                                                    <property name="page-increment">0.25</property>
+                                                  </object>
+                                                </property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwSwitchRow" id="display_depth_switch">
+                                                <property name="title" translatable="yes">Display Depth</property>
+                                                <property name="subtitle" translatable="yes">Linearized depth colormap (opaque mesh required)</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwSwitchRow" id="skin_weights_switch">
+                                                <property name="title" translatable="yes">Skin Weights</property>
+                                                <property name="subtitle" translatable="yes">Color mesh by WEIGHTS_0 or selected joint heat</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwComboRow" id="skin_weights_mode_combo">
+                                                <property name="title" translatable="yes">Weights Mode</property>
+                                                <property name="subtitle" translatable="yes">Magnitude, influence slot, or bone heat</property>
+                                                <property name="model">
+                                                  <object class="GtkStringList">
+                                                    <items>
+                                                      <item translatable="yes">Magnitude</item>
+                                                      <item translatable="yes">Slot 0 (primary)</item>
+                                                      <item translatable="yes">Slot 1</item>
+                                                      <item translatable="yes">Slot 2</item>
+                                                      <item translatable="yes">Slot 3</item>
+                                                      <item translatable="yes">Bone heat</item>
+                                                    </items>
+                                                  </object>
+                                                </property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwComboRow" id="skin_weights_joint_combo">
+                                                <property name="title" translatable="yes">Joint</property>
+                                                <property name="subtitle" translatable="yes">Bone for heat map (Bone heat mode)</property>
+                                                <property name="sensitive">False</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="AdwSwitchRow" id="stats_overlay_switch">
+                                                <property name="title" translatable="yes">Show Stats</property>
+                                                <property name="subtitle" translatable="yes">Height, verts, faces and scene counts</property>
                                               </object>
                                             </child>
                                           </object>
@@ -666,7 +971,7 @@
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">Always Point Up</property>
-                                            <property name="active" bind-source="viewer" bind-property="always-point-up" bind-flags="bidirectional | sync-create"></property>
+                                            <!-- Wired to WindowSettings point-up in Python (multi-tab safe). -->
                                           </object>
                                         </child>
                                         <child>
@@ -674,7 +979,7 @@
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">Up Direction</property>
-                                            <property name="selected" bind-source="engine" bind-property="up" bind-flags="bidirectional | sync-create"></property>
+                                            <!-- Wired to WindowSettings up in Python (triggers reload). -->
                                             <property name="model">
                                               <object class="AdwEnumListModel">
                                                 <property name="enum-type">ExbDirection</property>
@@ -716,10 +1021,10 @@
                                                   </object>
                                                 </child>
                                                 <child>
-                                                  <object class="GtkScale">
-                                                    <property name="digits">2</property>
+                                                  <object class="GtkScale" id="animation_time_scale">
+                                                    <property name="digits">0</property>
                                                     <property name="hexpand">true</property>
-                                                    <property name="adjustment" bind-source="engine" bind-property="animation-adjustment" bind-flags="sync-create"></property>
+                                                    <!-- Adjustment wired in Python to the active tab engine. -->
                                                   </object>
                                                 </child>
                                               </object>
@@ -741,18 +1046,24 @@
                                             <property name="subtitle" translatable="yes">When loading choose the best presets for the file</property>
                                           </object>
                                         </child>
-                                      </object>
-                                    </child>
-                                    <child>
-                                      <object class="AdwPreferencesGroup">
-                                      <property name="hexpand">True</property>
-                                      <property name="hexpand-set">True</property>
+                                      <child>
+                                          <object class="AdwSwitchRow" id="restore_session_switch">
+                                            <property name="title" translatable="yes">Restore Last Session</property>
+                                            <property name="subtitle" translatable="yes">Reopen the previous tabs on startup when no file is passed on the command line</property>
+                                          </object>
+                                        </child>
+                                      <child>
+                                          <object class="AdwSwitchRow" id="focus_existing_tab_switch">
+                                            <property name="title" translatable="yes">Focus Existing Tab</property>
+                                            <property name="subtitle" translatable="yes">Opening a model that is already open switches to that tab and flashes it instead of creating a duplicate</property>
+                                          </object>
+                                        </child>
                                       <child>
                                           <object class="AdwSwitchRow" id="automatic_reload_switch">
                                             <property name="hexpand">True</property>
                                             <property name="hexpand-set">True</property>
                                             <property name="title" translatable="yes">Reload On Change</property>
-                                            <property name="subtitle" translatable="yes">Check for file change</property>
+                                            <property name="subtitle" translatable="yes">Auto-reload the active tab when the file changes; other tabs show (modified) and ask</property>
                                           </object>
                                         </child>
                                       </object>
@@ -835,26 +1146,221 @@
                             </child>
                           </object>
                         </child>
+                        <child type="top">
+                          <object class="AdwTabBar" id="tab_bar">
+                            <property name="view">tab_view</property>
+                            <property name="autohide">True</property>
+                            <property name="expand-tabs">True</property>
+                            <style>
+                              <class name="exhibit-tab-bar"/>
+                            </style>
+                          </object>
+                        </child>
                         <property name="content">
                           <object class="AdwToastOverlay" id="toast_overlay">
                             <property name="child">
-                              <object class="GtkOverlay">
-                                <child>
-                                  <object class="ExbView" id="viewer">
-                                    <property name="engine">
-                                      <object class="ExbEngine" id="engine"/>
+                              <object class="GtkPaned" id="split_compare_main_paned">
+                                <property name="orientation">horizontal</property>
+                                <property name="wide-handle">True</property>
+                                <property name="position">10000</property>
+                                <property name="hexpand">True</property>
+                                <property name="vexpand">True</property>
+                                <property name="resize-start-child">True</property>
+                                <property name="shrink-start-child">False</property>
+                                <property name="resize-end-child">True</property>
+                                <property name="shrink-end-child">True</property>
+                                <property name="start-child">
+                                  <object class="GtkOverlay" id="viewport_overlay">
+                                    <property name="hexpand">True</property>
+                                    <property name="vexpand">True</property>
+                                    <property name="child">
+                                      <object class="AdwTabView" id="tab_view">
+                                        <property name="hexpand">True</property>
+                                        <property name="vexpand">True</property>
+                                      </object>
                                     </property>
+                                    <!-- Seed holder first so engine exists for loading bind. -->
+                                    <child type="overlay">
+                                      <object class="GtkBox" id="seed_holder">
+                                        <property name="visible">False</property>
+                                        <child>
+                                          <object class="ExbView" id="viewer">
+                                            <property name="hexpand">True</property>
+                                            <property name="vexpand">True</property>
+                                            <property name="engine">
+                                              <object class="ExbEngine" id="engine"/>
+                                            </property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
+                                    <child type="overlay">
+                                      <object class="AdwStatusPage" id="loading_status_page">
+                                        <property name="visible" bind-source="engine" bind-property="loading-file" bind-flags="sync-create">False</property>
+                                        <property name="paintable">
+                                          <object class="AdwSpinnerPaintable"/>
+                                        </property>
+                                        <property name="title">Loading</property>
+                                      </object>
+                                    </child>
+                                    <child type="overlay">
+                                      <object class="GtkBox" id="object_tree_overlay_shell">
+                                        <property name="orientation">horizontal</property>
+                                        <property name="spacing">8</property>
+                                        <property name="halign">start</property>
+                                        <property name="valign">start</property>
+                                        <!-- Cleared under floating header; shrunk when tab bar reserves top. -->
+                                        <property name="margin-top">56</property>
+                                        <property name="margin-start">8</property>
+                                        <property name="margin-bottom">8</property>
+                                        <style>
+                                          <class name="object-tree-overlay-shell"/>
+                                        </style>
+                                        <child>
+                                          <object class="GtkBox" id="left_chrome_rail">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">4</property>
+                                            <property name="valign">start</property>
+                                            <property name="halign">start</property>
+                                            <child>
+                                              <object class="GtkToggleButton" id="object_tree_toggle">
+                                                <property name="icon-name">view-list-symbolic</property>
+                                                <property name="tooltip-text" translatable="yes">Outliner</property>
+                                                <property name="visible">False</property>
+                                                <style>
+                                                  <class name="overlay-button"/>
+                                                  <class name="circular"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkRevealer" id="object_tree_revealer">
+                                            <property name="reveal-child" bind-source="object_tree_toggle" bind-property="active" bind-flags="sync-create | bidirectional">False</property>
+                                            <property name="transition-type">slide-right</property>
+                                            <property name="transition-duration">180</property>
+                                            <property name="halign">start</property>
+                                            <property name="valign">start</property>
+                                            <child>
+                                              <object class="GtkBox" id="object_tree_panel">
+                                                <property name="orientation">vertical</property>
+                                                <property name="spacing">6</property>
+                                                <property name="width-request">300</property>
+                                                <property name="height-request">420</property>
+                                                <style>
+                                                  <class name="object-tree-panel"/>
+                                                  <class name="object-tree-overlay-panel"/>
+                                                </style>
+                                                <child>
+                                                  <object class="GtkLabel">
+                                                    <property name="label" translatable="yes">Outliner</property>
+                                                    <property name="xalign">0</property>
+                                                    <style>
+                                                      <class name="heading"/>
+                                                      <class name="object-tree-overlay-text"/>
+                                                    </style>
+                                                  </object>
+                                                </child>
+                                                <child>
+                                                  <object class="GtkScrolledWindow">
+                                                    <property name="hexpand">True</property>
+                                                    <property name="vexpand">True</property>
+                                                    <property name="hscrollbar-policy">automatic</property>
+                                                    <property name="vscrollbar-policy">automatic</property>
+                                                    <style>
+                                                      <class name="object-tree-scroll"/>
+                                                    </style>
+                                                    <child>
+                                                      <object class="GtkListView" id="object_tree_view">
+                                                        <property name="hexpand">True</property>
+                                                        <property name="vexpand">True</property>
+                                                        <property name="single-click-activate">False</property>
+                                                        <property name="show-separators">False</property>
+                                                        <style>
+                                                          <class name="object-tree-view"/>
+                                                        </style>
+                                                      </object>
+                                                    </child>
+                                                  </object>
+                                                </child>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
                                   </object>
-                                </child>
-                                <child type="overlay">
-                                  <object class="AdwStatusPage" id="loading_status_page">
-                                    <property name="visible" bind-source="engine" bind-property="loading-file">False</property>
-                                    <property name="paintable">
-                                      <object class="AdwSpinnerPaintable"/>
-                                    </property>
-                                    <property name="title">Loading</property>
+                                </property>
+                                <property name="end-child">
+                                  <object class="GtkRevealer" id="split_compare_revealer">
+                                    <property name="reveal-child">False</property>
+                                    <property name="transition-type">slide-left</property>
+                                    <property name="vexpand">True</property>
+                                    <property name="hexpand">True</property>
+                                    <child>
+                                      <object class="GtkBox" id="split_compare_column">
+                                        <property name="orientation">vertical</property>
+                                        <property name="spacing">6</property>
+                                        <property name="margin-top">6</property>
+                                        <property name="margin-bottom">6</property>
+                                        <property name="margin-start">8</property>
+                                        <property name="margin-end">8</property>
+                                        <property name="width-request">280</property>
+                                        <property name="hexpand">True</property>
+                                        <property name="vexpand">True</property>
+                                        <child>
+                                          <object class="GtkBox">
+                                            <property name="orientation">horizontal</property>
+                                            <property name="spacing">12</property>
+                                            <child>
+                                              <object class="GtkLabel" id="split_compare_primary_label">
+                                                <property name="wrap">True</property>
+                                                <property name="xalign">0</property>
+                                                <property name="hexpand">True</property>
+                                                <property name="label" translatable="yes">Secondary status</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkCheckButton" id="split_compare_pin_check">
+                                                <property name="label" translatable="yes">Pin secondary model</property>
+                                                <property name="valign">center</property>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkButton" id="split_compare_swap_button">
+                                                <property name="label" translatable="yes">Swap</property>
+                                                <property name="valign">center</property>
+                                                <property name="action-name">win.split-compare-swap</property>
+                                                <property name="tooltip-text" translatable="yes">Swap active and pinned models</property>
+                                              </object>
+                                            </child>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="GtkPaned" id="split_compare_paned">
+                                            <property name="orientation">vertical</property>
+                                            <property name="wide-handle">False</property>
+                                            <property name="position">0</property>
+                                            <property name="hexpand">True</property>
+                                            <property name="vexpand">True</property>
+                                            <property name="start-child">
+                                              <object class="GtkBox">
+                                                <property name="visible">False</property>
+                                                <property name="height-request">0</property>
+                                              </object>
+                                            </property>
+                                            <property name="end-child">
+                                              <object class="GtkLabel" id="split_compare_stub">
+                                                <property name="label" translatable="yes">Secondary (stub)</property>
+                                              </object>
+                                            </property>
+                                          </object>
+                                        </child>
+                                      </object>
+                                    </child>
                                   </object>
-                                </child>
+                                </property>
                               </object>
                             </property>
                           </object>
@@ -910,12 +1416,20 @@
         <attribute name="action">win.open-new</attribute>
       </item>
       <item>
+        <attribute name="label" translatable="yes">_Open Folder</attribute>
+        <attribute name="action">win.open-folder</attribute>
+      </item>
+      <item>
         <attribute name="label" translatable="yes">_Export Image</attribute>
         <attribute name="action">win.save-as-image</attribute>
       </item>
       <item>
         <attribute name="label" translatable="yes">_Open Externally</attribute>
         <attribute name="action">app.open-external</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
+        <attribute name="action">win.preferences</attribute>
       </item>
     </section>
     <section>
@@ -946,6 +1460,18 @@
       <item>
         <attribute name="label" translatable="yes">Orthonographic</attribute>
         <attribute name="action">win.orthographic</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Sync Cameras Across Tabs</attribute>
+        <attribute name="action">win.sync-cameras</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Split Compare (Experimental)</attribute>
+        <attribute name="action">win.split-compare</attribute>
+      </item>
+      <item>
+        <attribute name="label" translatable="yes">Swap Active ↔ Pinned</attribute>
+        <attribute name="action">win.split-compare-swap</attribute>
       </item>
     </section>
     <section>

@@ -10,27 +10,30 @@ from gi.repository import Gdk
 
 from .color_parse import list_to_rgb, rgb_to_list
 
+# Indices match ExbDirection / AdwEnumListModel order (exb-global.h).
 up_dir_n_to_string = {
-    0: "-X",
-    1: "+X",
-    2: "-Y",
-    3: "+Y",
-    4: "-Z",
-    5: "+Z",
+    0: "+X",  # EXB_DIRECTION_POSITIVE_X
+    1: "-X",  # EXB_DIRECTION_NEGATIVE_X
+    2: "+Y",  # EXB_DIRECTION_POSITIVE_Y
+    3: "-Y",  # EXB_DIRECTION_NEGATIVE_Y
+    4: "+Z",  # EXB_DIRECTION_POSITIVE_Z
+    5: "-Z",  # EXB_DIRECTION_NEGATIVE_Z
 }
 
-up_dir_string_to_n = {
-    "-X": 0,
-    "+X": 1,
-    "-Y": 2,
-    "+Y": 3,
-    "-Z": 4,
-    "+Z": 5,
-}
+up_dir_string_to_n = {value: key for key, value in up_dir_n_to_string.items()}
 
 
 class SettingsUIMixin:
-    _SPRITE_TYPES = ("sphere", "gaussian", "circle", "cross", "stddev", "bound")
+    # Order must match ExbSprites / AdwEnumListModel (exb-global.h).
+    _SPRITE_TYPES = (
+        "none",
+        "sphere",
+        "gaussian",
+        "circle",
+        "stddev",
+        "bound",
+        "cross",
+    )
 
     def set_hdri_file_row(self, setting, name, enum):
         self.logger.info(f"Setting hdri file row filename to {setting.value}")
@@ -55,7 +58,13 @@ class SettingsUIMixin:
             self.window_settings.set_setting("up", "+Y", update=False)
             val = up_dir_string_to_n["+Y"]
         self.logger.info(f"Setting up direction combo to {val}")
-        self.up_direction_combo.set_selected(val)
+        if self.up_direction_combo.get_selected() == val:
+            return
+        self._block_up_combo = True
+        try:
+            self.up_direction_combo.set_selected(val)
+        finally:
+            self._block_up_combo = False
 
     def set_color_button(self, setting, name, enum, color_button):
         rgba = Gdk.RGBA()
@@ -95,6 +104,8 @@ class SettingsUIMixin:
         self.window_settings.set_setting(setting, color_list)
 
     def on_up_direction_combo_changed(self, combo, *args):
+        if getattr(self, "_block_up_combo", False):
+            return
         selected = combo.get_selected()
         direction = up_dir_n_to_string.get(selected)
         if direction is None:
@@ -153,8 +164,11 @@ class SettingsUIMixin:
     def point_sprites_type_combo_changed(self, *args):
         selected = self.point_sprites_type_combo.get_selected()
         if selected < 0 or selected >= len(self._SPRITE_TYPES):
-            value = "sphere"
+            value = "none"
         else:
             value = self._SPRITE_TYPES[selected]
         # update=False avoids combo re-entry; still emit changed-view → viewer.
         self.window_settings.set_setting("sprites-type", value, False)
+        self.window_settings.set_setting(
+            "sprite-enabled", value != "none", False
+        )

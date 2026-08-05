@@ -3,12 +3,37 @@
 
 from __future__ import annotations
 
-import f3d
-
 allowed_extensions: list[str] = []
 
-for reader in f3d.Engine.get_readers_info():
-    allowed_extensions += reader.extensions
+try:
+    import f3d
+
+    for reader in f3d.Engine.get_readers_info():
+        allowed_extensions += reader.extensions
+except Exception:
+    try:
+        from gi.repository import Exb
+
+        allowed_extensions = [e for e in Exb.get_allowed_extensions()]
+    except Exception:
+        allowed_extensions = [
+            "glb",
+            "gltf",
+            "obj",
+            "stl",
+            "fbx",
+            "ply",
+            "3ds",
+            "usd",
+            "usda",
+            "usdc",
+            "3mf",
+            "step",
+            "stp",
+            "iges",
+            "igs",
+            "off",
+        ]
 
 # Ensure packed/external glTF stays openable even if a reader omits an alias.
 for _ext in ("glb", "gltf"):

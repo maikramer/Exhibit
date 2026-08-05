@@ -20,6 +20,9 @@ from .file_patterns import allowed_extensions
 class SettingsIOMixin:
     """Configuration presets and HDRI folder setup for ``Viewer3dWindow``."""
 
+    def _settings_save_dialog(self):
+        return getattr(self, "settings_dialog", None)
+
     def setup_configurations(self):
         self.configurations = Gio.resources_lookup_data(
             '/io/github/nokse22/Exhibit/configurations.json',
@@ -87,11 +90,13 @@ class SettingsIOMixin:
                 self.logger.info(f"Added {hdri_filename}")
 
     def on_save_settings_button_clicked(self, btn):
-        # Extract view settings, name, and formats
+        dlg = self._settings_save_dialog()
+        if dlg is None:
+            return
         view_settings = self.window_settings.get_view_settings()
         other_settings = self.window_settings.get_other_settings()
-        name = self.save_settings_name_entry.get_text()
-        formats = self.save_settings_extensions_entry.get_text()
+        name = dlg.save_settings_name_entry.get_text()
+        formats = dlg.save_settings_extensions_entry.get_text()
 
         # Format the key (reject ../ and other path junk)
         key = preset_key_from_name(name)
@@ -102,7 +107,6 @@ class SettingsIOMixin:
             self.logger.error("Refusing to write preset outside configs dir")
             return
 
-        # Construct the dictionary
         settings_dict = {
             key: {
                 "name": name,
@@ -112,23 +116,21 @@ class SettingsIOMixin:
             }
         }
 
-        # Save to JSON file
         with open(filepath, 'w') as j_f:
             json.dump(settings_dict, j_f, indent=4)
 
-        # Update configurations and menu UI
         self.configurations.update(settings_dict)
         item = Gio.MenuItem.new(name, "win.settings")
         item.set_attribute_value("target", GLib.Variant.new_string(key))
         self.settings_section.append_item(item)
 
-        self.save_dialog.close()
+        dlg.close()
 
     def on_save_settings_name_entry_changed(self, entry):
-        if entry.get_text_length() != 0:
-            self.save_settings_button.set_sensitive(True)
-        else:
-            self.save_settings_button.set_sensitive(False)
+        dlg = self._settings_save_dialog()
+        if dlg is None:
+            return
+        dlg.save_settings_button.set_sensitive(entry.get_text_length() != 0)
 
     def on_save_settings_extensions_entry_changed(self, entry):
         extensions_text = entry.get_text()
@@ -145,10 +147,20 @@ class SettingsIOMixin:
             entry.add_css_class("error")
 
     def on_save_settings(self, *args):
-        self.save_settings_name_entry.set_text("")
-        self.save_settings_extensions_entry.set_text("")
-        self.save_settings_expander.set_expanded(False)
-        self.save_dialog.present(self)
+        dlg = self._settings_save_dialog()
+        if dlg is None:
+            return
+        bind = getattr(dlg, "bind_to_window", None)
+        if callable(bind):
+            bind(self)
+        set_model = getattr(dlg, "set_settings_model", None)
+        if callable(set_model):
+            set_model(self.window_settings)
+        dlg.save_settings_name_entry.set_text("")
+        dlg.save_settings_extensions_entry.set_text("")
+        dlg.save_settings_expander.set_expanded(False)
+        dlg.save_settings_button.set_sensitive(False)
+        dlg.present(self)
 
     def set_settings_from_name(self, name):
         self.logger.debug("settings from name")
@@ -226,14 +238,16 @@ class SettingsIOMixin:
     def on_delete_skybox(self, *args):
         self.window_settings.set_setting("hdri-file", "")
         self.window_settings.set_setting("hdri-skybox", False)
-        self.use_skybox_switch.set_active(False)
-        options = {
-            "hdri-file": "",
-            "hdri-skybox": False}
-        self._update_all_viewers_options(options)
+        switch = getattr(self, "use_skybox_switch", None)
+        if switch is not None:
+            switch.set_active(False)
+        self._update_all_viewers_options(
+            {"hdri-file": "", "hdri-skybox": False}
+        )
         self.check_for_options_change()
 
     def generate_thumbnail(self, hdri_file_path, width=300, height=200):
+        """Legacy helper; FileRow.generate_thumbnail is preferred for suggestions."""
         base_name = os.path.basename(hdri_file_path)
         name, _ext = os.path.splitext(base_name)
 
@@ -241,12 +255,18 @@ class SettingsIOMixin:
         thumbnail_filepath = os.path.join(
             self.hdri_thumbnails_path, thumbnail_name)
 
-        with Image(filename=hdri_file_path) as img:
-            img.thumbnail(width, height)
-            img.gamma(1.7)
-            img.brightness_contrast(0, -5)
-            img.format = 'jpeg'
-            img.save(filename=thumbnail_filepath)
+        if os.path.isfile(thumbnail_filepath):
+            return thumbnail_filepath
+        try:
+            with Image(filename=hdri_file_path) as img:
+                img.thumbnail(width, height)
+                img.gamma(1.7)
+                img.brightness_contrast(0, -5)
+                img.format = "jpeg"
+                img.save(filename=thumbnail_filepath)
+        except Exception as exc:
+            self.logger.debug("generate_thumbnail: %s", exc)
+            return None
 
         return thumbnail_filepath
 

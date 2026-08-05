@@ -119,7 +119,10 @@ class LoadMixin:
         if not pending:
             return False
         next_path = pending.pop(0)
-        self.load_file(filepath=next_path, new_tab=True)
+        # Background queue: do not steal focus when a prior tab finishes.
+        self.load_file(
+            filepath=next_path, new_tab=True, _auto_select_on_open=False
+        )
         return True
 
     def on_open_files_response(self, dialog, response):
@@ -214,12 +217,22 @@ class LoadMixin:
         kwargs["_tab"] = tab
         # Extra tabs inherit current preset — skip auto-best churn.
         kwargs["_skip_auto_best"] = bool(new_tab)
+        # Batch queue sets False so finishing a background tab does not steal focus.
+        tab._auto_select_on_open = bool(kwargs.get("_auto_select_on_open", True))
         self._update_tab_bar_visibility()
 
         # Keep 3d_page mapped so the tab GLArea can realize — F3D
         # create_external needs a current Gtk GL context. Full-page
         # startup loading unmaps the viewer and makes init impossible.
-        self.loading_label.set_label(_("Loading {}").format(basename))
+        loading_label = getattr(self, "loading_label", None)
+        if loading_label is not None:
+            loading_label.set_label(_("Loading {}").format(basename))
+        status = getattr(self, "loading_status_page", None)
+        if status is not None:
+            try:
+                status.set_title(_("Loading {}").format(basename))
+            except Exception:
+                pass
         self.stack.set_visible_child_name("3d_page")
 
         tab.stats_overlay_label.set_visible(False)
@@ -295,9 +308,15 @@ class LoadMixin:
                 self._release_warm_holder_temps(holder)
 
         # Map the target tab so its GLArea can realize during prepare.
+        # Batch opens still need a temporary select (GL realize); restore later.
         self.stack.set_visible_child_name("3d_page")
         page = self._tab_page(tab)
-        if page is not None and self.tab_view.get_selected_page() != page:
+        prefer_select = bool(kwargs.get("_auto_select_on_open", True))
+        prev_page = self.tab_view.get_selected_page()
+        if page is not None and prev_page != page:
+            if not prefer_select:
+                holder["_restore_selected_page"] = prev_page
+                tab._restore_selected_page = prev_page
             self._switching_tab = True
             self.tab_view.set_selected_page(page)
             self._switching_tab = False
@@ -318,14 +337,29 @@ class LoadMixin:
             return GLib.SOURCE_REMOVE
 
         viewer = tab.viewer
+        # Exb.Engine.load_file defers until View realize (scene NULL → stash file).
+        # Must not treat that as "loaded" or on_file_opened races an empty viewport.
         try:
+            if not viewer.get_realized():
+                if self.stack.get_visible_child_name() != "3d_page":
+                    self.stack.set_visible_child_name("3d_page")
+                attempts = int(holder.get("_realize_attempts", 0)) + 1
+                holder["_realize_attempts"] = attempts
+                # ~2s at 16ms; mirrors split-compare abort so spinner cannot stick.
+                if attempts > 120:
+                    holder["cancelled"] = True
+                    self.logger.warning(
+                        "warm load: viewer never realized for %s",
+                        kwargs.get("filepath"),
+                    )
+                    self._release_warm_holder_temps(holder)
+                    if tab._warm_load_holder is holder:
+                        tab._warm_load_holder = None
+                    self.on_file_not_opened(kwargs.get("filepath"), tab)
+                    self._unblock_reload_if_idle()
+                    return GLib.SOURCE_REMOVE
+                return GLib.SOURCE_CONTINUE
             if viewer.engine is None:
-                if not viewer.get_realized():
-                    # First open still shows startup loading; flip to 3d so
-                    # the GLArea can map, then keep polling for realize.
-                    if self.stack.get_visible_child_name() != "3d_page":
-                        self.stack.set_visible_child_name("3d_page")
-                    return GLib.SOURCE_CONTINUE
                 viewer.initialize()
         except Exception as exc:
             holder["cancelled"] = True
@@ -425,6 +459,14 @@ class LoadMixin:
             if not ok:
                 self.on_file_not_opened(filepath, tab)
                 return GLib.SOURCE_REMOVE
+            # load_file → engine.reset() wipes lights; restore shared view opts.
+            try:
+                viewer.update_options(
+                    self.window_settings.get_view_settings(),
+                    queue_render=True,
+                )
+            except Exception as exc:
+                self.logger.debug("post-load view options: %s", exc)
             load_ok = True
         except Exception as exc:
             self.logger.error(f"Error while loading into viewer: {exc}")
@@ -465,7 +507,15 @@ class LoadMixin:
         updated = push_recent(current, filepath)
         if updated != current:
             self.saved_settings.set_strv("recent-files", updated)
+        # Coalesce list rebuild across batch opens.
+        if getattr(self, "_recent_ui_idle", 0):
+            return
+        self._recent_ui_idle = GLib.idle_add(self._refresh_recent_files_ui_idle)
+
+    def _refresh_recent_files_ui_idle(self) -> bool:
+        self._recent_ui_idle = 0
         self._refresh_recent_files_ui()
+        return GLib.SOURCE_REMOVE
 
     def _persist_session_files(self) -> None:
         if not self.saved_settings.get_boolean("restore-session"):
@@ -507,18 +557,29 @@ class LoadMixin:
         self._open_model_paths(paths)
 
     def _refresh_recent_files_ui(self) -> None:
+        recent_list = getattr(self, "recent_files_list", None)
+        recent_box = getattr(self, "recent_files_box", None)
+        if recent_list is None:
+            # Upstream startup UI has no recent list yet — still prune GSettings.
+            stored = list(self.saved_settings.get_strv("recent-files"))
+            paths = existing_recent(stored)
+            if paths != stored:
+                self.saved_settings.set_strv("recent-files", paths)
+            return
+
         while True:
-            child = self.recent_files_list.get_first_child()
+            child = recent_list.get_first_child()
             if child is None:
                 break
-            self.recent_files_list.remove(child)
+            recent_list.remove(child)
 
         stored = list(self.saved_settings.get_strv("recent-files"))
         paths = existing_recent(stored)
         if paths != stored:
             # Drop missing paths so GSettings stays tidy.
             self.saved_settings.set_strv("recent-files", paths)
-        self.recent_files_box.set_visible(bool(paths))
+        if recent_box is not None:
+            recent_box.set_visible(bool(paths))
         for path in paths:
             row = Adw.ActionRow(
                 title=os.path.basename(path),
@@ -526,14 +587,15 @@ class LoadMixin:
                 activatable=True,
             )
             row.connect("activated", self._on_recent_file_activated, path)
-            self.recent_files_list.append(row)
+            recent_list.append(row)
 
     def _on_recent_file_activated(self, _row, path: str) -> None:
         if not os.path.isfile(path):
             self._refresh_recent_files_ui()
             self.on_file_not_opened(os.path.basename(path) or _("Unknown"))
             return
-        self.load_file(filepath=path)
+        # Route through the open queue so Recent never races an in-flight warm-load.
+        self._open_model_paths([path])
 
     @Gtk.Template.Callback("on_clear_recent_clicked")
     def on_clear_recent_clicked(self, *_args) -> None:
@@ -564,24 +626,43 @@ class LoadMixin:
         if page is not None:
             self._configure_tab_page(page, tab)
 
-        # Reveal the ready tab (may have been prepared off-screen).
-        if page is not None and self.tab_view.get_selected_page() != page:
+        # Reveal the ready tab, or restore the page we left for GL realize.
+        auto_select = getattr(tab, "_auto_select_on_open", True)
+        restore = getattr(tab, "_restore_selected_page", None)
+        tab._restore_selected_page = None
+        if restore is not None and not auto_select:
+            try:
+                # Keep user on the tab they were viewing during batch opens.
+                if self.tab_view.get_page_position(restore) >= 0:
+                    self._switching_tab = True
+                    self.tab_view.set_selected_page(restore)
+                    self._switching_tab = False
+            except Exception as exc:
+                self.logger.debug("restore selected page after warm load: %s", exc)
+        elif (
+            auto_select
+            and page is not None
+            and self.tab_view.get_selected_page() != page
+        ):
             self._switching_tab = True
             self.tab_view.set_selected_page(page)
             self._switching_tab = False
-        self._bind_animation_controls(tab.viewer)
+        if page is not None and self.tab_view.get_selected_page() == page:
+            self._bind_animation_controls(tab.viewer)
 
         self.no_file_loaded = False
         # Reveal tab bar only once the 2nd+ model is ready.
         chrome_changed = self._update_tab_bar_visibility()
 
-        self.update_time_stamp()
+        self.update_time_stamp(tab)
         self.change_checker.run()
 
-        self.set_title(_("Exhibit - {}").format(self.file_name))
-        self.title_widget.set_subtitle(self.file_name)
-        self.stack.set_visible_child_name("3d_page")
-        tab.viewer.grab_focus()
+        # Title/focus only when this tab is (still) the selected one.
+        if page is not None and self.tab_view.get_selected_page() == page:
+            self.set_title(_("Exhibit - {}").format(self.file_name))
+            self.title_widget.set_subtitle(self.file_name)
+            self.stack.set_visible_child_name("3d_page")
+            tab.viewer.grab_focus()
 
         self.update_background_color()
         self._remember_recent_file(tab.filepath)
@@ -589,7 +670,7 @@ class LoadMixin:
         # Advance may start the next warm-load (sets block_reload again).
         started_next = self._advance_open_queue()
         if not started_next:
-            self.block_reload = False
+            self._unblock_reload_if_idle()
         # Paint model first; sidebar extras can wait one idle tick.
         GLib.idle_add(self._post_open_sidebar_refresh)
 
@@ -598,6 +679,11 @@ class LoadMixin:
         return GLib.SOURCE_REMOVE
 
     def _post_open_sidebar_refresh(self):
+        # Only refresh chrome bound to the active tab — background batch opens
+        # must not stomp the sidebar with a sibling document's stats/combo.
+        active = self._active_tab()
+        if active is None or not getattr(active, "loaded", False):
+            return GLib.SOURCE_REMOVE
         self.refresh_animation_combo()
         self.refresh_object_tree()
         self._refresh_mesh_stats()
@@ -636,9 +722,16 @@ class LoadMixin:
         if self.no_file_loaded:
             self.set_title(_("Exhibit"))
             self.stack.set_visible_child_name("startup_page")
-            self.startup_stack.set_visible_child_name("error_page")
+            startup = getattr(self, "startup_stack", None)
+            if startup is not None:
+                try:
+                    startup.set_visible_child_name("error_page")
+                except Exception:
+                    pass
             try:
-                self.error_status_page.set_description(message)
+                page = getattr(self, "error_status_page", None)
+                if page is not None:
+                    page.set_description(message)
             except Exception as exc:
                 self.logger.debug("error_status_page update failed: %s", exc)
             # Still toast so packed-GLB prepare failures are readable.
@@ -661,7 +754,7 @@ class LoadMixin:
 
         started_next = self._advance_open_queue()
         if not started_next:
-            self.block_reload = False
+            self._unblock_reload_if_idle()
         return GLib.SOURCE_REMOVE
 
     @Gtk.Template.Callback("on_open_button_clicked")
@@ -711,12 +804,18 @@ class LoadMixin:
     def load_hdri(self, filepath):
         self.window_settings.set_setting("hdri-file", filepath)
         self.window_settings.set_setting("hdri-skybox", True)
-        self.use_skybox_switch.set_active(True)
-        self.hdri_file_row.set_filename(filepath)
-        options = {
-            "hdri-file": filepath,
-            "hdri-skybox": True}
-        self._update_all_viewers_options(options)
+        switch = getattr(self, "use_skybox_switch", None)
+        if switch is not None:
+            switch.set_active(True)
+        row = getattr(self, "hdri_file_row", None)
+        if row is not None:
+            try:
+                row.set_filename(filepath)
+            except Exception as exc:
+                self.logger.debug("hdri_file_row: %s", exc)
+        self._update_all_viewers_options(
+            {"hdri-file": filepath, "hdri-skybox": True}
+        )
         self.check_for_options_change()
 
     def reload_file(self, pres_or=False):

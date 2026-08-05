@@ -18,6 +18,7 @@ class LifecycleMixin:
         if btn is not None:
             btn.connect("clicked", self.on_home_clicked)
 
+    @Gtk.Template.Callback("on_home_clicked")
     def on_home_clicked(self, *args):
         viewer = getattr(self, "f3d_viewer", None)
         if viewer is None:
@@ -67,6 +68,10 @@ class LifecycleMixin:
             "startup-sidebar-show", window.split_view.get_show_sidebar())
         self.saved_settings.set_boolean(
             "auto-best", self.window_settings.get_setting("auto-best").value)
+        self.saved_settings.set_boolean(
+            "auto-reload",
+            self.window_settings.get_setting("auto-reload").value,
+        )
         try:
             self.saved_settings.set_boolean(
                 "split-compare-enabled",
@@ -77,4 +82,6 @@ class LifecycleMixin:
         if hasattr(self, "_persist_nav_settings_to_gschema"):
             self._persist_nav_settings_to_gschema()
         self._persist_session_files()
+        # GTK4 close-request: False = allow the window to close.
+        return False
 

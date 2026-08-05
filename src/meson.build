@@ -63,6 +63,7 @@ exhibit_sources = [
   'camera_views.py',
   'camera_sync.py',
   'cli_render.py',
+  'postfx.py',
   'mesh_stats.py',
   'logger_lib.py',
   'periodic_checker.py',

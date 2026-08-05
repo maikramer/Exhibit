@@ -96,8 +96,8 @@ class ObjectTreeMixin:
         return store
 
     def _set_object_tree_overlay_available(self, available: bool):
-        # Left chrome rail (sidebar / home / outliner) stays on the 3d page;
-        # only the outliner toggle appears when the active tree has meshes.
+        # Outliner toggle shares overlay-button style with header chrome;
+        # shown only when the active tree has meshes.
         toggle = getattr(self, "object_tree_toggle", None)
         if toggle is not None:
             toggle.set_visible(bool(available))
@@ -204,7 +204,7 @@ class ObjectTreeMixin:
             finally:
                 self._block_object_tree = False
             return
-        GLib.idle_add(self.refresh_object_tree)
+        # Row eye already matches; skip full TreeListModel rebuild (kept expand state).
 
     def on_object_part_toggled(self, check, _pspec, node_index):
         """Legacy entry point kept for tests / callers expecting checkbox API."""
@@ -220,4 +220,4 @@ class ObjectTreeMixin:
             finally:
                 self._block_object_tree = False
             return
-        GLib.idle_add(self.refresh_object_tree)
+        # No full refresh — same as _on_object_tree_visibility.

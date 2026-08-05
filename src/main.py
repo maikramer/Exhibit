@@ -22,6 +22,7 @@ import os
 import webbrowser
 
 from gi.repository import Gtk, Gio, Adw, GLib
+from . import logger_lib
 from .window import ExbWindow
 
 from gettext import gettext as _
@@ -30,13 +31,13 @@ from gettext import gettext as _
 class ExhibitApplication(Adw.Application):
     """The main application singleton class."""
 
-    open_filepath = None
-
     def __init__(self):
+        logger_lib.init()
         super().__init__(
             application_id="io.github.nokse22.Exhibit",
             flags=Gio.ApplicationFlags.HANDLES_OPEN,
         )
+        self.logger = logger_lib.logger
 
         self.lib_info = "" #f3d.Engine.get_lib_info()
         # self.backends = f3d.Engine.get_rendering_backend_list()
@@ -44,15 +45,15 @@ class ExhibitApplication(Adw.Application):
         self.create_action("quit", lambda *_: self.quit(), ["<primary>q"])
         self.create_action("about", self.on_about_action)
         self.create_action("help", self.on_help_action, ["F1"])
+        # shortcuts-dialog.ui lists app.open-preferences; forward to the window.
+        self.create_action(
+            "open-preferences",
+            self.on_open_preferences,
+            ["<primary>comma"],
+        )
 
-        self.create_action(
-            "open-hdri-folder",
-            lambda *_: webbrowser.open(self.props.active_window.hdri_path),
-        )
-        self.create_action(
-            "open-configs-folder",
-            lambda *_: webbrowser.open(self.props.active_window.configs_path),
-        )
+        self.create_action("open-hdri-folder", self.on_open_hdri_folder)
+        self.create_action("open-configs-folder", self.on_open_configs_folder)
 
         self.create_action(
             "open-new-window",
@@ -61,11 +62,13 @@ class ExhibitApplication(Adw.Application):
         )
         self.create_action(
             "open-external",
-            lambda *_: self.props.active_window.open_with_external_app(),
+            self.on_open_external,
             ["<primary><shift>e"],
         )
 
-        user_home_dir = os.environ.get("XDG_CONFIG_HOME", os.environ["HOME"])
+        user_home_dir = (
+            os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~")
+        )
         show_image_external_action = Gio.SimpleAction.new_stateful(
             "show-image-externally",
             GLib.VariantType.new("s"),
@@ -76,27 +79,79 @@ class ExhibitApplication(Adw.Application):
 
         self.saved_settings = Gio.Settings.new("io.github.nokse22.Exhibit")
 
+        theme = self.saved_settings.get_string("theme")
+        if theme in ("default", "follow"):
+            theme = "auto"
+        if theme not in ("auto", "light", "dark"):
+            theme = "auto"
+        theme_action = Gio.SimpleAction.new_stateful(
+            "theme",
+            GLib.VariantType.new("s"),
+            GLib.Variant("s", theme),
+        )
+        theme_action.connect("activate", self.on_theme_setting_changed)
+        theme_action.connect("change-state", self.on_theme_setting_changed)
+        self.add_action(theme_action)
+        self.update_theme()
+
+    def on_theme_setting_changed(self, action, state):
+        if state is None:
+            return
+        value = state.get_string()
+        if value in ("default", "follow"):
+            value = "auto"
+        if value not in ("auto", "light", "dark"):
+            return
+        action.set_state(GLib.Variant("s", value))
+        self.saved_settings.set_string("theme", value)
+        self.update_theme()
+
+    def update_theme(self):
+        manager = Adw.StyleManager.get_default()
+        match self.saved_settings.get_string("theme"):
+            case "auto" | "follow" | "default":
+                manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
+            case "light":
+                manager.set_color_scheme(Adw.ColorScheme.FORCE_LIGHT)
+            case "dark":
+                manager.set_color_scheme(Adw.ColorScheme.FORCE_DARK)
+            case _:
+                manager.set_color_scheme(Adw.ColorScheme.DEFAULT)
+
     def do_open(self, files, n_files, hint):
-        for file in files:
-            file_path = file.get_path()
-            win = ExbWindow(application=self, startup_filepath=file_path)
+        paths = []
+        for i in range(n_files):
+            path = files[i].get_path()
+            if path:
+                paths.append(path)
+        if not paths:
+            return
+        win = self.props.active_window
+        if win is None:
+            win = ExbWindow(application=self, startup_filepath=paths[0])
             win.present()
+            # Rest join the sequential open queue (warm-load / realize safe).
+            if len(paths) > 1:
+                win._open_model_paths(paths[1:])
+            return
+        win.present()
+        win._open_model_paths(paths)
 
     def show_image_external(self, _action, image_path: GLib.Variant, *args):
         try:
             image_file = Gio.File.new_for_path(image_path.get_string())
         except Exception as e:
-            self.logger.error(e)
-        else:
-            launcher = Gtk.FileLauncher.new(image_file)
+            self.logger.error("show-image-externally path: %s", e)
+            return
+        launcher = Gtk.FileLauncher.new(image_file)
 
-            def open_image_finish(_, result, *args):
-                try:
-                    launcher.launch_finish(result)
-                except Exception as e:
-                    self.logger.error(e)
+        def open_image_finish(_, result, *args):
+            try:
+                launcher.launch_finish(result)
+            except Exception as e:
+                self.logger.error("show-image-externally launch: %s", e)
 
-            launcher.launch(self.props.active_window, None, open_image_finish)
+        launcher.launch(self.props.active_window, None, open_image_finish)
 
     def on_about_action(self, *args):
         from .about_info import FORK_ISSUES, FORK_REPO, about_comments
@@ -144,17 +199,78 @@ class ExhibitApplication(Adw.Application):
         about.present(self.props.active_window)
 
     def on_help_action(self, *args):
-        Gio.AppInfo.launch_default_for_uri("help:exhibit")
+        # Flatpak / host without yelp help:exhibit → fall back to upstream docs.
+        try:
+            ok = Gio.AppInfo.launch_default_for_uri("help:exhibit")
+        except Exception as exc:
+            self.logger.debug("help:exhibit: %s", exc)
+            ok = False
+        if ok:
+            return
+        try:
+            Gio.AppInfo.launch_default_for_uri(
+                "https://github.com/Nokse22/Exhibit"
+            )
+        except Exception as exc:
+            self.logger.debug("help fallback URL: %s", exc)
+
+    def on_open_preferences(self, *_args):
+        win = self.props.active_window
+        if win is None:
+            return
+        open_prefs = getattr(win, "on_preferences_clicked", None)
+        if callable(open_prefs):
+            open_prefs()
+
+    def on_open_hdri_folder(self, *_args):
+        win = self.props.active_window
+        path = getattr(win, "hdri_path", None) if win is not None else None
+        if path:
+            webbrowser.open(path)
+
+    def on_open_configs_folder(self, *_args):
+        win = self.props.active_window
+        path = getattr(win, "configs_path", None) if win is not None else None
+        if path:
+            webbrowser.open(path)
+
+    def on_open_external(self, *_args):
+        win = self.props.active_window
+        if win is None:
+            return
+        open_ext = getattr(win, "open_with_external_app", None)
+        if callable(open_ext):
+            open_ext()
+
+    def do_startup(self):
+        Adw.Application.do_startup(self)
+        # Adw ≥1.8 auto-wires app.shortcuts from shortcuts-dialog.ui; older
+        # libadwaita (or failed resource load) leaves the menu item dead.
+        if self.lookup_action("shortcuts") is None:
+            self.create_action(
+                "shortcuts",
+                self.on_shortcuts_action,
+                ["<primary>question"],
+            )
+
+    def on_shortcuts_action(self, *_args):
+        try:
+            builder = Gtk.Builder.new_from_resource(
+                "/io/github/nokse22/Exhibit/shortcuts-dialog.ui"
+            )
+        except GLib.Error as exc:
+            logger_lib.logger.debug("shortcuts dialog resource: %s", exc)
+            return
+        dialog = builder.get_object("shortcuts_dialog")
+        if dialog is None:
+            return
+        dialog.present(self.props.active_window)
 
     def do_activate(self):
         win = self.props.active_window
         if not win:
-            if self.open_filepath:
-                win = ExbWindow(
-                    application=self, startup_filepath=self.open_filepath
-                )
-            else:
-                win = ExbWindow(application=self)
+            # File opens go through do_open (HANDLES_OPEN); activate is empty window.
+            win = ExbWindow(application=self)
         win.present()
 
     def create_action(self, name, callback, shortcuts=None, *args):

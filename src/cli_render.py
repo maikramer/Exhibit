@@ -23,6 +23,7 @@ from .meshopt_decompress import (
     prepare_glb_for_load,
     release_prepared,
 )
+from .postfx import bloom_options_from_args, build_final_shader
 
 DEFAULT_VIEWS = ("front", "right", "back", "left", "top", "isometric")
 DEFAULT_SIZE = (1024, 1024)
@@ -30,7 +31,7 @@ DEFAULT_SIZE = (1024, 1024)
 # settings_manager / PyGObject here so parser helpers stay headless-testable).
 DEFAULT_BG = (1.0, 1.0, 1.0)
 DEFAULT_GRID = True
-DEFAULT_LIGHT_INTENSITY = 1.5  # WindowSettings.default_settings["light-intensity"]
+DEFAULT_LIGHT_INTENSITY = 1.8  # WindowSettings.default_settings["light-intensity"]
 XRAY_OPACITY = 0.35
 XRAY_LINE_WIDTH = 4.0
 
@@ -165,6 +166,44 @@ def build_parser() -> argparse.ArgumentParser:
         help="Render the depth buffer as grayscale",
     )
     parser.add_argument(
+        "--bloom",
+        action="store_true",
+        help="Enable bloom post-processing (final shader)",
+    )
+    parser.add_argument(
+        "--bloom-threshold",
+        type=float,
+        default=0.25,
+        dest="bloom_threshold",
+        help="Bloom brightness threshold 0..1 (default: 0.25, post-tonemap LDR)",
+    )
+    parser.add_argument(
+        "--bloom-intensity",
+        type=float,
+        default=1.25,
+        dest="bloom_intensity",
+        help="Bloom intensity 0..5 (default: 1.25)",
+    )
+    parser.add_argument(
+        "--bloom-radius",
+        type=float,
+        default=5.0,
+        dest="bloom_radius",
+        help="Bloom blur radius in pixels 1..16 (default: 5)",
+    )
+    parser.add_argument(
+        "--godrays",
+        action="store_true",
+        help="Enable god-rays / light shafts (final shader)",
+    )
+    parser.add_argument(
+        "--godrays-intensity",
+        type=float,
+        default=0.5,
+        dest="godrays_intensity",
+        help="God-rays intensity 0..5 (default: 0.5)",
+    )
+    parser.add_argument(
         "--opacity",
         type=float,
         default=None,
@@ -197,9 +236,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--animation-index",
         type=int,
-        default=0,
+        default=-2,
         dest="animation_index",
-        help="Animation clip index (default: 0)",
+        help=(
+            "Animation clip index (-2 bind/rest pose like GUI default, "
+            "-1 all clips, >=0 clip index; default: -2)"
+        ),
     )
     parser.add_argument(
         "--animation-time",
@@ -267,12 +309,26 @@ def _build_options(
         "model.checkerboard.enable": bool(args.checkerboard),
         "model.normal_glyphs.enable": bool(args.normal_glyphs),
         "render.effect.display_depth": bool(args.display_depth),
-        "scene.animation.indices": [int(args.animation_index)],
         "render.effect.antialiasing.mode": "fxaa",
         "render.effect.tone_mapping": True,
         "render.effect.blending.mode": "ddp",
         "render.light.intensity": float(DEFAULT_LIGHT_INTENSITY),
     }
+    if bool(getattr(args, "bloom", False)) or bool(getattr(args, "godrays", False)):
+        options["render.effect.final_shader"] = build_final_shader(
+            bloom=bool(getattr(args, "bloom", False)),
+            bloom_threshold=float(getattr(args, "bloom_threshold", 0.25)),
+            bloom_intensity=float(getattr(args, "bloom_intensity", 1.25)),
+            bloom_radius=float(getattr(args, "bloom_radius", 5.0)),
+            godrays=bool(getattr(args, "godrays", False)),
+            godrays_intensity=float(getattr(args, "godrays_intensity", 0.5)),
+        )
+    anim_idx = int(args.animation_index)
+    if anim_idx == -2:
+        # Empty vector → bind/rest pose (matches GUI / Exb animation-index=-2).
+        options["scene.animation.indices"] = ""
+    else:
+        options["scene.animation.indices"] = [anim_idx]
     if args.overlay and overlay_text:
         options.update(
             {
@@ -350,7 +406,10 @@ def _render_model_exb(args: argparse.Namespace) -> str:
             eng.set_property("show-grid", bool(args.grid))
             eng.set_property("show-armature", bool(args.armature))
             eng.set_property("show-edges", bool(args.edges))
+            # -2 clears indices (bind pose); must be set before/around load.
             eng.set_property("animation-index", int(args.animation_index))
+            for prop, value in bloom_options_from_args(args).items():
+                eng.set_property(prop, value)
         except Exception as exc:
             print(f"option apply partial: {exc}", file=sys.stderr)
 
@@ -358,6 +417,20 @@ def _render_model_exb(args: argparse.Namespace) -> str:
             eng.load_file(Gio.File.new_for_path(load_path))
         except Exception as exc:
             raise SystemExit(f"Failed to load model: {exc}") from exc
+
+        # Re-assert bind pose after load (F3D may default indices to [0]).
+        if int(args.animation_index) == -2:
+            try:
+                eng.set_property("animation-index", -2)
+            except Exception as exc:
+                print(f"bind pose reassert: {exc}", file=sys.stderr)
+        elif float(args.animation_time) > 0:
+            try:
+                adj = eng.get_property("animation-adjustment")
+                if adj is not None:
+                    adj.set_value(float(args.animation_time) * 1000.0)
+            except Exception as exc:
+                print(f"animation-time apply: {exc}", file=sys.stderr)
 
         cleanup_decompressed(prepare_temp)
         prepare_temp = None

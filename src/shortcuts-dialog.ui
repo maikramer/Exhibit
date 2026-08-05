@@ -6,8 +6,23 @@
         <property name="title" translatable="yes" context="shortcut window">General</property>
           <child>
             <object class="AdwShortcutsItem">
+              <property name="title" translatable="yes" context="shortcut window">Open File</property>
+              <property name="action-name">win.open-new</property>
+              <property name="accelerator">&lt;Primary&gt;o</property>
+            </object>
+          </child>
+          <child>
+            <object class="AdwShortcutsItem">
+              <property name="title" translatable="yes" context="shortcut window">Open Folder</property>
+              <property name="action-name">win.open-folder</property>
+              <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;o</property>
+            </object>
+          </child>
+          <child>
+            <object class="AdwShortcutsItem">
               <property name="title" translatable="yes" context="shortcut window">Preferences</property>
               <property name="action-name">app.open-preferences</property>
+              <property name="accelerator">&lt;Primary&gt;comma</property>
             </object>
           </child>
           <child>
@@ -32,94 +47,67 @@
           <child>
             <object class="AdwShortcutsItem">
               <property name="title" translatable="yes">Front View</property>
-              <property name="accelerator">&lt;Primary&gt;1</property>
+              <property name="action-name">win.view-front</property>
+              <property name="accelerator">1</property>
+            </object>
+          </child>
+          <child>
+            <object class="AdwShortcutsItem">
+              <property name="title" translatable="yes">Back View</property>
+              <property name="action-name">win.view-back</property>
+              <property name="accelerator">&lt;Shift&gt;1</property>
             </object>
           </child>
           <child>
             <object class="AdwShortcutsItem">
               <property name="title" translatable="yes">Right View</property>
-              <property name="accelerator">&lt;Primary&gt;3</property>
+              <property name="action-name">win.view-right</property>
+              <property name="accelerator">3</property>
+            </object>
+          </child>
+          <child>
+            <object class="AdwShortcutsItem">
+              <property name="title" translatable="yes">Left View</property>
+              <property name="action-name">win.view-left</property>
+              <property name="accelerator">&lt;Shift&gt;3</property>
             </object>
           </child>
           <child>
             <object class="AdwShortcutsItem">
               <property name="title" translatable="yes">Top View</property>
-              <property name="accelerator">&lt;Primary&gt;7</property>
+              <property name="action-name">win.view-top</property>
+              <property name="accelerator">7</property>
             </object>
           </child>
           <child>
             <object class="AdwShortcutsItem">
               <property name="title" translatable="yes">Isometric View</property>
-              <property name="accelerator">&lt;Primary&gt;9</property>
+              <property name="action-name">win.view-isometric</property>
+              <property name="accelerator">&lt;Shift&gt;7</property>
             </object>
           </child>
           <child>
             <object class="AdwShortcutsItem">
               <property name="title" translatable="yes">Toggle Orthographic</property>
-              <property name="accelerator">&lt;Primary&gt;5</property>
-            </object>
-          </child>
-        </object>
-      </child>
-
-      <!-- Camera Movement -->
-      <child>
-        <object class="AdwShortcutsSection">
-          <property name="title" translatable="yes">Camera Movements</property>
-
-          <!-- WASD -->
-          <child>
-            <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Move Forward</property>
-              <property name="accelerator">&lt;Primary&gt;w</property>
+              <property name="action-name">win.orthographic</property>
+              <property name="accelerator">5</property>
             </object>
           </child>
           <child>
             <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Move Left</property>
-              <property name="accelerator">&lt;Primary&gt;a</property>
+              <property name="title" translatable="yes">Sync Cameras</property>
+              <property name="action-name">win.sync-cameras</property>
+              <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;c</property>
             </object>
           </child>
           <child>
             <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Move Backward</property>
-              <property name="accelerator">&lt;Primary&gt;s</property>
-            </object>
-          </child>
-          <child>
-            <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Move Right</property>
-              <property name="accelerator">&lt;Primary&gt;d</property>
-            </object>
-          </child>
-
-          <!-- Arrows -->
-          <child>
-            <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Tilt Left</property>
-              <property name="accelerator">&lt;Primary&gt;Left</property>
-            </object>
-          </child>
-          <child>
-            <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Tilt Right</property>
-              <property name="accelerator">&lt;Primary&gt;Right</property>
-            </object>
-          </child>
-          <child>
-            <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Tilt Up</property>
-              <property name="accelerator">&lt;Primary&gt;Up</property>
-            </object>
-          </child>
-          <child>
-            <object class="AdwShortcutsItem">
-              <property name="title" translatable="yes">Tilt Down</property>
-              <property name="accelerator">&lt;Primary&gt;Down</property>
+              <property name="title" translatable="yes">Split Compare</property>
+              <property name="action-name">win.split-compare</property>
+              <property name="accelerator">&lt;Primary&gt;&lt;Shift&gt;d</property>
             </object>
           </child>
         </object>
       </child>
   </object>
 </interface>
-

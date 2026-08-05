@@ -7,14 +7,15 @@
 from __future__ import annotations
 
 from gettext import gettext as _
-from gi.repository import GObject, Gtk
+from gi.repository import Gtk
 
 
 class AnimationMixin:
     def _unbind_animation_controls(self, viewer=None) -> None:
-        """Drop scrubber bindings / playing handler (optionally for one viewer)."""
+        """Drop playing handler (optionally for one viewer)."""
         log = getattr(self, "logger", None)
-        for binding in self._anim_bindings:
+        # Legacy property binds (removed); keep list clear for safety.
+        for binding in getattr(self, "_anim_bindings", []) or []:
             try:
                 binding.unbind()
             except Exception as exc:
@@ -39,20 +40,35 @@ class AnimationMixin:
                 if log:
                     log.debug("anim disconnect playing handler failed: %s", exc)
 
+    def _sync_animation_scrubber(self, viewer) -> None:
+        """Point the visible scrubber at the active tab engine adjustment (ms)."""
+        if viewer is None:
+            return
+        scale = getattr(self, "animation_time_scale", None)
+        engine = getattr(viewer, "engine", None)
+        if scale is None or engine is None:
+            return
+        try:
+            adj = engine.get_property("animation-adjustment")
+        except Exception as exc:
+            log = getattr(self, "logger", None)
+            if log:
+                log.debug("animation-adjustment: %s", exc)
+            return
+        if adj is None:
+            return
+        scale.set_adjustment(adj)
+        self.animation_time_adj = adj
+        # Keep Python range props in seconds for any remaining callers.
+        try:
+            viewer.lower_time_range = float(adj.get_lower()) / 1000.0
+            viewer.upper_time_range = float(adj.get_upper()) / 1000.0
+        except Exception:
+            pass
+
     def _bind_animation_controls(self, viewer):
         self._unbind_animation_controls()
-        flags_range = GObject.BindingFlags.BIDIRECTIONAL
-        flags_value = (
-            GObject.BindingFlags.BIDIRECTIONAL
-            | GObject.BindingFlags.SYNC_CREATE)
-        self._anim_bindings = [
-            self.animation_time_adj.bind_property(
-                "lower", viewer, "lower-time-range", flags_range),
-            self.animation_time_adj.bind_property(
-                "upper", viewer, "upper-time-range", flags_range),
-            self.animation_time_adj.bind_property(
-                "value", viewer, "animation-time", flags_value),
-        ]
+        self._sync_animation_scrubber(viewer)
         self._playing_handler_id = viewer.connect(
             "notify::playing", self.on_playing_changed)
         self.on_playing_changed()
@@ -79,7 +95,9 @@ class AnimationMixin:
         play_header = getattr(self, "play_button_headerbar", None)
         if play_header is not None:
             play_header.set_sensitive(enabled)
-        self.animation_time_scale.set_sensitive(enabled)
+        scale = getattr(self, "animation_time_scale", None)
+        if scale is not None:
+            scale.set_sensitive(enabled)
 
     def refresh_animation_combo(self):
         count = self.f3d_viewer.available_animations()
@@ -118,15 +136,10 @@ class AnimationMixin:
 
         self.animation_group.set_visible(True)
         self._set_animation_controls_sensitive(current is not None)
+        self._sync_animation_scrubber(self.f3d_viewer)
         if current is None:
-            self.animation_time_adj.set_lower(0)
-            self.animation_time_adj.set_upper(0)
             self.animation_time_scale.clear_marks()
         else:
-            lower = self.f3d_viewer.lower_time_range
-            upper = self.f3d_viewer.upper_time_range
-            self.animation_time_adj.set_lower(lower)
-            self.animation_time_adj.set_upper(upper)
             self._refresh_animation_keyframe_marks()
 
     def on_animation_combo_changed(self, *args):
@@ -148,25 +161,16 @@ class AnimationMixin:
             if not self.f3d_viewer.reset_to_bind_pose():
                 self.send_toast(_("Couldn't reset animation pose"))
             self._set_animation_controls_sensitive(False)
-            self.animation_time_adj.set_lower(0)
-            self.animation_time_adj.set_upper(0)
-            self.f3d_viewer.notify("lower-time-range")
-            self.f3d_viewer.notify("upper-time-range")
+            self._sync_animation_scrubber(self.f3d_viewer)
             self.animation_time_scale.clear_marks()
             return
 
         self._set_animation_controls_sensitive(True)
-        lower = self.f3d_viewer.lower_time_range
-        upper = self.f3d_viewer.upper_time_range
-        self.animation_time_adj.set_lower(lower)
-        self.animation_time_adj.set_upper(upper)
-        self.f3d_viewer.notify("lower-time-range")
-        self.f3d_viewer.notify("upper-time-range")
-        self.f3d_viewer.animation_time = lower
+        self._sync_animation_scrubber(self.f3d_viewer)
         self._refresh_animation_keyframe_marks()
 
     def _refresh_animation_keyframe_marks(self) -> None:
-        """Mark keyframe times on the scrubber (F3D get_animation_keyframes)."""
+        """Mark keyframe times on the scrubber (ms units, matching engine adj)."""
         scale = self.animation_time_scale
         scale.clear_marks()
         if not self.animation_group.get_visible():
@@ -174,9 +178,14 @@ class AnimationMixin:
         keyframes = self.f3d_viewer.get_animation_keyframes()
         if not keyframes:
             return
-        lower = self.animation_time_adj.get_lower()
-        upper = self.animation_time_adj.get_upper()
+        adj = self.animation_time_adj
+        lower = adj.get_lower()
+        upper = adj.get_upper()
         for time_value in keyframes:
-            if time_value < lower or time_value > upper:
+            # Viewer may report seconds; engine adj is ms.
+            mark = float(time_value)
+            if mark <= upper / 50.0:  # likely seconds if tiny vs ms upper
+                mark *= 1000.0
+            if mark < lower or mark > upper:
                 continue
-            scale.add_mark(time_value, Gtk.PositionType.TOP, None)
+            scale.add_mark(mark, Gtk.PositionType.TOP, None)

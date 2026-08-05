@@ -304,6 +304,42 @@ def release_prepared(path: str | None) -> None:
         _try_unlink_temp(path)
 
 
+_ADHOC_TEMP_PREFIXES = (
+    "exhibit-hide-",
+    "exhibit-parts-",
+    "exhibit-skinw-",
+)
+
+
+def is_adhoc_load_temp(path: str | None) -> bool:
+    """True for viewer-owned temps that are not prepare-cache managed."""
+    if not path:
+        return False
+    base = os.path.basename(path)
+    return any(base.startswith(p) for p in _ADHOC_TEMP_PREFIXES)
+
+
+def release_load_temp(path: str | None) -> None:
+    """Release a prepare-cache retain and/or unlink ad-hoc hide/parts/skin temps.
+
+    Part-hide and skin-weight reloads use ``mkstemp`` paths that never enter
+    the prepare cache — ``release_prepared`` alone left them on disk forever.
+    """
+    if not path:
+        return
+    release_prepared(path)
+    if not is_adhoc_load_temp(path):
+        return
+    # Still referenced by cache/retain? leave file (should not happen for adhoc).
+    with _prepare_lock:
+        if path in _prepare_refs or path in _prepare_cache.values():
+            return
+    try:
+        os.unlink(path)
+    except OSError:
+        pass
+
+
 def retain_prepared(path: str | None) -> bool:
     """Extra retain for a shared prepared temp (e.g. Split Compare secondary)."""
     if not path:
@@ -365,7 +401,7 @@ def _evict_prepare_cache_unlocked() -> None:
             break
 
 
-def _cache_prepared(key: tuple[str, int, int], temp_path: str) -> None:
+def _cache_prepared(key: tuple[str, int, int, int], temp_path: str) -> None:
     abs_path = key[0]
     previous = _prepare_cache_by_abs.get(abs_path)
     if previous is not None:
@@ -381,7 +417,7 @@ def _cache_prepared(key: tuple[str, int, int], temp_path: str) -> None:
     _evict_prepare_cache_unlocked()
 
 
-def _cached_prepared(key: tuple[str, int, int]) -> str | None:
+def _cached_prepared(key: tuple[str, int, int, int]) -> str | None:
     cached = _prepare_cache.get(key)
     if cached and os.path.isfile(cached):
         _prepare_cache.move_to_end(key)

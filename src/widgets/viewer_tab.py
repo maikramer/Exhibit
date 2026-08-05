@@ -10,7 +10,7 @@ from .f3d_viewer import F3DViewer
 class ViewerTab(Gtk.Overlay):
     """One document page: Exb-backed viewer + optional stats HUD."""
 
-    def __init__(self):
+    def __init__(self, viewer: F3DViewer | None = None):
         super().__init__()
         self.filepath = ""
         self.file_name = ""
@@ -28,12 +28,23 @@ class ViewerTab(Gtk.Overlay):
         self._warm_load_holder = None
         self._prepared_holder = None
 
-        self.viewer = F3DViewer()
+        if viewer is not None:
+            self.viewer = viewer
+        else:
+            self.viewer = F3DViewer()
         self.engine = self.viewer.engine
         self.viewer.add_css_class("f3d-render")
         self.viewer.set_hexpand(True)
         self.viewer.set_vexpand(True)
-        self.set_child(self.viewer)
+
+        # Bridge mode wraps a template Exb.View that must not live inside the Box.
+        if getattr(self.viewer, "_bridge", False):
+            view = self.viewer.get_view()
+            view.set_hexpand(True)
+            view.set_vexpand(True)
+            self.set_child(view)
+        else:
+            self.set_child(self.viewer)
 
         self.stats_overlay_label = Gtk.Label(
             visible=False,

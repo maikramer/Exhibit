@@ -31,23 +31,11 @@ class SettingsReactMixin:
             getattr(self, "_split_compare_viewer", None)
         )
 
-    def update_background_color(self, *args):
-        self.logger.info(
-            f"Use color is: {self.window_settings.get_setting('use-color').value}")
-        if self.window_settings.get_setting("use-color").value:
-            options = {
-                "bg-color": self.window_settings.get_setting("bg-color").value,
-            }
-            self._update_all_viewers_options(options)
-            return
-        if self.style_manager.get_dark():
-            options = {"bg-color": [0.117, 0.117, 0.117]}
-        else:
-            options = {"bg-color": [1.0, 1.0, 1.0]}
-        self._update_all_viewers_options(options)
+    # update_background_color / change_setting_state live on ExbWindow
+    # (engine-direct + preset apply). Do not duplicate here.
 
     def on_view_setting_changed(self, window_settings, setting):
-        self.logger.info(f"Setting: {setting.name} to {setting.value}")
+        self.logger.debug("Setting: %s to %s", setting.name, setting.value)
         if setting.name == "armature-enable":
             self._apply_armature_mode(bool(setting.value))
             self.check_for_options_change()
@@ -89,7 +77,7 @@ class SettingsReactMixin:
                 GLib.idle_add(self._load_split_compare_from_active)
 
     def on_other_setting_changed(self, window_settings, setting):
-        self.logger.info(f"Setting: {setting.name} to {setting.value}")
+        self.logger.debug("Setting: %s to %s", setting.name, setting.value)
         if setting.name == "use-color":
             self.update_background_color()
         elif setting.name == "point-up":
@@ -105,27 +93,11 @@ class SettingsReactMixin:
         self.check_for_options_change()
 
     def on_internal_setting_changed(self, window_settings, setting):
-        self.logger.info(f"Setting: {setting.name} to {setting.value}")
+        self.logger.debug("Setting: %s to %s", setting.name, setting.value)
         if setting.name == "auto-best":
             pass
         elif setting.name == "sidebar-show":
             pass
-
-    def change_setting_state(self, state):
-        self.logger.debug(f"Requested changing settings to {state}")
-
-        if state.get_string() == "custom":
-            self.save_settings_action.set_enabled(True)
-            self.settings_action.set_state(state)
-            return
-
-        self.set_settings_from_name(state.get_string())
-
-        self.settings_action.set_state(state)
-
-        self.save_settings_action.set_enabled(False)
-
-        self.update_background_color()
 
     def get_gimble_limit(self):
         return self.distance / 10

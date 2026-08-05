@@ -12,6 +12,7 @@ from gettext import gettext as _
 from gi.repository import Adw, Gdk, Gio, GLib, Gtk
 
 from .camera_sync import apply_camera_state_to_peers, iter_camera_sync_peers
+from .window_settings_ui import up_dir_n_to_string
 from .meshopt_decompress import (
     cleanup_decompressed,
     release_prepared,
@@ -182,10 +183,8 @@ class TabsMixin:
         while closed:
             path = closed.pop()
             if os.path.isfile(path):
-                self.load_file(
-                    filepath=path,
-                    new_tab=not getattr(self, "no_file_loaded", True),
-                )
+                # Queue-safe: never race an in-flight warm-load.
+                self._open_model_paths([path])
                 break
         self._update_tab_reopen_action()
 
@@ -305,18 +304,251 @@ class TabsMixin:
                     "split compare options update failed: %s", exc
                 )
 
+    # Sidebar widgets bind to template Exb.Engine (seed / tab 0 only). Mirror
+    # those property changes onto every other tab + split compare.
+    _ENGINE_FANOUT_PROPS = (
+        "light-intensity",
+        "hdri-ambient",
+        "hdri-skybox",
+        "hdri-file",
+        "blur-background",
+        "blur-coc",
+        "tone-mapping",
+        "ambient-occlusion",
+        "anti-aliasing",
+        "blending",
+        "volume-rendering",
+        "volume-inverse-opacity",
+        "bloom",
+        "bloom-threshold",
+        "bloom-intensity",
+        "bloom-radius",
+        "godrays",
+        "godrays-intensity",
+        "godrays-decay",
+        "godrays-density",
+        "godrays-weight",
+        "ao-radius",
+        "ao-bias",
+        "ao-kernel-size",
+        "ao-intensity",
+        "show-edges",
+        "edges-width",
+        "point-size",
+        "sprites",
+        "sprites-size",
+        "model-metallic",
+        "model-roughness",
+        "model-opacity",
+        "model-color",
+        "show-grid",
+        "grid-absolute",
+        "background-color",
+        "up",
+        "show-armature",
+    )
+
+    def _wire_engine_option_fanout(self) -> None:
+        eng = getattr(self, "engine", None)
+        if eng is None:
+            return
+        self._engine_fanout_block = False
+        for prop in self._ENGINE_FANOUT_PROPS:
+            try:
+                eng.connect(
+                    f"notify::{prop}", self._on_template_engine_option, prop
+                )
+            except Exception as exc:
+                self.logger.debug("engine fanout connect %s: %s", prop, exc)
+
+    def _copy_template_engine_to_viewer(self, viewer) -> None:
+        """Push current sidebar-bound engine props onto a secondary viewer."""
+        eng = getattr(self, "engine", None)
+        peer = getattr(viewer, "engine", None)
+        if eng is None or peer is None or peer is eng:
+            return
+        for prop in self._ENGINE_FANOUT_PROPS:
+            try:
+                peer.set_property(prop, eng.get_property(prop))
+            except Exception:
+                continue
+        if hasattr(viewer, "queue_render"):
+            viewer.queue_render()
+
+    # Engine GObject props → WindowSettings keys (presets / save parity).
+    _ENGINE_PROP_TO_SETTING = {
+        "show-grid": "grid",
+        "grid-absolute": "grid-absolute",
+        "show-armature": "armature-enable",
+        "background-color": "bg-color",
+        "model-color": "model-color",
+        "light-intensity": "light-intensity",
+        "hdri-ambient": "hdri-ambient",
+        "hdri-skybox": "hdri-skybox",
+        "hdri-file": "hdri-file",
+        "blur-background": "blur-background",
+        "blur-coc": "blur-coc",
+        "tone-mapping": "tone-mapping",
+        "ambient-occlusion": "ambient-occlusion",
+        "show-edges": "show-edges",
+        "edges-width": "edges-width",
+        "model-opacity": "model-opacity",
+        "model-metallic": "model-metallic",
+        "model-roughness": "model-roughness",
+        "bloom": "bloom",
+        "bloom-threshold": "bloom-threshold",
+        "bloom-intensity": "bloom-intensity",
+        "bloom-radius": "bloom-radius",
+        "anti-aliasing": "anti-aliasing",
+        "blending": "translucency-support",
+        "volume-rendering": "volume",
+        "volume-inverse-opacity": "inverse",
+        "sprites": "sprites-type",
+        "sprites-size": "sprites-size",
+        "point-size": "point-size",
+        "up": "up",
+    }
+
+    def _sync_engine_prop_to_window_settings(self, prop: str, value) -> None:
+        """Keep WindowSettings aligned with sidebar-bound template engine."""
+        key = self._ENGINE_PROP_TO_SETTING.get(prop)
+        if key is None:
+            return
+        setting = self.window_settings.get_setting(key)
+        if setting is None:
+            return
+        if prop in ("background-color", "model-color"):
+            try:
+                normalized = [value.red, value.green, value.blue]
+            except Exception:
+                return
+        elif prop == "hdri-file":
+            if value is None:
+                normalized = ""
+            elif hasattr(value, "get_path"):
+                try:
+                    normalized = value.get_path() or ""
+                except Exception:
+                    normalized = ""
+            else:
+                normalized = str(value)
+        elif prop == "up":
+            try:
+                normalized = up_dir_n_to_string.get(int(value), "+Y")
+            except Exception:
+                return
+        elif prop == "anti-aliasing":
+            try:
+                from gi.repository import Exb
+
+                normalized = value != Exb.AntiAliasing.NONE
+            except Exception:
+                normalized = bool(value)
+        elif prop == "blending":
+            # Sidebar Exb.Blending → preset bool translucency-support.
+            try:
+                from gi.repository import Exb
+
+                normalized = value != Exb.Blending.NONE
+            except Exception:
+                normalized = bool(value)
+        elif prop == "sprites":
+            try:
+                from gi.repository import Exb
+
+                if value == Exb.Sprites.NONE:
+                    # Also clear sprite-enabled without stomping type unnecessarily.
+                    en = self.window_settings.get_setting("sprite-enabled")
+                    if en is not None and en.value:
+                        self.window_settings.set_setting(
+                            "sprite-enabled", False, False
+                        )
+                    return
+                nick = getattr(value, "value_nick", None) or str(value)
+                normalized = str(nick).replace("_", "-").lower()
+                en = self.window_settings.get_setting("sprite-enabled")
+                if en is not None and not en.value:
+                    self.window_settings.set_setting(
+                        "sprite-enabled", True, False
+                    )
+            except Exception:
+                return
+        else:
+            normalized = value
+        try:
+            if setting.value == normalized:
+                return
+            # update=False: avoid reload storms; presets/save still see truth.
+            self.window_settings.set_setting(key, normalized, False)
+            check = getattr(self, "check_for_options_change", None)
+            if callable(check):
+                check()
+        except Exception as exc:
+            self.logger.debug("engine→settings %s: %s", prop, exc)
+
+    def _on_template_engine_option(self, engine, _pspec, prop: str) -> None:
+        if getattr(self, "_engine_fanout_block", False):
+            return
+        if getattr(self, "_switching_tab", False):
+            return
+        try:
+            value = engine.get_property(prop)
+        except Exception:
+            return
+        self._engine_fanout_block = True
+        try:
+            for tab in self._iter_tabs():
+                viewer = getattr(tab, "viewer", None)
+                peer = getattr(viewer, "engine", None) if viewer else None
+                if peer is None or peer is engine:
+                    continue
+                try:
+                    peer.set_property(prop, value)
+                    if hasattr(viewer, "queue_render"):
+                        viewer.queue_render()
+                except Exception as exc:
+                    self.logger.debug(
+                        "engine fanout %s → tab: %s", prop, exc
+                    )
+            split = getattr(self, "_split_compare_viewer", None)
+            if split is not None:
+                peer = getattr(split, "engine", None)
+                if peer is not None and peer is not engine:
+                    try:
+                        peer.set_property(prop, value)
+                        split.queue_render()
+                    except Exception as exc:
+                        self.logger.debug(
+                            "engine fanout %s → split: %s", prop, exc
+                        )
+            self._sync_engine_prop_to_window_settings(prop, value)
+        finally:
+            self._engine_fanout_block = False
+
     def _update_tab_bar_visibility(self) -> bool:
-        # Only after 2+ models are ready — during 2nd open: no bar, full-bleed
-        # loading cover on the new tab (feels like a single-file transition).
-        loaded = sum(1 for t in self._iter_tabs() if t.loaded)
-        want_bar = loaded > 1
-        was_bar = self.tab_bar.get_visible()
-        self.tab_bar.set_visible(want_bar)
+        # AdwTabBar.autohide shows the bar when n_pages > 1. Still toggle
+        # extend-content so the floating header does not eat tab-bar space.
+        want_bar = self.tab_view.get_n_pages() > 1
+        was_extend = bool(self.toolbar_view.get_extend_content_to_top_edge())
+        # Single-doc: full-bleed under header. Multi-doc: reserve top chrome.
         self.toolbar_view.set_extend_content_to_top_edge(not want_bar)
-        chrome_changed = was_bar != want_bar
+        # Force reveal even if autohide lags during the 2nd open.
+        if want_bar:
+            self.tab_bar.set_visible(True)
+        self._sync_object_tree_overlay_margin(want_bar)
+        chrome_changed = was_extend != (not want_bar)
         if chrome_changed:
             GLib.timeout_add(100, self._reframe_after_chrome_change)
         return chrome_changed
+
+    def _sync_object_tree_overlay_margin(self, tab_bar_visible: bool) -> None:
+        """Keep outliner chrome tight to header/tabs (no double top gap)."""
+        shell = getattr(self, "object_tree_overlay_shell", None)
+        if shell is None:
+            return
+        # Full-bleed under header needs clearance for sidebar/home.
+        # With tabs, content already starts below the bar — small inset only.
+        shell.set_margin_top(8 if tab_bar_visible else 56)
 
     def _reframe_after_chrome_change(self):
         """Re-fit visible cameras after tab bar steals/returns vertical space."""
@@ -450,13 +682,22 @@ class TabsMixin:
             return
         self._prompt_reload_if_modified(self._active_tab())
 
-    def _add_viewer_tab(self, title: str = "", select: bool = True) -> ViewerTab:
-        tab = ViewerTab()
+    def _add_viewer_tab(
+        self,
+        title: str = "",
+        select: bool = True,
+        viewer=None,
+    ) -> ViewerTab:
+        tab = ViewerTab(viewer=viewer)
         if title:
             tab.file_name = title
         page = self.tab_view.append(tab)
         self._configure_tab_page(page, tab)
-        tab.viewer.update_options(self.window_settings.get_view_settings())
+        # New engines start empty — seed from shared WindowSettings (and copy
+        # live template-engine values so sidebar binds stay in sync).
+        if not getattr(tab.viewer, "_bridge", False):
+            tab.viewer.update_options(self.window_settings.get_view_settings())
+            self._copy_template_engine_to_viewer(tab.viewer)
         tab.viewer.camera_changed_cb = self._on_viewer_camera_changed
         if hasattr(tab.viewer, "apply_nav_settings"):
             tab.viewer.apply_nav_settings(
@@ -825,10 +1066,12 @@ class TabsMixin:
         return False
 
     def _ensure_split_compare_viewer(self) -> None:
+        """Lazily create secondary F3DViewer in template split_compare_paned."""
         if getattr(self, "_split_compare_viewer", None) is not None:
             return
         paned = getattr(self, "split_compare_paned", None)
         if paned is None:
+            self.logger.warning("split compare: paned missing from window.ui")
             return
         stub = paned.get_end_child()
         if stub is not None and not isinstance(stub, F3DViewer):
@@ -839,6 +1082,7 @@ class TabsMixin:
         viewer.set_vexpand(True)
         try:
             viewer.update_options(self.window_settings.get_view_settings())
+            self._copy_template_engine_to_viewer(viewer)
         except Exception as exc:
             self.logger.debug("split compare options failed: %s", exc)
         if hasattr(viewer, "apply_nav_settings"):
@@ -921,21 +1165,22 @@ class TabsMixin:
 
         retained = False
         try:
-            # Secondary GLArea must realize + initialize before load_file.
-            if viewer.engine is None:
-                if not viewer.get_realized():
-                    attempts = int(
-                        getattr(self, "_split_load_realize_attempts", 0)
+            # Secondary GLArea must realize before load_file (Exb defers if
+            # scene is still NULL — same race as primary warm-load).
+            if not viewer.get_realized():
+                attempts = int(
+                    getattr(self, "_split_load_realize_attempts", 0)
+                )
+                if attempts < 120:
+                    self._split_load_realize_attempts = attempts + 1
+                    GLib.timeout_add(16, self._load_split_compare_from_active)
+                else:
+                    self._split_load_realize_attempts = 0
+                    self.logger.warning(
+                        "split compare: secondary viewer never realized"
                     )
-                    if attempts < 120:
-                        self._split_load_realize_attempts = attempts + 1
-                        GLib.timeout_add(16, self._load_split_compare_from_active)
-                    else:
-                        self._split_load_realize_attempts = 0
-                        self.logger.warning(
-                            "split compare: secondary viewer never realized"
-                        )
-                    return False
+                return False
+            if viewer.engine is None:
                 viewer.initialize()
             self._split_load_realize_attempts = 0
 
@@ -943,6 +1188,7 @@ class TabsMixin:
             need_load = already not in (filepath, prepared)
             if need_load:
                 viewer.update_options(self.window_settings.get_view_settings())
+                self._copy_template_engine_to_viewer(viewer)
                 # Secondary shares primary prepared temp. retain_prepared bumps
                 # refs; on success viewer keeps it via _prepared_path; on False
                 # return load_file already released the shared path.
