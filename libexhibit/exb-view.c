@@ -38,6 +38,11 @@ typedef struct
 
   bool always_point_up;
   bool interactive;
+  bool invert_x;
+  bool invert_y;
+  gdouble orbit_sensitivity;
+  gdouble zoom_sensitivity;
+  gdouble pan_sensitivity;
 
   gdouble prev_scale;
   gdouble drag_prev_x;
@@ -54,9 +59,14 @@ typedef enum
   PROP_ENGINE = 1,
   PROP_ALWAYS_POINT_UP,
   PROP_INTERACTIVE,
+  PROP_INVERT_X,
+  PROP_INVERT_Y,
+  PROP_ORBIT_SENSITIVITY,
+  PROP_ZOOM_SENSITIVITY,
+  PROP_PAN_SENSITIVITY,
 } ExbViewProps;
 
-static GParamSpec *props[PROP_INTERACTIVE + 1];
+static GParamSpec *props[PROP_PAN_SENSITIVITY + 1];
 
 static void
 exb_view_set_engine (ExbView   *self,
@@ -102,6 +112,26 @@ exb_view_get_property (GObject    *object,
       g_value_set_boolean (value, priv->interactive);
       break;
 
+    case PROP_INVERT_X:
+      g_value_set_boolean (value, priv->invert_x);
+      break;
+
+    case PROP_INVERT_Y:
+      g_value_set_boolean (value, priv->invert_y);
+      break;
+
+    case PROP_ORBIT_SENSITIVITY:
+      g_value_set_double (value, priv->orbit_sensitivity);
+      break;
+
+    case PROP_ZOOM_SENSITIVITY:
+      g_value_set_double (value, priv->zoom_sensitivity);
+      break;
+
+    case PROP_PAN_SENSITIVITY:
+      g_value_set_double (value, priv->pan_sensitivity);
+      break;
+
     default:
       g_assert_not_reached ();
     }
@@ -126,6 +156,26 @@ exb_view_set_property (GObject      *object,
 
     case PROP_INTERACTIVE:
       priv->interactive = g_value_get_boolean (value);
+      break;
+
+    case PROP_INVERT_X:
+      priv->invert_x = g_value_get_boolean (value);
+      break;
+
+    case PROP_INVERT_Y:
+      priv->invert_y = g_value_get_boolean (value);
+      break;
+
+    case PROP_ORBIT_SENSITIVITY:
+      priv->orbit_sensitivity = g_value_get_double (value);
+      break;
+
+    case PROP_ZOOM_SENSITIVITY:
+      priv->zoom_sensitivity = g_value_get_double (value);
+      break;
+
+    case PROP_PAN_SENSITIVITY:
+      priv->pan_sensitivity = g_value_get_double (value);
       break;
 
     case PROP_ENGINE:
@@ -247,7 +297,12 @@ on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
   if (!priv->interactive)
     return TRUE;
 
-  exb_engine_zoom (priv->engine, 1.0 - 0.1 * dy);
+  {
+    gdouble factor = 1.0 - (0.1 * dy * priv->zoom_sensitivity);
+    if (priv->invert_y)
+      factor = 1.0 - (0.1 * (-dy) * priv->zoom_sensitivity);
+    exb_engine_zoom (priv->engine, factor);
+  }
 
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
   return TRUE;
@@ -274,7 +329,8 @@ on_zoom_changed (ExbView *self,
   if (!priv->interactive)
     return;
 
-  exb_engine_zoom (priv->engine, (scale - priv->prev_scale) * 0.1);
+  exb_engine_zoom (priv->engine,
+                   (scale - priv->prev_scale) * 0.1 * priv->zoom_sensitivity);
 
   priv->prev_scale = scale;
 
@@ -308,19 +364,40 @@ on_drag_update (ExbView        *self,
   dx = offset_x - priv->drag_prev_x;
   dy = offset_y - priv->drag_prev_y;
 
+  if (priv->invert_x)
+    dx = -dx;
+  if (priv->invert_y)
+    dy = -dy;
+
   button = gtk_gesture_single_get_current_button (GTK_GESTURE_SINGLE (gesture));
 
-  if (button == 1)
-    {
-      if (!priv->always_point_up)
-        exb_engine_rotate (priv->engine, dx, dy);
-      else
-        exb_engine_rotate_with_limit (priv->engine, dx, dy);
-    }
-  else if (button == 2)
-    {
-      exb_engine_pan (priv->engine, dx, dy);
-    }
+  {
+    GdkModifierType mods = gtk_event_controller_get_current_event_state (
+        GTK_EVENT_CONTROLLER (gesture));
+    gboolean shift = (mods & GDK_SHIFT_MASK) != 0;
+    gboolean ctrl = (mods & GDK_CONTROL_MASK) != 0;
+
+    /* Blender-ish: Shift+drag pans, Ctrl+drag zooms, else orbit / MMB pan. */
+    if (ctrl && (button == 1 || button == 2))
+      {
+        exb_engine_zoom (priv->engine, 1.0 - (0.01 * dy * priv->zoom_sensitivity));
+      }
+    else if ((shift && button == 1) || button == 2)
+      {
+        exb_engine_pan (priv->engine,
+                        dx * priv->pan_sensitivity,
+                        dy * priv->pan_sensitivity);
+      }
+    else if (button == 1)
+      {
+        dx *= priv->orbit_sensitivity;
+        dy *= priv->orbit_sensitivity;
+        if (!priv->always_point_up)
+          exb_engine_rotate (priv->engine, dx, dy);
+        else
+          exb_engine_rotate_with_limit (priv->engine, dx, dy);
+      }
+  }
 
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
 
@@ -337,6 +414,11 @@ exb_view_init (ExbView *self)
 
   priv->always_point_up = TRUE;
   priv->interactive = TRUE;
+  priv->invert_x = FALSE;
+  priv->invert_y = FALSE;
+  priv->orbit_sensitivity = 1.0;
+  priv->zoom_sensitivity = 1.0;
+  priv->pan_sensitivity = 1.0;
   priv->engine_is_initialized = FALSE;
 
   gtk_gl_area_set_allowed_apis (GTK_GL_AREA (self), GDK_GL_API_GL);
@@ -367,9 +449,9 @@ exb_view_init (ExbView *self)
   gtk_widget_add_controller (GTK_WIDGET (self),
                              GTK_EVENT_CONTROLLER (priv->zoom_gesture));
 
+  /* Smooth + discrete so touchpads and mice both work (fork touchpad nav). */
   priv->scroll_controller =
-      gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_VERTICAL |
-                                       GTK_EVENT_CONTROLLER_SCROLL_DISCRETE);
+      gtk_event_controller_scroll_new (GTK_EVENT_CONTROLLER_SCROLL_VERTICAL);
   g_signal_connect_object (priv->scroll_controller, "scroll",
                            G_CALLBACK (on_scroll), self, G_CONNECT_DEFAULT);
   gtk_widget_add_controller (GTK_WIDGET (self),
@@ -404,6 +486,36 @@ exb_view_class_init (ExbViewClass *klass)
                             NULL, NULL,
                             TRUE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_INVERT_X] =
+      g_param_spec_boolean ("invert-x",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_INVERT_Y] =
+      g_param_spec_boolean ("invert-y",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_ORBIT_SENSITIVITY] =
+      g_param_spec_double ("orbit-sensitivity",
+                           NULL, NULL,
+                           0.25, 4.0, 1.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_ZOOM_SENSITIVITY] =
+      g_param_spec_double ("zoom-sensitivity",
+                           NULL, NULL,
+                           0.25, 4.0, 1.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_PAN_SENSITIVITY] =
+      g_param_spec_double ("pan-sensitivity",
+                           NULL, NULL,
+                           0.25, 4.0, 1.0,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   g_object_class_install_properties (object_class, G_N_ELEMENTS (props), props);
 }

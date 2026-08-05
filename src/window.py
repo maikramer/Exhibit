@@ -234,6 +234,7 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
 
         self._setup_minimal_tabs()
         self._setup_minimal_outliner()
+        self._apply_nav_settings_from_gschema()
 
         if startup_filepath:
             log.info(f"startup file detected: {startup_filepath}")
@@ -460,6 +461,30 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
 
     def _on_new_tab_action(self, *args):
         self.open_file_chooser()
+
+    def _apply_nav_settings_from_gschema(self):
+        """Push fork nav prefs onto Exb.View (invert / sensitivity / modifiers)."""
+        try:
+            self.viewer.set_property(
+                "invert-x", settings.get_boolean("nav-invert-x")
+            )
+            self.viewer.set_property(
+                "invert-y", settings.get_boolean("nav-invert-y")
+            )
+            self.viewer.set_property(
+                "orbit-sensitivity",
+                settings.get_double("nav-orbit-sensitivity"),
+            )
+            self.viewer.set_property(
+                "zoom-sensitivity",
+                settings.get_double("nav-zoom-sensitivity"),
+            )
+            self.viewer.set_property(
+                "pan-sensitivity",
+                settings.get_double("nav-pan-sensitivity"),
+            )
+        except Exception as exc:
+            log.debug("nav settings: %s", exc)
 
     def _setup_minimal_outliner(self):
         """Floating outliner panel over the viewport (fork ObjectTreeMixin)."""

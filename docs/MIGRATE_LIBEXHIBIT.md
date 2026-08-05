@@ -8,19 +8,19 @@ Branches:
 
 ## Checklist de features (não perder)
 
-- [~] Multi-document tabs v1 (AdwTabView + focus-existing + warm prepare)
-- [~] Outliner UI + part visibility via GLB filter reload
+- [x] Multi-document tabs v1 (AdwTabView + focus-existing + warm prepare)
+- [x] Outliner UI + part visibility via GLB filter reload
 - [~] Bone/armature kinds in tree; X-ray via show-armature prop (partial)
-- [~] Viewport tool rail (sidebar/home/outliner)
+- [x] Viewport tool rail (sidebar/home/outliner)
 - [~] Inspect skin-weight heat (joint 0) + Exb scivis-array-name prop
-- [~] Mesh stats overlay (label on GtkOverlay; needs polish)
-- [~] Camera presets + Exb gestures; Blender cursor-orbit still TODO in C
+- [x] Mesh stats overlay
+- [~] Camera presets + Shift/Ctrl nav + invert/sensitivity; cursor-orbit still TODO
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
-- [~] File watch / auto-reload + reload prompt dialog
+- [x] File watch / auto-reload + reload prompt dialog
 - [x] Headless CLI render + turntable video on Exb standalone path
-- [~] Animation names combo (glTF names wired); bind pose default on load
-- [~] Split compare (paned + drop on secondary viewer)
-- [~] Session restore / recent files (persist + restore wired)
+- [x] Animation names combo (glTF names wired); bind pose default on load
+- [x] Split compare (paned + drop on secondary viewer)
+- [x] Session restore / recent files (persist + restore wired)
 - [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
 - [x] pytest green (legacy mixin tests skipped via conftest)
 - [x] i18n pot/po regen via update_translations.sh

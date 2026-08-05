@@ -18,6 +18,10 @@ def test_exb_view_has_orbit_pan_zoom_gestures():
     assert "exb_engine_pan" in src
     assert "exb_engine_zoom" in src
     assert "gtk_event_controller_scroll_new" in src
+    assert "invert-x" in src
+    assert "orbit-sensitivity" in src
+    assert "GDK_SHIFT_MASK" in src
+    assert "GDK_CONTROL_MASK" in src
 
 
 def test_shim_stores_nav_settings():
