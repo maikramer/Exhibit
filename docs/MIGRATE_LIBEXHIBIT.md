@@ -33,3 +33,17 @@ Branches:
 3. Re-wire UI/engine: `ExbView`/`ExbEngine` no lugar de `f3d_viewer`
 4. Portar feature a feature; marcar checklist
 5. Sem PR para Nokse22 — fork separado
+
+
+## Bloqueios Exb C API
+
+Estas features do fork precisam de API nova em `libexhibit` (C), não só Python:
+
+- Part visibility / outliner hide (scene buffers / node hide)
+- Skin-weight heat maps (in-memory GLB reload)
+- Blender-like nav (pointer world hit, orbit around cursor) — hoje Exb.View tem orbit/pan/zoom simples
+- Warm-load multi-engine prepare race (parcialmente possível em Python)
+
+## Em andamento
+
+Flatpak build local (runtime 50) — VTK/F3D demora.
