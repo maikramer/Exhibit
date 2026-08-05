@@ -35,10 +35,11 @@ from gi.repository import Exb
 from wand.image import Image
 from pathlib import Path
 
-from .file_row import FileRow
-from .settings_dialog import SettingsDialog
+from .widgets.file_row import FileRow
+from .widgets.settings_dialog import SettingsDialog
 from .config import *
-from .theme_switcher import ThemeSwitcher
+from .widgets.theme_switcher import ThemeSwitcher
+from .meshopt_decompress import prepare_glb_for_load, release_prepared
 
 from gettext import gettext as _
 
@@ -102,6 +103,12 @@ class ExbWindow(Adw.ApplicationWindow):
     no_file_loaded = True
 
     _cached_time_stamp = 0
+
+    # Compatibility aliases while fork mixins are re-wired onto Exb.
+    @property
+    def f3d_viewer(self):
+        return self.viewer
+
 
     def __init__(self, application=None, startup_filepath=None):
         super().__init__(application=application)
@@ -276,22 +283,46 @@ class ExbWindow(Adw.ApplicationWindow):
             return
 
         filepath = file.get_path()
+        self.filepath = filepath or ""
+        load_path = filepath
+
+        # Fork prepare pipeline: meshopt / quantization / KTX2 before engine load.
+        if filepath:
+            try:
+                load_path, _legacy_temp = prepare_glb_for_load(filepath)
+            except Exception as e:
+                log.warning("GLB prepare failed for %s: %s", filepath, e)
+                load_path = filepath
+
+        load_gio = (
+            Gio.File.new_for_path(load_path)
+            if load_path and load_path != filepath
+            else file
+        )
 
         self.engine.reset()
         preset = self.presets.get_default_for(filepath)
         self.engine.apply_preset(preset)
 
+        self.loading_status_page.set_description(
+            _("Loading {}").format(os.path.basename(filepath)))
+
         try:
-            result = self.engine.load_file(file)
+            self.engine.load_file(load_gio)
         except Exception as e:
-            log.warn(e)
+            log.warning("%s", e)
+            if load_path and load_path != filepath:
+                release_prepared(load_path)
             self.on_file_not_opened(filepath)
             return
 
-        self.on_file_opened()
+        # Retain prepared path until next successful load / window close.
+        prev = getattr(self, "_prepared_load_path", None)
+        if prev and prev != load_path:
+            release_prepared(prev)
+        self._prepared_load_path = load_path if load_path != filepath else None
 
-        self.loading_status_page.set_description(
-            _("Loading {}").format(os.path.basename(filepath)))
+        self.on_file_opened()
 
     def on_file_opened(self):
         log.debug("on file opened")

@@ -18,7 +18,8 @@ from .meshopt_decompress import (
     retain_prepared,
 )
 from .warm_load import cancel_warm_load_holder, release_warm_holder_temps
-from .widgets import F3DViewer, ViewerTab
+from .widgets.f3d_viewer import F3DViewer
+from .widgets.viewer_tab import ViewerTab
 
 
 class TabsMixin:

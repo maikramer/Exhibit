@@ -15,13 +15,13 @@ Branches:
 - [ ] Inspect overlays + skin-weight heat maps
 - [ ] Mesh stats overlay
 - [ ] Blender-like touchpad navigation + camera presets
-- [ ] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU
+- [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [ ] File watch / reload prompt
 - [ ] Headless CLI render + video encode
 - [ ] Animation names combo + default bind pose
 - [ ] Split compare
 - [ ] Session restore / recent files
-- [ ] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
+- [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
 - [ ] pytest suite + CI
 - [ ] i18n pt_BR + fork strings
 - [ ] Docs fork (ARCHITECTURE, OUTLINER, NAVIGATION, …)

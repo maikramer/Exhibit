@@ -8,7 +8,7 @@ from .f3d_viewer import F3DViewer
 
 
 class ViewerTab(Gtk.Overlay):
-    """One document page: F3D viewer + optional stats HUD."""
+    """One document page: Exb-backed viewer + optional stats HUD."""
 
     def __init__(self):
         super().__init__()
@@ -26,8 +26,10 @@ class ViewerTab(Gtk.Overlay):
         self._reload_dialog_open = False
         # In-flight warm load holder (cancelled on tab close / replace load).
         self._warm_load_holder = None
+        self._prepared_holder = None
 
         self.viewer = F3DViewer()
+        self.engine = self.viewer.engine
         self.viewer.add_css_class("f3d-render")
         self.viewer.set_hexpand(True)
         self.viewer.set_vexpand(True)

@@ -21,7 +21,7 @@ from gi.repository import Adw, Gtk, Gdk, Gio, GObject
 
 from gettext import gettext as _
 
-from .config import *
+from ..config import *
 
 import os
 
