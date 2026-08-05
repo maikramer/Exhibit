@@ -432,19 +432,44 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         page.set_title(os.path.basename(path))
         self._tabs_by_page[page] = tab
         self.tab_view.set_selected_page(page)
-        ok = tab.viewer.load_file(path)
-        if not ok:
-            self.tab_view.close_page(page)
+
+        # Warm prepare on a worker, then load on the UI thread.
+        self.block_reload = True
+        self.loading_status_page.set_description(
+            _("Loading {}").format(os.path.basename(path)))
+
+        def _prepare():
+            try:
+                load_path, _legacy = prepare_glb_for_load(path)
+                return load_path
+            except Exception as exc:
+                log.warning("warm prepare failed: %s", exc)
+                return path
+
+        def _finish(load_path):
+            ok = tab.viewer.load_file(path, prepared_path=load_path)
+            self.block_reload = False
+            if not ok:
+                self.tab_view.close_page(page)
+                self.send_toast(_("Can't open") + " " + os.path.basename(path))
+                return False
+            tab.filepath = path
+            tab.file_name = os.path.basename(path)
+            tab.loaded = True
+            self.filepath = path
+            self.file_name = tab.file_name
+            self.no_file_loaded = False
+            self.stack.set_visible_child_name("3d_page")
+            self._update_stats_overlay()
+            self._remember_recent(path)
             return False
-        tab.filepath = path
-        tab.file_name = os.path.basename(path)
-        tab.loaded = True
-        self.filepath = path
-        self.file_name = tab.file_name
-        self.no_file_loaded = False
+
+        def _worker():
+            load_path = _prepare()
+            GLib.idle_add(_finish, load_path)
+
+        threading.Thread(target=_worker, daemon=True).start()
         self.stack.set_visible_child_name("3d_page")
-        self._update_stats_overlay()
-        self._remember_recent(path)
         return True
 
     def setup_hdri_folder(self):
