@@ -352,27 +352,64 @@ class ExbWindow(Adw.ApplicationWindow):
         self.update_background_color()
 
     def update_animation_ui(self):
-        if self.engine.get_animations_n() == 0:
-            self.animation_group.set_visible(False)
+        # Clear existing rows (iterate backwards — Gio.ListModel).
+        while self.animation_combo_model.get_n_items() > 0:
+            self.animation_combo_model.remove(0)
 
-            for i, s in enumerate(self.animation_combo_model):
-                self.animation_combo_model.remove(i)
-        else:
-            self.animation_group.set_visible(True)
+        n = self.engine.get_animations_n()
+        if n == 0:
+            self.animation_group.set_visible(False)
+            return
+
+        self.animation_group.set_visible(True)
+        names = self._animation_names_from_file(self.filepath, n)
+        for name in names:
+            self.animation_combo_model.append(name)
+
+    def _animation_names_from_file(self, filepath, count):
+        """Prefer glTF animation names; fall back to numbered clips."""
+        names = []
+        try:
+            if filepath and str(filepath).lower().endswith((".glb", ".gltf")):
+                from .gltf_scene_graph import _load_gltf
+
+                gltf = _load_gltf(filepath) or {}
+                anims = gltf.get("animations") or []
+                for i, anim in enumerate(anims[:count]):
+                    if isinstance(anim, dict):
+                        names.append(anim.get("name") or str(i))
+                    else:
+                        names.append(str(i))
+        except Exception as exc:
+            log.debug("animation names: %s", exc)
+        while len(names) < count:
+            names.append(str(len(names)))
+        return names
 
     def send_toast(self, message):
         toast = Adw.Toast(title=message, timeout=2)
         self.toast_overlay.add_toast(toast)
 
     def save_as_image(self, filepath):
-        img = self.viewer.render_image()
-        img.save(filepath)
+        texture = self.engine.render_texture()
+        if texture is None:
+            self.send_toast(_("Couldn't save image"))
+            return
+        texture.save_to_filename(filepath)
 
     def open_save_file_chooser(self, *args):
         dialog = Gtk.FileDialog(
             title=_("Save File"),
             initial_name=self.file_name.split(".")[0] + ".png",
         )
+        # Seed dialog from model folder when possible (fork UX).
+        if self.filepath:
+            try:
+                parent = Gio.File.new_for_path(self.filepath).get_parent()
+                if parent is not None:
+                    dialog.set_initial_folder(parent)
+            except Exception as exc:
+                log.debug("save dialog folder: %s", exc)
         dialog.save(self, None, self.on_save_file_response)
 
     def on_save_file_response(self, dialog, response):

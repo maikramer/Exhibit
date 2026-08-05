@@ -68,6 +68,10 @@ class F3DLoadMixin:
             except Exception as exc:
                 if self.logger:
                     self.logger.debug("force_reader reset failed: %s", exc)
+        if f3d is None:
+            if self.logger:
+                self.logger.debug("force_reader clear skipped (no Python f3d)")
+            return
         kept = {key: opts[key] for key in list(opts.keys()) if key != "scene.force_reader"}
         fresh = f3d.Options()
         for key, value in kept.items():
