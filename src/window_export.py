@@ -3,9 +3,10 @@
 
 from __future__ import annotations
 
+import os
 from gettext import gettext as _
 
-from gi.repository import Adw, GLib, Gtk
+from gi.repository import Adw, Gio, GLib, Gtk
 
 
 class ExportMixin:
@@ -28,11 +29,29 @@ class ExportMixin:
             return False
         return True
 
+    def _export_suggested_name(self) -> str:
+        name = getattr(self, "file_name", None) or "exhibit"
+        stem = name.rsplit(".", 1)[0] if name else "exhibit"
+        return f"{stem or 'exhibit'}.png"
+
+    def _export_initial_folder(self):
+        """Prefer the loaded model's directory so portals skip a dead last-folder."""
+        path = getattr(self, "filepath", None) or ""
+        if not path:
+            return None
+        parent = os.path.dirname(path)
+        if not parent or not os.path.isdir(parent):
+            return None
+        return Gio.File.new_for_path(parent)
+
     def open_save_file_chooser(self, *args):
         dialog = Gtk.FileDialog(
             title=_("Save File"),
-            initial_name=self.file_name.split(".")[0] + ".png",
+            initial_name=self._export_suggested_name(),
         )
+        folder = self._export_initial_folder()
+        if folder is not None:
+            dialog.set_initial_folder(folder)
         dialog.save(self, None, self.on_save_file_response)
 
     def on_save_file_response(self, dialog, response):

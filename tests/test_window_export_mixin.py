@@ -10,6 +10,8 @@ WINDOW = ROOT / "src" / "window.py"
 EXPECTED = {
     "send_toast",
     "save_as_image",
+    "_export_suggested_name",
+    "_export_initial_folder",
     "open_save_file_chooser",
     "on_save_file_response",
 }
@@ -59,6 +61,13 @@ def test_save_as_image_handles_render_none():
     )
     assert "if self.window is None" in viewer
     assert "if ctx is None" in viewer
+
+
+def test_save_chooser_sets_initial_folder_from_model():
+    src = MIXIN.read_text(encoding="utf-8")
+    assert "set_initial_folder" in src
+    assert "os.path.isdir(parent)" in src
+    assert "_export_suggested_name" in src
 
 
 def test_pan_tilt_guard_camera_none():
