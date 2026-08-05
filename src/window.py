@@ -42,6 +42,7 @@ from .widgets.theme_switcher import ThemeSwitcher
 from .meshopt_decompress import prepare_glb_for_load, release_prepared
 from .mesh_stats import collect_mesh_stats, format_overlay_text
 from .periodic_checker import PeriodicChecker
+from .widgets.viewer_tab import ViewerTab
 
 from gettext import gettext as _
 
@@ -221,6 +222,8 @@ class ExbWindow(Adw.ApplicationWindow):
         except Exception:
             pass
 
+        self._setup_minimal_tabs()
+
         if startup_filepath:
             log.info(f"startup file detected: {startup_filepath}")
             # upstream passes path string; normalize to Gio.File
@@ -230,6 +233,81 @@ class ExbWindow(Adw.ApplicationWindow):
                 self.load_file(startup_filepath)
 
         log.info("Started")
+
+    def _setup_minimal_tabs(self):
+        """Wrap the template ExbView in AdwTabView (fork multi-doc v1)."""
+        overlay = self.viewer.get_parent()
+        if not isinstance(overlay, Gtk.Overlay):
+            log.warning("minimal tabs: expected Gtk.Overlay parent")
+            self.tab_view = None
+            self.tab_bar = None
+            return
+
+        # Detach template viewer; keep engine bindings intact.
+        overlay.set_child(None)
+
+        self.tab_view = Adw.TabView()
+        self.tab_bar = Adw.TabBar(view=self.tab_view, autohide=False)
+
+        # First tab hosts the template viewer/engine (settings stay bound).
+        first = Gtk.Overlay()
+        first.set_child(self.viewer)
+        first_page = self.tab_view.append(first)
+        first_page.set_title(_("Untitled"))
+        self._primary_tab_page = first_page
+        self._tabs_by_page = {first_page: None}  # None = template viewer
+
+        shell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        shell.append(self.tab_bar)
+        shell.append(self.tab_view)
+        overlay.set_child(shell)
+
+        self.tab_view.connect("notify::selected-page", self._on_tab_selected)
+        self.create_action("new-tab", self._on_new_tab_action)
+        log.info("minimal AdwTabView ready")
+
+    def _on_tab_selected(self, *args):
+        page = self.tab_view.get_selected_page() if self.tab_view else None
+        if page is None:
+            return
+        child = page.get_child()
+        if isinstance(child, ViewerTab) and child.filepath:
+            self.filepath = child.filepath
+            self.file_name = child.file_name
+            self.set_title(_("Exhibit - {}").format(self.file_name))
+            self.title_widget.set_subtitle(self.file_name)
+        elif page is getattr(self, "_primary_tab_page", None) and self.filepath:
+            self.set_title(_("Exhibit - {}").format(self.file_name))
+            self.title_widget.set_subtitle(self.file_name)
+
+    def _on_new_tab_action(self, *args):
+        self.open_file_chooser()
+
+    def _open_in_new_tab(self, file: Gio.File) -> bool:
+        """Load model into a new ViewerTab (secondary engines)."""
+        if self.tab_view is None:
+            return False
+        path = file.get_path()
+        if not path:
+            return False
+        tab = ViewerTab()
+        page = self.tab_view.append(tab)
+        page.set_title(os.path.basename(path))
+        self._tabs_by_page[page] = tab
+        self.tab_view.set_selected_page(page)
+        ok = tab.viewer.load_file(path)
+        if not ok:
+            self.tab_view.close_page(page)
+            return False
+        tab.filepath = path
+        tab.file_name = os.path.basename(path)
+        tab.loaded = True
+        self.filepath = path
+        self.file_name = tab.file_name
+        self.no_file_loaded = False
+        self.stack.set_visible_child_name("3d_page")
+        self._update_stats_overlay()
+        return True
 
     def setup_hdri_folder(self):
         hdri_names = ["city.hdr", "meadow.hdr", "field.hdr", "sky.hdr"]
@@ -312,7 +390,42 @@ class ExbWindow(Adw.ApplicationWindow):
         if not file:
             return
 
-        filepath = file.get_path()
+        filepath = file.get_path() or ""
+
+        # Focus existing tab if same path already open.
+        if filepath and self.tab_view is not None:
+            try:
+                focus = settings.get_boolean("focus-existing-tab")
+            except Exception:
+                focus = True
+            if focus:
+                for i in range(self.tab_view.get_n_pages()):
+                    page = self.tab_view.get_nth_page(i)
+                    child = page.get_child()
+                    tab_path = ""
+                    if isinstance(child, ViewerTab):
+                        tab_path = child.filepath
+                    elif page is getattr(self, "_primary_tab_page", None):
+                        tab_path = self.filepath
+                    if tab_path:
+                        try:
+                            same = os.path.samefile(tab_path, filepath)
+                        except OSError:
+                            same = os.path.abspath(tab_path) == os.path.abspath(filepath)
+                        if same:
+                            self.tab_view.set_selected_page(page)
+                            return
+
+        # Already have a document → open another tab (fork multi-doc).
+        if (
+            not self.no_file_loaded
+            and self.tab_view is not None
+            and self.tab_view.get_n_pages() >= 1
+        ):
+            if self._open_in_new_tab(file):
+                return
+            # fall through to primary load on failure
+
         self.filepath = filepath or ""
         load_path = filepath
 
@@ -365,6 +478,9 @@ class ExbWindow(Adw.ApplicationWindow):
         self.viewer.grab_focus()
 
         self.no_file_loaded = False
+        page = getattr(self, "_primary_tab_page", None)
+        if page is not None and self.file_name:
+            page.set_title(self.file_name)
 
         self.update_background_color()
         self.update_animation_ui()

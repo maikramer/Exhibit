@@ -8,7 +8,7 @@ Branches:
 
 ## Checklist de features (não perder)
 
-- [ ] Multi-document tabs + warm load + focus-existing
+- [~] Multi-document tabs v1 (AdwTabView + focus-existing); warm load TODO
 - [ ] Outliner / object tree (multipart GLB visibility)
 - [ ] Bone/armature kinds + X-ray skeleton
 - [ ] Viewport tool rail / chrome header
