@@ -20,7 +20,7 @@ Blender-like scene hierarchy over the 3D viewport. Companion to
 - Panel background is fully transparent so the GL model shows through; labels and
   icons stay opaque (`text-shadow` for contrast).
 
-Widgets: `data/ui/window.ui` (`viewport_overlay` → shell / toggle / revealer /
+Widgets: `src/window.ui` (`viewport_overlay` → shell / toggle / revealer /
 `object_tree_panel` / `object_tree_view`).
 
 ---

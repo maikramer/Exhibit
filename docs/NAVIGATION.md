@@ -59,13 +59,13 @@ Defaults mirror `NAV_SETTING_DEFAULTS` in `src/camera_nav.py`.
 | File | Role |
 |------|------|
 | `src/camera_nav.py` | Math helpers + defaults |
-| `src/widgets/f3d_viewer.py` | Pointer/scroll → camera |
-| `data/ui/f3d_viewer.ui` | Gestures (click, scroll, zoom); double-click → reset |
+| `src/widgets/f3d_viewer.py` | Shim: `apply_nav_settings` → `Exb.View` props |
+| `libexhibit/exb-view.c` | Gestures (drag/scroll/click); touchpad-orbit, MMB pivot, double-click reset |
 | `src/window_preferences.py` | PreferencesMixin / dialog / theme menu |
 | `src/window_lifecycle.py` | Header home → `reset_to_bounds` |
 | `data/io.github.nokse22.Exhibit.gschema.xml` | `nav-*` keys |
 | `tests/test_camera_nav.py` | Unit coverage for helpers |
-| `tests/test_f3d_viewer_nav_modifiers.py` | Modifier / Alt behavior |
+| `tests/test_f3d_viewer_nav_modifiers.py` | Exb.View gesture / gschema wiring |
 | `tests/test_window_preferences.py` | Prefs mixin |
 | `tests/test_camera_views*.py`, `test_camera_orbit_grid.py` | Preset / orbit matrices — [TESTING.md](TESTING.md) |
 

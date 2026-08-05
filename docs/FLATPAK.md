@@ -15,7 +15,7 @@ Manifest: [`build-aux/io.github.nokse22.Exhibit.json`](../build-aux/io.github.no
 | VTK | **9.6.2** |
 | Modules | EXR **ON**, WebP **ON**, ImGui UI **OFF** |
 | Extra libs | meshoptimizer, libktx, **libwebp 1.6.0** |
-| F3D patches | `f3d-linearize-display-depth.patch`, `f3d-normal-glyphs-scale.patch` |
+| F3D patches | `f3d-linearize-display-depth.patch`, `f3d-normal-glyphs-scale.patch`, `f3d-ssao-params.patch` |
 | VTK patches | `vtk-cmake-policies-0174-0177.patch`, `vtk-vtktiff-cmake-policy-3.10.patch` |
 
 Majors also bumped in-tree: Boost 1.91, Eigen 3.4.1, oneTBB 2022.3, assimp 6.0.5, OpenUSD v25.11, OpenSubdiv 3.7, OCCT V7_9_x, GLEW 2.3.1, ImageMagick 6.9.13-x, pybind11 3.0.4, …

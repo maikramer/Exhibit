@@ -19,7 +19,7 @@ Implemented in `src/meshopt_decompress.py`:
 | Policy | LRU (`OrderedDict`, oldest first) |
 
 Callers that keep a prepared path must call `release_prepared(path)` when done.
-Last window close → `clear_prepare_cache()` (`LifecycleMixin.on_close_request`, only when no sibling `Viewer3dWindow` remains).
+Last window close → `clear_prepare_cache()` (`LifecycleMixin.on_close_request`, only when no sibling `ExbWindow` remains).
 
 A single entry larger than the bytes cap is kept (cannot split); eviction still
 runs for count/bytes after inserts.

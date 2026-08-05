@@ -4,46 +4,61 @@ Base: `upstream/master` (libexhibit C) + features do fork Python.
 
 Branches:
 - `fork-python-legacy` — snapshot pré-merge (referência)
-- `migrate-libexhibit` — trabalho atual
+- `main` — trabalho atual
 
-## Checklist de features (não perder)
+## Regra de shell
 
-- [x] Multi-document tabs v1 (AdwTabView + focus-existing + warm prepare)
+**Upstream shell / fork extension** — ver [ARCHITECTURE.md](ARCHITECTURE.md).
+
+- Layout viewport + HeaderBar + Exb binds: igual upstream
+- Tabs / outliner / Split Compare / Inspect / Recent: **declarados em `window.ui`**
+- Proibido: `_setup_exb_tabs`, `_setup_minimal_outliner`, `_ensure_split_compare_chrome`
+- Seed permitido: `_seed_primary_tab()` (ExbView → tab 0)
+
+## Checklist de features (estado real)
+
+Legenda: `[x]` ok · `[~]` parcial · `[ ]` faltando
+
+- [x] Multi-document tabs (`AdwTabView` + focus-existing + warm prepare)
+- [x] TabBar / TabView / Split / outliner **no `.ui`** (shell declarativo)
+- [x] Tab bar + menu RMB (Close / Other / Left / Right / Reopen)
 - [x] Outliner UI + part visibility via GLB filter reload
-- [x] Bone/armature kinds in tree; X-ray opacity when show-armature on
-- [x] Viewport tool rail (sidebar/home/outliner)
-- [x] Inspect skin-weight heat (joint picker) + scivis-array-name
-- [x] Mesh stats overlay
-- [x] Camera presets + Shift/Ctrl nav + invert/sensitivity + zoom/orbit-to-cursor (focal-plane NDC)
-- [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
-- [x] File watch / auto-reload + reload prompt dialog
-- [x] Headless CLI render + turntable video on Exb standalone path
-- [x] Animation names combo (glTF names wired); bind pose default on load
-- [x] Split compare (paned + drop on secondary viewer)
-- [x] Session restore / recent files (persist + restore wired)
-- [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
-- [x] pytest green (legacy mixin tests skipped via conftest)
-- [x] i18n pot/po regen via update_translations.sh
-- [x] Docs fork kept + MIGRATE_LIBEXHIBIT checklist
+- [x] Bone/armature kinds; X-ray via InspectMixin
+- [x] Header upstream (sidebar / home / menu) + ThemeSwitcher
+- [x] Inspect UI (Scene → Inspect)
+- [~] Normal glyphs / depth: props Exb + patches Flatpak
+- [x] Mesh stats overlay (Gtk HUD)
+- [x] Camera pose get/set Exb (Sync Cameras)
+- [x] Nav: invert/sensitivity + zoom/orbit-to-cursor
+- [x] GLB prepare: meshopt + quantization + KTX2/BasisU
+- [x] File watch / auto-reload
+- [x] Headless CLI render + turntable video
+- [x] Animation names do glTF; bind pose default (**None**)
+- [~] Animation keyframe marks (stub scale)
+- [x] Split Compare no `.ui` (paned + Pin + Swap)
+- [x] Session restore / recent files
+- [x] Flatpak: libktx, meshoptimizer, sandbox
+- [~] pytest: suite legado parcialmente skipped
+- [x] Docs ARCHITECTURE + este checklist
 
 ## Estratégia
 
 1. Merge upstream → base libexhibit (feito)
-2. Manter módulos Python do fork instalados via meson
-3. Re-wire UI/engine: `ExbView`/`ExbEngine` no lugar de `f3d_viewer`
-4. Portar feature a feature; marcar checklist
-5. Sem PR para Nokse22 — fork separado
-
+2. Manter módulos Python do fork via meson
+3. Shell mergeável: estender `.ui`, não reparent em runtime
+4. Shim `F3DViewer` fino até mixins falarem Exb direto (fora deste ciclo)
+5. Sem PR para Nokse22
 
 ## API Exb C adicionada no fork
 
-- `scivis-array-name` no engine (inspect skin weights)
-- Nav no view: `invert-x/y`, sensitivities, Shift-pan / Ctrl-zoom, `orbit-around-cursor`
-- Zoom/orbit sob o cursor via focal-plane NDC (`_exb_engine_zoom_at_ndc` / `_exb_engine_rotate_at_ndc`) — não é ray-pick na malha
+- `scivis-array-name`
+- `normal-glyphs` / `normal-glyphs-scale`
+- `exb_engine_get_camera_state` / `exb_engine_set_camera_state`
+- Nav no view: invert / sensitivities / orbit-around-cursor / NDC zoom
+- PostFX (`exb-postfx`): `bloom*` + `godrays*` → `final-shader`; SSAO params via F3D patch (`ao-radius` / `ao-bias` / `ao-kernel-size` / `ao-intensity`)
 
-## Verificação (2026-08-05)
+## Verificação
 
-- Flatpak local (runtime 50) compilou e instalou via `repo-migrate` (`exhibit-migrate`)
-- GI: `scivis-array-name`, nav props e `Exb.View` ok no runtime instalado
-- `exhibit --help` ok; pytest green (1 skip legado)
-- Branch: `migrate-libexhibit` — merge em `main` / push só quando pedido
+- Flatpak local (runtime 50) via `repo-migrate`
+- Smoke: 2 modelos → abas; outliner; Inspect; Split Compare (`Ctrl+Shift+D`)
+- Push só quando pedido

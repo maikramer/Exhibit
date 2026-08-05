@@ -77,7 +77,7 @@ See `cli_render.DEFAULT_*`:
 |---------|---------|
 | Background | `1,1,1` (white) |
 | Grid | on (`--no-grid` to disable) |
-| Light intensity | `1.5` (`DEFAULT_LIGHT_INTENSITY` — not imported from `settings_manager`, so parsers stay Gtk-free) |
+| Light intensity | `1.8` (`DEFAULT_LIGHT_INTENSITY` — not imported from `settings_manager`, so parsers stay Gtk-free) |
 
 ### Prepare / pack
 
