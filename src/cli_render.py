@@ -34,6 +34,15 @@ DEFAULT_GRID = True
 DEFAULT_LIGHT_INTENSITY = 1.8  # WindowSettings.default_settings["light-intensity"]
 XRAY_OPACITY = 0.35
 XRAY_LINE_WIDTH = 4.0
+# Exb.Direction nicknames (matches f3d_viewer._UP_TO_EXB).
+_UP_TO_EXB = {
+    "+X": "POSITIVE_X",
+    "-X": "NEGATIVE_X",
+    "+Y": "POSITIVE_Y",
+    "-Y": "NEGATIVE_Y",
+    "+Z": "POSITIVE_Z",
+    "-Z": "NEGATIVE_Z",
+}
 
 
 def _parse_size(value: str) -> tuple[int, int]:
@@ -281,9 +290,8 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
-def _build_options(
-    args: argparse.Namespace, *, overlay_text: str | None = None
-) -> dict[str, Any]:
+def _resolve_opacity_line_width(args: argparse.Namespace) -> tuple[float, float]:
+    """Shared opacity / line-width defaults (incl. armature X-ray)."""
     opacity = args.opacity
     line_width = args.line_width
     if args.armature:
@@ -295,6 +303,35 @@ def _build_options(
         opacity = 1.0
     if line_width is None:
         line_width = 1.0
+    return float(opacity), float(line_width)
+
+
+def _exb_options_from_args(args: argparse.Namespace) -> dict[str, Any]:
+    """Exb GObject props from CLI args (Flatpak / no Python f3d path)."""
+    opacity, line_width = _resolve_opacity_line_width(args)
+    opts: dict[str, Any] = {
+        "show-grid": bool(args.grid),
+        "show-armature": bool(args.armature),
+        "show-edges": bool(args.edges),
+        "model-opacity": opacity,
+        "edges-width": line_width,
+        "model-checkerboard": bool(args.checkerboard),
+        "normal-glyphs": bool(args.normal_glyphs),
+        "display-depth": bool(args.display_depth),
+        "tone-mapping": True,
+        "light-intensity": float(DEFAULT_LIGHT_INTENSITY),
+        "hdri-skybox": False,
+        "hdri-ambient": False,
+        "animation-index": int(args.animation_index),
+    }
+    opts.update(bloom_options_from_args(args))
+    return opts
+
+
+def _build_options(
+    args: argparse.Namespace, *, overlay_text: str | None = None
+) -> dict[str, Any]:
+    opacity, line_width = _resolve_opacity_line_width(args)
 
     options: dict[str, Any] = {
         "scene.up_direction": args.up,
@@ -372,7 +409,7 @@ def _render_model_exb(args: argparse.Namespace) -> str:
     import gi
 
     gi.require_version("Exb", "0.0")
-    from gi.repository import Exb, Gio
+    from gi.repository import Exb, Gdk, Gio
 
     model_path = os.path.abspath(args.model)
     if not os.path.isfile(model_path):
@@ -403,15 +440,28 @@ def _render_model_exb(args: argparse.Namespace) -> str:
         eng = Exb.Engine.new_standalone()
         eng.set_size(width, height)
         try:
-            eng.set_property("show-grid", bool(args.grid))
-            eng.set_property("show-armature", bool(args.armature))
-            eng.set_property("show-edges", bool(args.edges))
-            # -2 clears indices (bind pose); must be set before/around load.
-            eng.set_property("animation-index", int(args.animation_index))
-            for prop, value in bloom_options_from_args(args).items():
+            for prop, value in _exb_options_from_args(args).items():
                 eng.set_property(prop, value)
+            enum_name = _UP_TO_EXB.get(str(args.up), "POSITIVE_Y")
+            eng.set_property("up", getattr(Exb.Direction, enum_name))
+            rgba = Gdk.RGBA()
+            rgba.red = float(args.bg[0])
+            rgba.green = float(args.bg[1])
+            rgba.blue = float(args.bg[2])
+            rgba.alpha = 1.0
+            eng.set_property("background-color", rgba)
+            try:
+                eng.set_property("anti-aliasing", Exb.AntiAliasing.FXAA)
+                eng.set_property("blending", Exb.Blending.DDP)
+            except Exception as exc:
+                print(f"aa/blending apply: {exc}", file=sys.stderr)
         except Exception as exc:
             print(f"option apply partial: {exc}", file=sys.stderr)
+        if bool(getattr(args, "overlay", False)):
+            print(
+                "--overlay is not supported on the Exb render path; ignored",
+                file=sys.stderr,
+            )
 
         try:
             eng.load_file(Gio.File.new_for_path(load_path))

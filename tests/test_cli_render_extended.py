@@ -16,6 +16,7 @@ from exhibit.cli_render import (
     XRAY_LINE_WIDTH,
     XRAY_OPACITY,
     _build_options,
+    _exb_options_from_args,
     _expand_view_jobs,
     _parse_rgb,
     _parse_size,
@@ -276,6 +277,36 @@ def test_build_options_explicit_opacity_with_armature():
     opts = _build_options(_ns(armature=True, opacity=0.9, line_width=7.0))
     assert opts["model.color.opacity"] == pytest.approx(0.9)
     assert opts["render.line_width"] == pytest.approx(7.0)
+
+
+def test_exb_options_parity_with_f3d_flags():
+    """Exb path must honor the same CLI flags as _build_options (minus overlay)."""
+    opts = _exb_options_from_args(
+        _ns(
+            armature=True,
+            checkerboard=True,
+            normal_glyphs=True,
+            display_depth=True,
+            edges=True,
+            opacity=0.4,
+            line_width=3.0,
+            animation_index=-2,
+            bloom=True,
+        )
+    )
+    assert opts["show-armature"] is True
+    assert opts["model-checkerboard"] is True
+    assert opts["normal-glyphs"] is True
+    assert opts["display-depth"] is True
+    assert opts["show-edges"] is True
+    assert opts["model-opacity"] == pytest.approx(0.4)
+    assert opts["edges-width"] == pytest.approx(3.0)
+    assert opts["animation-index"] == -2
+    assert opts["bloom"] is True
+    assert opts["light-intensity"] == pytest.approx(DEFAULT_LIGHT_INTENSITY)
+    xray = _exb_options_from_args(_ns(armature=True))
+    assert xray["model-opacity"] == pytest.approx(XRAY_OPACITY)
+    assert xray["edges-width"] == pytest.approx(XRAY_LINE_WIDTH)
 
 
 def test_build_options_overlay_keys():
