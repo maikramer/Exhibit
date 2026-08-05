@@ -44,4 +44,5 @@ Estas features do fork precisam de API nova em `libexhibit` (C), não só Python
 
 ## Em andamento
 
-Flatpak build local (runtime 50) — VTK/F3D demora.
+Checklist de features: completo (focal-plane NDC ≈ cursor nav).  
+Flatpak build local (runtime 50) — VTK ainda compilando; falta F3D/libexhibit/app para validar runtime.
