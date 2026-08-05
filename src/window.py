@@ -43,6 +43,8 @@ from .meshopt_decompress import prepare_glb_for_load, release_prepared
 from .mesh_stats import collect_mesh_stats, format_overlay_text
 from .periodic_checker import PeriodicChecker
 from .widgets.viewer_tab import ViewerTab
+from .widgets.f3d_viewer import F3DViewer
+from .window_object_tree import ObjectTreeMixin
 
 from gettext import gettext as _
 
@@ -63,7 +65,7 @@ settings = Gio.Settings.new('io.github.nokse22.Exhibit')
 
 
 @Gtk.Template(resource_path='/io/github/nokse22/Exhibit/window.ui')
-class ExbWindow(Adw.ApplicationWindow):
+class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
     __gtype_name__ = 'ExbWindow'
 
     settings_dialog = Gtk.Template.Child()
@@ -110,8 +112,11 @@ class ExbWindow(Adw.ApplicationWindow):
     # Compatibility aliases while fork mixins are re-wired onto Exb.
     @property
     def f3d_viewer(self):
-        return self.viewer
+        return self._viewer_bridge
 
+    @property
+    def logger(self):
+        return log
 
     def __init__(self, application=None, startup_filepath=None):
         super().__init__(application=application)
@@ -119,6 +124,9 @@ class ExbWindow(Adw.ApplicationWindow):
         # Flags
         self.applying_breakpoint = False
         self.block_reload = True
+        self._block_object_tree = False
+        self._object_tree_row_handlers = {}
+        self._viewer_bridge = F3DViewer(view=self.viewer)
 
         # Defining all the actions
         self.save_as_action = self.create_action(
@@ -223,6 +231,7 @@ class ExbWindow(Adw.ApplicationWindow):
             pass
 
         self._setup_minimal_tabs()
+        self._setup_minimal_outliner()
 
         if startup_filepath:
             log.info(f"startup file detected: {startup_filepath}")
@@ -282,6 +291,68 @@ class ExbWindow(Adw.ApplicationWindow):
 
     def _on_new_tab_action(self, *args):
         self.open_file_chooser()
+
+    def _setup_minimal_outliner(self):
+        """Floating outliner panel over the viewport (fork ObjectTreeMixin)."""
+        overlay = self.viewer.get_parent()
+        # After tabs setup, overlay child is shell; find Gtk.Overlay ancestor.
+        widget = self.viewer
+        overlay = None
+        while widget is not None:
+            parent = widget.get_parent()
+            if isinstance(parent, Gtk.Overlay):
+                overlay = parent
+                break
+            widget = parent
+        if overlay is None:
+            log.warning("outliner: no Gtk.Overlay found")
+            return
+
+        self.object_tree_toggle = Gtk.ToggleButton(
+            icon_name="view-list-symbolic",
+            tooltip_text=_("Outliner"),
+            visible=False,
+            valign=Gtk.Align.START,
+            halign=Gtk.Align.START,
+            margin_start=12,
+            margin_top=48,
+        )
+        self.object_tree_toggle.add_css_class("overlay-button")
+        self.object_tree_toggle.add_css_class("circular")
+
+        self.object_tree_view = Gtk.ListView()
+        self.object_tree_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
+        self.object_tree_panel.add_css_class("object-tree-overlay-panel")
+        scroll = Gtk.ScrolledWindow(
+            min_content_width=220,
+            max_content_height=360,
+            child=self.object_tree_view,
+        )
+        self.object_tree_panel.append(scroll)
+
+        revealer = Gtk.Revealer(
+            transition_type=Gtk.RevealerTransitionType.SLIDE_RIGHT,
+            child=self.object_tree_panel,
+        )
+        revealer.bind_property(
+            "reveal-child",
+            self.object_tree_toggle,
+            "active",
+            GObject.BindingFlags.SYNC_CREATE | GObject.BindingFlags.BIDIRECTIONAL,
+        )
+
+        shell = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        shell.add_css_class("object-tree-overlay-shell")
+        shell.set_valign(Gtk.Align.START)
+        shell.set_halign(Gtk.Align.START)
+        shell.set_margin_start(12)
+        shell.set_margin_top(48)
+        shell.append(self.object_tree_toggle)
+        shell.append(revealer)
+        overlay.add_overlay(shell)
+
+        self._setup_object_tree_view()
+        log.info("minimal outliner ready")
 
     def _open_in_new_tab(self, file: Gio.File) -> bool:
         """Load model into a new ViewerTab (secondary engines)."""
@@ -464,6 +535,14 @@ class ExbWindow(Adw.ApplicationWindow):
         if prev and prev != load_path:
             release_prepared(prev)
         self._prepared_load_path = load_path if load_path != filepath else None
+        try:
+            self._viewer_bridge._prepared_path = self._prepared_load_path
+            self._viewer_bridge._loaded_filepath = filepath
+            self._viewer_bridge._refresh_scene_graph(
+                self._prepared_load_path or filepath
+            )
+        except Exception as exc:
+            log.debug("bridge scene graph: %s", exc)
 
         self.on_file_opened()
 
@@ -485,6 +564,10 @@ class ExbWindow(Adw.ApplicationWindow):
         self.update_background_color()
         self.update_animation_ui()
         self._update_stats_overlay()
+        try:
+            self.refresh_object_tree()
+        except Exception as exc:
+            log.debug("object tree: %s", exc)
         self.update_time_stamp()
         try:
             self._file_checker.run()

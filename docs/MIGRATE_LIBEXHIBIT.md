@@ -9,8 +9,8 @@ Branches:
 ## Checklist de features (não perder)
 
 - [~] Multi-document tabs v1 (AdwTabView + focus-existing); warm load TODO
-- [ ] Outliner / object tree (multipart GLB visibility)
-- [ ] Bone/armature kinds + X-ray skeleton
+- [~] Outliner UI wired; part visibility awaits Exb API
+- [~] Bone/armature kinds in tree; X-ray via show-armature prop (partial)
 - [ ] Viewport tool rail / chrome header
 - [ ] Inspect overlays + skin-weight heat maps
 - [~] Mesh stats overlay (label on GtkOverlay; needs polish)

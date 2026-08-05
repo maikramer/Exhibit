@@ -22,14 +22,21 @@ class F3DViewer(Gtk.Box):
     Advanced F3D-Python features are stubbed until re-ported onto libexhibit.
     """
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, view: Exb.View | None = None, **kwargs):
         super().__init__(*args, **kwargs)
         self.set_orientation(Gtk.Orientation.VERTICAL)
-        self.view = Exb.View()
-        self.view.set_hexpand(True)
-        self.view.set_vexpand(True)
-        self.append(self.view)
-        self.engine = self.view.get_engine()
+        if view is not None:
+            self.view = view
+            self.engine = view.get_engine()
+            # Bridge mode: do not reparent the template view into this box.
+            self._bridge = True
+        else:
+            self.view = Exb.View()
+            self.view.set_hexpand(True)
+            self.view.set_vexpand(True)
+            self.append(self.view)
+            self.engine = self.view.get_engine()
+            self._bridge = False
         self.settings: dict | None = None
         self.logger = log
         self.scene = None
