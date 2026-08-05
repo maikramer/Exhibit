@@ -118,6 +118,7 @@ typedef enum
   PROP_SCIVIS,
   PROP_SCIVIS_COMPONENT,
   PROP_SCIVIS_CELLS,
+  PROP_SCIVIS_ARRAY_NAME,
   PROP_LOADING_FILE,
 } ExbEngineProps;
 
@@ -181,7 +182,7 @@ static const OptionMap option_maps[] = {
   { "scivis",                 "model.scivis.enable"               },
   { "scivis-component",       "model.scivis.component"            },
   { "scivis-cells",           "model.scivis.cells"                },
-  /* { "scalar",                 "model.scivis.array_name"           }, */
+  { "scivis-array-name",      "model.scivis.array_name"           },
   { "up",                     "scene.up_direction"                },
   { "orthographic",           "scene.camera.orthographic"         },
   { "animation-index",        "scene.animation.indices"             }
@@ -1017,6 +1018,7 @@ exb_engine_get_property (GObject    *object,
     case PROP_SCIVIS:
     case PROP_SCIVIS_COMPONENT:
     case PROP_SCIVIS_CELLS:
+    case PROP_SCIVIS_ARRAY_NAME:
     default:
       if (!f3d_get_option (self, value, pspec->name, pspec->value_type))
         {
@@ -1121,6 +1123,7 @@ exb_engine_set_property (GObject      *object,
     case PROP_SCIVIS:
     case PROP_SCIVIS_COMPONENT:
     case PROP_SCIVIS_CELLS:
+    case PROP_SCIVIS_ARRAY_NAME:
     default:
       if (f3d_set_option (self, value, pspec->name, pspec->value_type))
         {
@@ -1577,6 +1580,12 @@ exb_engine_class_init (ExbEngineClass *klass)
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_SCIVIS_ARRAY_NAME] =
+      g_param_spec_string ("scivis-array-name",
+                           NULL, NULL,
+                           NULL,
+                           G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_LOADING_FILE] =
       g_param_spec_boolean ("loading-file",

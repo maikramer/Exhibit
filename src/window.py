@@ -320,7 +320,83 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             log.debug("named view %s: %s", name, exc)
 
     def _on_split_compare_toggle(self, *args):
-        self.send_toast(_("Split Compare: full UI port still in progress"))
+        """Toggle a secondary Exb viewer beside the tab view."""
+        if self.tab_view is None:
+            return
+        shell = self.tab_view.get_parent()
+        if shell is None:
+            return
+
+        if getattr(self, "_split_compare_on", False):
+            paned = getattr(self, "split_compare_paned", None)
+            if paned is not None and paned.get_parent() is shell:
+                paned.set_start_child(None)
+                paned.set_end_child(None)
+                try:
+                    shell.remove(paned)
+                except Exception:
+                    pass
+                shell.append(self.tab_view)
+            self._split_compare_on = False
+            try:
+                settings.set_boolean("split-compare-enabled", False)
+            except Exception:
+                pass
+            self.send_toast(_("Split Compare off"))
+            return
+
+        if getattr(self, "split_compare_paned", None) is None:
+            self.split_compare_paned = Gtk.Paned(
+                orientation=Gtk.Orientation.HORIZONTAL
+            )
+            self.split_compare_paned.set_wide_handle(True)
+        if getattr(self, "_split_compare_viewer", None) is None:
+            self._split_compare_viewer = F3DViewer()
+            self._split_compare_viewer.add_css_class("f3d-render")
+            self._split_compare_viewer.set_hexpand(True)
+            self._split_compare_viewer.set_vexpand(True)
+            drop = Gtk.DropTarget.new(Gdk.FileList, Gdk.DragAction.COPY)
+            drop.connect("drop", self._on_split_compare_drop)
+            self._split_compare_viewer.add_controller(drop)
+
+        try:
+            shell.remove(self.tab_view)
+        except Exception:
+            pass
+        self.split_compare_paned.set_start_child(self.tab_view)
+        self.split_compare_paned.set_end_child(self._split_compare_viewer)
+        shell.append(self.split_compare_paned)
+        self._split_compare_on = True
+        try:
+            settings.set_boolean("split-compare-enabled", True)
+            ratio = settings.get_double("split-compare-sash-ratio")
+            # Apply sash after allocate
+            def _size():
+                w = self.split_compare_paned.get_width()
+                if w > 0:
+                    self.split_compare_paned.set_position(int(w * ratio))
+                    return False
+                return True
+            GLib.timeout_add(50, _size)
+        except Exception as exc:
+            log.debug("split compare sash: %s", exc)
+        self.send_toast(_("Split Compare on"))
+
+
+    def _on_split_compare_drop(self, _drop, value, _x, _y):
+        try:
+            files = value.get_files()
+        except Exception:
+            return False
+        if not files:
+            return False
+        path = files[0].get_path()
+        if not path or self._split_compare_viewer is None:
+            return False
+        ok = self._split_compare_viewer.load_file(path)
+        if ok:
+            self.send_toast(_("Compare: {}").format(os.path.basename(path)))
+        return ok
 
     def _on_inspect_skin_weights(self, *args):
         """Best-effort joint heat map via temp GLB + Exb scivis."""
@@ -346,9 +422,12 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             self.engine.reset()
             self.engine.load_file(Gio.File.new_for_path(temp))
             try:
+                from .skin_weights import HEAT_ATTR
+
+                self.engine.set_property("scivis-array-name", HEAT_ATTR)
                 self.engine.set_property("scivis", True)
-            except Exception:
-                pass
+            except Exception as exc:
+                log.debug("scivis props: %s", exc)
             prev = getattr(self, "_skinw_temp", None)
             if prev and prev != temp:
                 try:
@@ -356,7 +435,7 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
                 except OSError:
                     pass
             self._skinw_temp = temp
-            self.send_toast(_("Skin weights (joint 0) — scivis array may be limited"))
+            self.send_toast(_("Skin weights (joint 0)"))
         except Exception as exc:
             log.warning("skin weight load failed: %s", exc)
             try:

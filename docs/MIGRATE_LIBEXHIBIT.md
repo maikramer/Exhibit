@@ -12,14 +12,14 @@ Branches:
 - [~] Outliner UI + part visibility via GLB filter reload
 - [~] Bone/armature kinds in tree; X-ray via show-armature prop (partial)
 - [~] Viewport tool rail (sidebar/home/outliner)
-- [~] Inspect skin-weight heat (joint 0 temp GLB); scivis array_name still limited in Exb
+- [~] Inspect skin-weight heat (joint 0) + Exb scivis-array-name prop
 - [~] Mesh stats overlay (label on GtkOverlay; needs polish)
 - [~] Camera presets via Exb rotate; Blender touchpad nav still TODO
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [~] File watch / auto-reload + reload prompt dialog
 - [~] Headless CLI render (Exb standalone fallback); video encode still f3d-path
 - [~] Animation names combo (glTF names wired); bind pose default on load
-- [~] Split compare (action stub; full UI TODO)
+- [~] Split compare (paned + drop on secondary viewer)
 - [~] Session restore / recent files (persist + restore wired)
 - [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
 - [~] pytest suite adapted for Exb shim; mixin UI tests still legacy
@@ -39,7 +39,6 @@ Branches:
 
 Estas features do fork precisam de API nova em `libexhibit` (C), não só Python:
 
-- Skin-weight scivis ``array_name`` (commented out in ExbEngine)
 - Blender-like nav (pointer world hit, orbit around cursor) — hoje Exb.View tem orbit/pan/zoom simples
 - Warm-load multi-engine prepare race (parcialmente possível em Python)
 
