@@ -140,6 +140,14 @@ file-row {
   margin-right: 6px;
 }
 
+/* ToggleButton vs Button: same disk so header row stays level. */
+.preview-headerbar .overlay-button.circular,
+.object-tree-overlay-shell .overlay-button.circular {
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0;
+}
+
 .object-tree-overlay-shell {
   background: none;
   min-height: 0;

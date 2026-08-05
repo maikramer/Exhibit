@@ -1111,14 +1111,38 @@
                               <class name="preview-headerbar"/>
                             </style>
                             <child type="start">
-                              <object class="GtkToggleButton" id="sidebar_toggle_button">
-                                <property name="icon-name">sidebar-show-symbolic</property>
-                                <property name="tooltip-text" translatable="yes">Reveal Sidebar</property>
-                                <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create | bidirectional">True</property>
+                              <object class="GtkBox" id="header_start_chrome">
+                                <property name="orientation">horizontal</property>
+                                <property name="spacing">6</property>
+                                <property name="valign">center</property>
+                                <property name="halign">start</property>
                                 <style>
-                                  <class name="overlay-button"/>
-                                  <class name="circular"/>
+                                  <class name="header-start-chrome"/>
                                 </style>
+                                <child>
+                                  <object class="GtkToggleButton" id="sidebar_toggle_button">
+                                    <property name="icon-name">sidebar-show-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Reveal Sidebar</property>
+                                    <property name="valign">center</property>
+                                    <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create | bidirectional">True</property>
+                                    <style>
+                                      <class name="overlay-button"/>
+                                      <class name="circular"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkButton" id="home_button_headerbar">
+                                    <property name="icon-name">go-home-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Reset to Bounds</property>
+                                    <property name="valign">center</property>
+                                    <signal name="clicked" handler="on_home_clicked"/>
+                                    <style>
+                                      <class name="overlay-button"/>
+                                      <class name="circular"/>
+                                    </style>
+                                  </object>
+                                </child>
                               </object>
                             </child>
                             <child type="end">
@@ -1127,17 +1151,7 @@
                                 <property name="icon-name">open-menu-symbolic</property>
                                 <property name="tooltip-text" translatable="yes">Menu</property>
                                 <property name="menu-model">primary_menu</property>
-                                <style>
-                                  <class name="overlay-button"/>
-                                  <class name="circular"/>
-                                </style>
-                              </object>
-                            </child>
-                            <child type="start">
-                              <object class="GtkButton" id="home_button_headerbar">
-                                <property name="icon-name">go-home-symbolic</property>
-                                <property name="tooltip-text" translatable="yes">Reset to Bounds</property>
-                                <signal name="clicked" handler="on_home_clicked"/>
+                                <property name="valign">center</property>
                                 <style>
                                   <class name="overlay-button"/>
                                   <class name="circular"/>
