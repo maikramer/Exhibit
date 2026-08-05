@@ -398,6 +398,48 @@ def _render_model_exb(args: argparse.Namespace) -> str:
                 entry["yaw_deg"] = job["yaw_deg"]
             view_entries.append(entry)
 
+        video_fmt = getattr(args, "video", None)
+        video_fps = int(getattr(args, "video_fps", 24) or 24)
+        video_file: str | None = None
+        if video_fmt:
+            from .video_encode import encode_turntable_video
+
+            orbit_frames = [
+                os.path.join(out_dir, entry["file"])
+                for entry in view_entries
+                if str(entry.get("name", "")).startswith("orbit_")
+            ]
+            if len(orbit_frames) >= 2:
+                video_name = f"{stem}_turntable.{video_fmt}"
+                video_path = os.path.join(out_dir, video_name)
+                try:
+                    encode_turntable_video(
+                        orbit_frames, video_path, fps=video_fps, fmt=str(video_fmt)
+                    )
+                    video_file = video_name
+                    print(f"Wrote turntable {video_path}", file=sys.stderr)
+                except FileNotFoundError:
+                    gif_name = f"{stem}_turntable.gif"
+                    gif_path = os.path.join(out_dir, gif_name)
+                    try:
+                        encode_turntable_video(
+                            orbit_frames, gif_path, fps=video_fps, fmt="gif"
+                        )
+                        video_file = gif_name
+                        print(
+                            f"ffmpeg missing; GIF turntable → {gif_path}",
+                            file=sys.stderr,
+                        )
+                    except Exception as gif_exc:
+                        print(f"video/GIF failed: {gif_exc}", file=sys.stderr)
+                except Exception as exc:
+                    print(f"Turntable video failed: {exc}", file=sys.stderr)
+            else:
+                print(
+                    "--video needs ≥2 orbit frames (--orbit N)",
+                    file=sys.stderr,
+                )
+
         manifest = {
             "model": model_path,
             "prepared": load_path != model_path,
@@ -412,9 +454,11 @@ def _render_model_exb(args: argparse.Namespace) -> str:
                 "size": [width, height],
                 "up": args.up,
                 "animation_index": int(args.animation_index),
+                "video": video_fmt,
+                "video_fps": video_fps,
             },
             "views": view_entries,
-            "video": None,
+            "video": video_file,
         }
         manifest_path = os.path.join(out_dir, "manifest.json")
         with open(manifest_path, "w", encoding="utf-8") as handle:

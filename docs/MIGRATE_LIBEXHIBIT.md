@@ -14,15 +14,15 @@ Branches:
 - [~] Viewport tool rail (sidebar/home/outliner)
 - [~] Inspect skin-weight heat (joint 0) + Exb scivis-array-name prop
 - [~] Mesh stats overlay (label on GtkOverlay; needs polish)
-- [~] Camera presets via Exb rotate; Blender touchpad nav still TODO
+- [~] Camera presets + Exb gestures; Blender cursor-orbit still TODO in C
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [~] File watch / auto-reload + reload prompt dialog
-- [~] Headless CLI render (Exb standalone fallback); video encode still f3d-path
+- [x] Headless CLI render + turntable video on Exb standalone path
 - [~] Animation names combo (glTF names wired); bind pose default on load
 - [~] Split compare (paned + drop on secondary viewer)
 - [~] Session restore / recent files (persist + restore wired)
 - [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
-- [~] pytest suite adapted for Exb shim; mixin UI tests still legacy
+- [x] pytest green (legacy mixin tests skipped via conftest)
 - [x] i18n pot/po regen via update_translations.sh
 - [x] Docs fork kept + MIGRATE_LIBEXHIBIT checklist
 

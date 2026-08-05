@@ -106,8 +106,17 @@ class FileRow(Adw.PreferencesRow):
         self.file = None
 
     def on_drop_received(self, drop, value, x, y):
-        file = value.get_files()[0]
-        extension = os.path.splitext(file.get_path())[1][1:].lower()
+        try:
+            files = value.get_files()
+        except Exception:
+            return
+        if not files:
+            return
+        file = files[0]
+        filepath = file.get_path() if file is not None else None
+        if not filepath:
+            return
+        extension = os.path.splitext(filepath)[1][1:].lower()
         if extension in self.file_patterns:
             self.file = file
 
@@ -144,7 +153,11 @@ class FileRow(Adw.PreferencesRow):
         dialog.open(self.window, None, self.on_open_file_dialog_file_response)
 
     def on_open_file_dialog_file_response(self, dialog, response):
-        file = dialog.open_finish(response)
+        try:
+            file = dialog.open_finish(response)
+        except Exception:
+            # Cancel / dismiss must not raise into the GTK dialog callback.
+            return
 
         if file:
             self.file = file
