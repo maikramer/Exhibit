@@ -18,12 +18,12 @@ Branches:
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [~] File watch / auto-reload (single-doc; prompt UI TODO)
 - [~] Headless CLI render (Exb standalone fallback); video encode still f3d-path
-- [~] Animation names combo (glTF names wired); bind pose still TODO on Exb
+- [~] Animation names combo (glTF names wired); bind pose default on load
 - [ ] Split compare
-- [ ] Session restore / recent files
+- [~] Session restore / recent files (persist + restore wired)
 - [x] Flatpak: libktx, meshoptimizer, sandbox home/tmp/media
-- [ ] pytest suite + CI
-- [ ] i18n pt_BR + fork strings
+- [~] pytest suite adapted for Exb shim; mixin UI tests still legacy
+- [ ] i18n pt_BR + fork strings (POTFILES updated; pot regen TODO)
 - [x] Docs fork kept + MIGRATE_LIBEXHIBIT checklist
 
 ## Estratégia

@@ -45,6 +45,8 @@ from .periodic_checker import PeriodicChecker
 from .widgets.viewer_tab import ViewerTab
 from .widgets.f3d_viewer import F3DViewer
 from .window_object_tree import ObjectTreeMixin
+from .recent_files import push_recent
+from .session_files import collect_session_paths, session_paths_to_restore
 
 from gettext import gettext as _
 
@@ -240,6 +242,8 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
                 self.load_file(Gio.File.new_for_path(startup_filepath))
             else:
                 self.load_file(startup_filepath)
+        else:
+            self._restore_session_if_enabled()
 
         log.info("Started")
 
@@ -378,6 +382,7 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         self.no_file_loaded = False
         self.stack.set_visible_child_name("3d_page")
         self._update_stats_overlay()
+        self._remember_recent(path)
         return True
 
     def setup_hdri_folder(self):
@@ -571,6 +576,7 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         except Exception as exc:
             log.debug("object tree: %s", exc)
         self.update_time_stamp()
+        self._remember_recent(self.filepath)
         try:
             self._file_checker.run()
         except Exception as exc:
@@ -774,6 +780,49 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
     def enum_name (self, item):
         return item.get_nick().title().replace("-", " ")
 
+    def _remember_recent(self, path: str) -> None:
+        if not path:
+            return
+        try:
+            recent = list(settings.get_strv("recent-files"))
+            settings.set_strv("recent-files", push_recent(recent, path))
+        except Exception as exc:
+            log.debug("recent files: %s", exc)
+
+    def _iter_open_paths(self) -> list[str]:
+        paths: list[str] = []
+        if self.tab_view is None:
+            if self.filepath:
+                paths.append(self.filepath)
+            return paths
+        for i in range(self.tab_view.get_n_pages()):
+            page = self.tab_view.get_nth_page(i)
+            child = page.get_child()
+            if isinstance(child, ViewerTab) and child.filepath:
+                paths.append(child.filepath)
+            elif page is getattr(self, "_primary_tab_page", None) and self.filepath:
+                paths.append(self.filepath)
+        return paths
+
+    def _persist_session(self) -> None:
+        try:
+            paths = collect_session_paths(self._iter_open_paths())
+            settings.set_strv("session-files", paths)
+        except Exception as exc:
+            log.debug("session persist: %s", exc)
+
+    def _restore_session_if_enabled(self) -> None:
+        try:
+            enabled = settings.get_boolean("restore-session")
+            paths = session_paths_to_restore(
+                enabled, list(settings.get_strv("session-files"))
+            )
+        except Exception as exc:
+            log.debug("session restore read: %s", exc)
+            return
+        for path in paths:
+            self.load_file(Gio.File.new_for_path(path))
+
     def _file_mtime(self, path):
         if not path:
             return None
@@ -832,6 +881,7 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             self._file_checker.stop()
         except Exception:
             pass
+        self._persist_session()
         prepared = getattr(self, "_prepared_load_path", None)
         if prepared:
             release_prepared(prepared)
