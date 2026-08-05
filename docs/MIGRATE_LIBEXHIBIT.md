@@ -11,8 +11,8 @@ Branches:
 - [~] Multi-document tabs v1 (AdwTabView + focus-existing); warm load TODO
 - [~] Outliner UI wired; part visibility awaits Exb API
 - [~] Bone/armature kinds in tree; X-ray via show-armature prop (partial)
-- [ ] Viewport tool rail / chrome header
-- [ ] Inspect overlays + skin-weight heat maps
+- [~] Viewport tool rail (sidebar/home/outliner)
+- [~] Inspect entry + skins detect; heat-map awaits Exb buffer API
 - [~] Mesh stats overlay (label on GtkOverlay; needs polish)
 - [~] Camera presets via Exb rotate; Blender touchpad nav still TODO
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)

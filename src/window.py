@@ -277,6 +277,8 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
 
         self.tab_view.connect("notify::selected-page", self._on_tab_selected)
         self.create_action("new-tab", self._on_new_tab_action)
+        self.create_action("inspect-skin-weights", self._on_inspect_skin_weights)
+
         # Camera preset actions (approximate via Exb rotate until full nav ports).
         self.create_action("view-front", lambda *_: self._apply_named_view("front"))
         self.create_action("view-right", lambda *_: self._apply_named_view("right"))
@@ -349,17 +351,39 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             log.warning("outliner: no Gtk.Overlay found")
             return
 
+        rail = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
+        rail.add_css_class("viewport-tool-rail")
+        sidebar_btn = Gtk.ToggleButton(
+            icon_name="sidebar-show-symbolic",
+            tooltip_text=_("Toggle Sidebar"),
+        )
+        sidebar_btn.add_css_class("overlay-button")
+        sidebar_btn.add_css_class("circular")
+        sidebar_btn.set_active(self.split_view.get_show_sidebar())
+        self.split_view.bind_property(
+            "show-sidebar",
+            sidebar_btn,
+            "active",
+            GObject.BindingFlags.SYNC_CREATE | GObject.BindingFlags.BIDIRECTIONAL,
+        )
+        home_btn = Gtk.Button(
+            icon_name="go-home-symbolic",
+            tooltip_text=_("Reset to Bounds"),
+        )
+        home_btn.add_css_class("overlay-button")
+        home_btn.add_css_class("circular")
+        home_btn.connect("clicked", self.on_home_clicked)
+        rail.append(sidebar_btn)
+        rail.append(home_btn)
+
         self.object_tree_toggle = Gtk.ToggleButton(
             icon_name="view-list-symbolic",
             tooltip_text=_("Outliner"),
             visible=False,
-            valign=Gtk.Align.START,
-            halign=Gtk.Align.START,
-            margin_start=12,
-            margin_top=48,
         )
         self.object_tree_toggle.add_css_class("overlay-button")
         self.object_tree_toggle.add_css_class("circular")
+        rail.append(self.object_tree_toggle)
 
         self.object_tree_view = Gtk.ListView()
         self.object_tree_panel = Gtk.Box(orientation=Gtk.Orientation.VERTICAL)
@@ -388,7 +412,7 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
         shell.set_halign(Gtk.Align.START)
         shell.set_margin_start(12)
         shell.set_margin_top(48)
-        shell.append(self.object_tree_toggle)
+        shell.append(rail)
         shell.append(revealer)
         overlay.add_overlay(shell)
 
