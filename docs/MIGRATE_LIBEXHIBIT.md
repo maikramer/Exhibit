@@ -9,7 +9,7 @@ Branches:
 ## Checklist de features (não perder)
 
 - [~] Multi-document tabs v1 (AdwTabView + focus-existing); warm load TODO
-- [~] Outliner UI wired; part visibility awaits Exb API
+- [~] Outliner UI + part visibility via GLB filter reload
 - [~] Bone/armature kinds in tree; X-ray via show-armature prop (partial)
 - [~] Viewport tool rail (sidebar/home/outliner)
 - [~] Inspect entry + skins detect; heat-map awaits Exb buffer API
@@ -39,7 +39,6 @@ Branches:
 
 Estas features do fork precisam de API nova em `libexhibit` (C), não só Python:
 
-- Part visibility / outliner hide (scene buffers / node hide)
 - Skin-weight heat maps (in-memory GLB reload)
 - Blender-like nav (pointer world hit, orbit around cursor) — hoje Exb.View tem orbit/pan/zoom simples
 - Warm-load multi-engine prepare race (parcialmente possível em Python)

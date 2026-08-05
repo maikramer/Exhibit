@@ -10,7 +10,15 @@ from typing import Any
 
 from gi.repository import Exb, Gio, GObject, Gtk
 
-from ..gltf_scene_graph import ScenePart, SceneTreeNode, build_scene_tree, list_mesh_parts
+import tempfile
+
+from ..gltf_scene_graph import (
+    ScenePart,
+    SceneTreeNode,
+    build_glb_hiding_nodes_bytes,
+    build_scene_tree,
+    list_mesh_parts,
+)
 from ..meshopt_decompress import prepare_glb_for_load, release_prepared
 
 log = logging.getLogger(__name__)
@@ -220,12 +228,48 @@ class F3DViewer(Gtk.Box):
         return self._prepared_path
 
     def set_part_visible(self, node_index: int, visible: bool) -> bool:
+        if not self._loaded_filepath:
+            return False
+        previous = set(self._hidden_parts)
         if visible:
             self._hidden_parts.discard(int(node_index))
         else:
             self._hidden_parts.add(int(node_index))
-        log.debug("set_part_visible deferred (no Exb part API yet)")
-        return False
+        if not self._reload_with_part_visibility():
+            self._hidden_parts = previous
+            return False
+        return True
+
+    def _reload_with_part_visibility(self) -> bool:
+        """Filter GLB nodes then reload via Exb (fork approach, no native hide API)."""
+        source = self._prepared_path or self._loaded_filepath
+        if not source or not source.lower().endswith((".glb", ".gltf")):
+            return False
+        try:
+            if not self._hidden_parts:
+                return self.load_file(self._loaded_filepath, prepared_path=source)
+            data = build_glb_hiding_nodes_bytes(source, self._hidden_parts)
+            if not data:
+                return False
+            fd, tmp = tempfile.mkstemp(prefix="exhibit-hide-", suffix=".glb")
+            os.close(fd)
+            with open(tmp, "wb") as handle:
+                handle.write(data)
+            ok = self.load_file(self._loaded_filepath, prepared_path=tmp)
+            if ok:
+                # Own the temp until next prepare release.
+                if self._prepared_path and self._prepared_path != tmp:
+                    release_prepared(self._prepared_path)
+                self._prepared_path = tmp
+            else:
+                try:
+                    os.unlink(tmp)
+                except OSError:
+                    pass
+            return ok
+        except Exception as exc:
+            log.warning("part visibility reload failed: %s", exc)
+            return False
 
     def _release_prepared_path(self) -> None:
         if self._prepared_path:
