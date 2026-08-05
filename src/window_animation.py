@@ -76,6 +76,9 @@ class AnimationMixin:
 
     def _set_animation_controls_sensitive(self, enabled: bool) -> None:
         self.play_button.set_sensitive(enabled)
+        play_header = getattr(self, "play_button_headerbar", None)
+        if play_header is not None:
+            play_header.set_sensitive(enabled)
         self.animation_time_scale.set_sensitive(enabled)
 
     def refresh_animation_combo(self):

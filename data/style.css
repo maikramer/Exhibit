@@ -37,11 +37,28 @@ file-row {
   margin-right: 6px;
 }
 
+.viewer-chrome-row {
+  background: none;
+  border: none;
+  box-shadow: none;
+  padding: 0;
+}
+
 .viewer-chrome {
   padding: 2px;
   border-radius: 9999px;
   background-color: alpha(var(--window-bg-color), 0.72);
   border: 1px solid alpha(var(--border-color), 0.7);
+}
+
+/* Vertical tool rail over the viewport (sidebar / home / outliner). */
+.viewer-chrome-rail {
+  border-radius: 9999px;
+  padding: 4px 2px;
+}
+
+.object-tree-overlay-shell {
+  background: none;
 }
 
 .overlay-button {

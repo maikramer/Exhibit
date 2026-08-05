@@ -155,6 +155,11 @@ class Viewer3dWindow(
     preferences_button = Gtk.Template.Child()
     theme_toggle_button = Gtk.Template.Child()
     home_button_headerbar = Gtk.Template.Child()
+    open_button_headerbar = Gtk.Template.Child()
+    play_button_headerbar = Gtk.Template.Child()
+    orthographic_button_headerbar = Gtk.Template.Child()
+    sync_cameras_button_headerbar = Gtk.Template.Child()
+    export_image_button_headerbar = Gtk.Template.Child()
 
     points_group = Gtk.Template.Child()
     spheres_switch = Gtk.Template.Child()
@@ -358,6 +363,9 @@ class Viewer3dWindow(
         self._wire_settings_widgets()
 
         self.play_button.connect("clicked", self.on_play_button_clicked)
+        play_header = getattr(self, "play_button_headerbar", None)
+        if play_header is not None:
+            play_header.connect("clicked", self.on_play_button_clicked)
         self._bind_animation_controls(self.f3d_viewer)
 
         self._block_animation_combo = False

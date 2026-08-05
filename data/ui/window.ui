@@ -838,14 +838,15 @@
                               <object class="GtkBox">
                                 <property name="spacing">4</property>
                                 <property name="valign">center</property>
+                                <property name="margin-start">48</property>
                                 <style>
                                   <class name="viewer-chrome"/>
                                 </style>
                                 <child>
-                                  <object class="GtkToggleButton" id="sidebar_toggle_button">
-                                    <property name="icon-name">sidebar-show-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Reveal Sidebar</property>
-                                    <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create | bidirectional">True</property>
+                                  <object class="GtkButton" id="open_button_headerbar">
+                                    <property name="icon-name">document-open-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Open File</property>
+                                    <property name="action-name">win.open-new</property>
                                     <style>
                                       <class name="overlay-button"/>
                                       <class name="circular"/>
@@ -853,9 +854,21 @@
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkButton" id="home_button_headerbar">
-                                    <property name="icon-name">go-home-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Reset to Bounds</property>
+                                  <object class="GtkButton" id="play_button_headerbar">
+                                    <property name="icon-name">media-playback-start-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Play</property>
+                                    <property name="sensitive">False</property>
+                                    <style>
+                                      <class name="overlay-button"/>
+                                      <class name="circular"/>
+                                    </style>
+                                  </object>
+                                </child>
+                                <child>
+                                  <object class="GtkToggleButton" id="orthographic_button_headerbar">
+                                    <property name="icon-name">shapes-symbolic</property>
+                                    <property name="tooltip-text" translatable="yes">Orthographic</property>
+                                    <property name="action-name">win.orthographic</property>
                                     <style>
                                       <class name="overlay-button"/>
                                       <class name="circular"/>
@@ -866,42 +879,82 @@
                             </child>
                             <child type="end">
                               <object class="GtkBox">
-                                <property name="spacing">4</property>
+                                <property name="spacing">8</property>
                                 <property name="valign">center</property>
                                 <style>
-                                  <class name="viewer-chrome"/>
+                                  <class name="viewer-chrome-row"/>
                                 </style>
                                 <child>
-                                  <object class="GtkMenuButton" id="theme_toggle_button">
-                                    <property name="icon-name">preferences-desktop-appearance-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Theme</property>
+                                  <object class="GtkBox">
+                                    <property name="spacing">4</property>
+                                    <property name="valign">center</property>
                                     <style>
-                                      <class name="overlay-button"/>
-                                      <class name="circular"/>
+                                      <class name="viewer-chrome"/>
                                     </style>
+                                    <child>
+                                      <object class="GtkToggleButton" id="sync_cameras_button_headerbar">
+                                        <property name="icon-name">photo-camera-symbolic</property>
+                                        <property name="tooltip-text" translatable="yes">Sync Cameras Across Tabs</property>
+                                        <property name="action-name">win.sync-cameras</property>
+                                        <style>
+                                          <class name="overlay-button"/>
+                                          <class name="circular"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkButton" id="export_image_button_headerbar">
+                                        <property name="icon-name">image-alt-symbolic</property>
+                                        <property name="tooltip-text" translatable="yes">Export Image</property>
+                                        <property name="action-name">win.save-as-image</property>
+                                        <style>
+                                          <class name="overlay-button"/>
+                                          <class name="circular"/>
+                                        </style>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                                 <child>
-                                  <object class="GtkButton" id="preferences_button">
-                                    <property name="icon-name">preferences-system-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Preferences</property>
-                                    <property name="action-name">win.preferences</property>
+                                  <object class="GtkBox">
+                                    <property name="spacing">4</property>
+                                    <property name="valign">center</property>
                                     <style>
-                                      <class name="overlay-button"/>
-                                      <class name="circular"/>
+                                      <class name="viewer-chrome"/>
                                     </style>
-                                  </object>
-                                </child>
-                                <child>
-                                  <object class="GtkMenuButton">
-                                    <property name="primary">True</property>
-                                    <property name="icon-name">open-menu-symbolic</property>
-                                    <property name="tooltip-text" translatable="yes">Menu</property>
-                                    <property name="menu-model">primary_menu</property>
-                                    <style>
-                                      <class name="overlay-button"/>
-                                      <class name="circular"/>
-                                    </style>
+                                    <child>
+                                      <object class="GtkMenuButton" id="theme_toggle_button">
+                                        <property name="icon-name">preferences-desktop-appearance-symbolic</property>
+                                        <property name="tooltip-text" translatable="yes">Theme</property>
+                                        <style>
+                                          <class name="overlay-button"/>
+                                          <class name="circular"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkButton" id="preferences_button">
+                                        <property name="icon-name">preferences-system-symbolic</property>
+                                        <property name="tooltip-text" translatable="yes">Preferences</property>
+                                        <property name="action-name">win.preferences</property>
+                                        <style>
+                                          <class name="overlay-button"/>
+                                          <class name="circular"/>
+                                        </style>
+                                      </object>
+                                    </child>
+                                    <child>
+                                      <object class="GtkMenuButton">
+                                        <property name="primary">True</property>
+                                        <property name="icon-name">open-menu-symbolic</property>
+                                        <property name="tooltip-text" translatable="yes">Menu</property>
+                                        <property name="menu-model">primary_menu</property>
+                                        <style>
+                                          <class name="overlay-button"/>
+                                          <class name="circular"/>
+                                        </style>
+                                      </object>
+                                    </child>
                                   </object>
                                 </child>
                               </object>
@@ -947,21 +1000,54 @@
                                         <property name="spacing">8</property>
                                         <property name="halign">start</property>
                                         <property name="valign">start</property>
-                                        <property name="margin-top">64</property>
-                                        <property name="margin-start">12</property>
-                                        <property name="visible">False</property>
+                                        <property name="margin-top">8</property>
+                                        <property name="margin-start">8</property>
+                                        <property name="visible">True</property>
                                         <style>
                                           <class name="object-tree-overlay-shell"/>
                                         </style>
                                         <child>
-                                          <object class="GtkToggleButton" id="object_tree_toggle">
-                                            <property name="icon-name">view-list-symbolic</property>
-                                            <property name="tooltip-text" translatable="yes">Outliner</property>
+                                          <object class="GtkBox" id="left_chrome_rail">
+                                            <property name="orientation">vertical</property>
+                                            <property name="spacing">4</property>
                                             <property name="valign">start</property>
+                                            <property name="halign">start</property>
                                             <style>
-                                              <class name="overlay-button"/>
-                                              <class name="circular"/>
+                                              <class name="viewer-chrome"/>
+                                              <class name="viewer-chrome-rail"/>
                                             </style>
+                                            <child>
+                                              <object class="GtkToggleButton" id="sidebar_toggle_button">
+                                                <property name="icon-name">sidebar-show-symbolic</property>
+                                                <property name="tooltip-text" translatable="yes">Reveal Sidebar</property>
+                                                <property name="active" bind-source="split_view" bind-property="show-sidebar" bind-flags="sync-create | bidirectional">True</property>
+                                                <style>
+                                                  <class name="overlay-button"/>
+                                                  <class name="circular"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkButton" id="home_button_headerbar">
+                                                <property name="icon-name">go-home-symbolic</property>
+                                                <property name="tooltip-text" translatable="yes">Reset to Bounds</property>
+                                                <style>
+                                                  <class name="overlay-button"/>
+                                                  <class name="circular"/>
+                                                </style>
+                                              </object>
+                                            </child>
+                                            <child>
+                                              <object class="GtkToggleButton" id="object_tree_toggle">
+                                                <property name="icon-name">view-list-symbolic</property>
+                                                <property name="tooltip-text" translatable="yes">Outliner</property>
+                                                <property name="visible">False</property>
+                                                <style>
+                                                  <class name="overlay-button"/>
+                                                  <class name="circular"/>
+                                                </style>
+                                              </object>
+                                            </child>
                                           </object>
                                         </child>
                                         <child>
@@ -971,6 +1057,7 @@
                                             <property name="transition-duration">180</property>
                                             <property name="halign">start</property>
                                             <property name="valign">start</property>
+                                            <property name="margin-top">72</property>
                                             <child>
                                               <object class="GtkBox" id="object_tree_panel">
                                                 <property name="orientation">vertical</property>

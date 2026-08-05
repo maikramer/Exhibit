@@ -50,9 +50,17 @@ class ChromeMixin:
 
     def on_playing_changed(self, *args):
         if self.f3d_viewer.playing:
-            self.play_button.set_icon_name("media-playback-pause-symbolic")
-            self.play_button.set_tooltip_text(_("Stop"))
+            icon = "media-playback-pause-symbolic"
+            tip = _("Stop")
         else:
-            self.play_button.set_icon_name("media-playback-start-symbolic")
-            self.play_button.set_tooltip_text(_("Start"))
+            icon = "media-playback-start-symbolic"
+            tip = _("Start")
+        for btn in (
+            getattr(self, "play_button", None),
+            getattr(self, "play_button_headerbar", None),
+        ):
+            if btn is None:
+                continue
+            btn.set_icon_name(icon)
+            btn.set_tooltip_text(tip)
 

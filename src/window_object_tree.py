@@ -96,12 +96,13 @@ class ObjectTreeMixin:
         return store
 
     def _set_object_tree_overlay_available(self, available: bool):
-        shell = getattr(self, "object_tree_overlay_shell", None)
+        # Left chrome rail (sidebar / home / outliner) stays on the 3d page;
+        # only the outliner toggle appears when the active tree has meshes.
         toggle = getattr(self, "object_tree_toggle", None)
-        if shell is not None:
-            shell.set_visible(bool(available))
-        if not available and toggle is not None:
-            toggle.set_active(False)
+        if toggle is not None:
+            toggle.set_visible(bool(available))
+            if not available:
+                toggle.set_active(False)
 
     def refresh_object_tree(self):
         try:
