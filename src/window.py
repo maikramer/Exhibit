@@ -277,7 +277,44 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
 
         self.tab_view.connect("notify::selected-page", self._on_tab_selected)
         self.create_action("new-tab", self._on_new_tab_action)
+        # Camera preset actions (approximate via Exb rotate until full nav ports).
+        self.create_action("view-front", lambda *_: self._apply_named_view("front"))
+        self.create_action("view-right", lambda *_: self._apply_named_view("right"))
+        self.create_action("view-back", lambda *_: self._apply_named_view("back"))
+        self.create_action("view-left", lambda *_: self._apply_named_view("left"))
+        self.create_action("view-top", lambda *_: self._apply_named_view("top"))
+        self.create_action("view-isometric", lambda *_: self._apply_named_view("isometric"))
+        app = self.get_application()
+        if app is not None:
+            for action, accel in (
+                ("win.view-front", ["1"]),
+                ("win.view-right", ["3"]),
+                ("win.view-back", ["<Shift>1"]),
+                ("win.view-left", ["<Shift>3"]),
+                ("win.view-top", ["7"]),
+                ("win.view-isometric", ["<Shift>7"]),
+            ):
+                app.set_accels_for_action(action, accel)
         log.info("minimal AdwTabView ready")
+
+    def _apply_named_view(self, name: str) -> None:
+        eng = self.engine
+        try:
+            eng.reset_camera()
+            if name == "front":
+                pass
+            elif name == "right":
+                eng.rotate(90.0, 0.0)
+            elif name == "back":
+                eng.rotate(180.0, 0.0)
+            elif name == "left":
+                eng.rotate(-90.0, 0.0)
+            elif name == "top":
+                eng.rotate(0.0, -80.0)
+            elif name == "isometric":
+                eng.rotate(35.0, -30.0)
+        except Exception as exc:
+            log.debug("named view %s: %s", name, exc)
 
     def _on_tab_selected(self, *args):
         page = self.tab_view.get_selected_page() if self.tab_view else None

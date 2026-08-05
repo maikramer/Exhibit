@@ -14,7 +14,7 @@ Branches:
 - [ ] Viewport tool rail / chrome header
 - [ ] Inspect overlays + skin-weight heat maps
 - [~] Mesh stats overlay (label on GtkOverlay; needs polish)
-- [ ] Blender-like touchpad navigation + camera presets
+- [~] Camera presets via Exb rotate; Blender touchpad nav still TODO
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [~] File watch / auto-reload (single-doc; prompt UI TODO)
 - [~] Headless CLI render (Exb standalone fallback); video encode still f3d-path
