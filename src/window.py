@@ -541,8 +541,10 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
             self._viewer_bridge._refresh_scene_graph(
                 self._prepared_load_path or filepath
             )
+            # Fork default: bind pose (no clip) until user picks an animation.
+            self.engine.set_property("animation-index", -1)
         except Exception as exc:
-            log.debug("bridge scene graph: %s", exc)
+            log.debug("bridge scene graph / bind pose: %s", exc)
 
         self.on_file_opened()
 

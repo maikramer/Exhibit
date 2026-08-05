@@ -1,5 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Structural checks for F3DLoadMixin (no GPU / no Gtk)."""
+"""Structural checks for Exb-backed F3DViewer shim (no GPU / no Gtk)."""
 
 from __future__ import annotations
 
@@ -7,19 +7,11 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-MIXIN = ROOT / "src" / "widgets" / "f3d_viewer_load.py"
 VIEWER = ROOT / "src" / "widgets" / "f3d_viewer.py"
+MIXIN = ROOT / "src" / "widgets" / "f3d_viewer_load.py"
 
-EXPECTED = {
-    "_clear_force_reader",
-    "_add_scene_buffer",
+SHIM_EXPECTED = {
     "supports",
-    "_prepare_filepath",
-    "_resolve_load_path",
-    "_release_load_path",
-    "_restore_hdri_ambient",
-    "_release_prepared_path",
-    "release_resources",
     "load_file",
     "add_file",
     "get_scene_parts",
@@ -29,8 +21,18 @@ EXPECTED = {
     "get_prepared_path",
     "set_part_visible",
     "reset_to_bind_pose",
-    "_try_native_part_visibility",
-    "_reload_with_part_visibility",
+    "release_resources",
+    "_release_prepared_path",
+    "_refresh_scene_graph",
+}
+
+LEGACY_MIXIN_EXPECTED = {
+    "_clear_force_reader",
+    "_add_scene_buffer",
+    "supports",
+    "load_file",
+    "set_part_visible",
+    "reset_to_bind_pose",
 }
 
 
@@ -46,44 +48,23 @@ def _class_methods(path: Path, class_name: str) -> set[str]:
     raise AssertionError(f"{class_name} not found in {path}")
 
 
-def test_f3d_load_mixin_has_load_methods():
-    methods = _class_methods(MIXIN, "F3DLoadMixin")
-    missing = EXPECTED - methods
+def test_exb_shim_has_load_methods():
+    methods = _class_methods(VIEWER, "F3DViewer")
+    missing = SHIM_EXPECTED - methods
     assert not missing, missing
 
 
-def test_f3d_viewer_uses_mixin_and_no_duplicate_load_methods():
+def test_exb_shim_does_not_import_python_f3d():
     viewer_src = VIEWER.read_text(encoding="utf-8")
-    assert "from .f3d_viewer_load import F3DLoadMixin" in viewer_src
-    assert "class F3DViewer(F3DLoadMixin, Gtk.GLArea)" in viewer_src
-    viewer_methods = _class_methods(VIEWER, "F3DViewer")
-    overlap = viewer_methods & EXPECTED
-    assert not overlap, overlap
+    assert "import f3d" not in viewer_src
+    assert "class F3DViewer(Gtk.Box)" in viewer_src or "class F3DViewer(" in viewer_src
+    assert "Exb.View" in viewer_src
 
 
-def test_reload_prefers_native_visibility_hook():
-    tree = ast.parse(MIXIN.read_text(encoding="utf-8"))
-    mixin = next(n for n in tree.body if isinstance(n, ast.ClassDef))
-    reload = next(
-        n
-        for n in mixin.body
-        if isinstance(n, ast.FunctionDef) and n.name == "_reload_with_part_visibility"
-    )
-    src = ast.get_source_segment(MIXIN.read_text(encoding="utf-8"), reload)
-    assert src is not None
-    assert "_try_native_part_visibility" in src
-
-
-def test_load_file_restores_scene_on_add_failure():
+def test_legacy_load_mixin_kept_for_reference():
+    """Legacy F3D Python mixin remains on disk for porting reference."""
+    methods = _class_methods(MIXIN, "F3DLoadMixin")
+    missing = LEGACY_MIXIN_EXPECTED - methods
+    assert not missing, missing
     text = MIXIN.read_text(encoding="utf-8")
-    tree = ast.parse(text)
-    mixin = next(n for n in tree.body if isinstance(n, ast.ClassDef))
-    load = next(
-        n
-        for n in mixin.body
-        if isinstance(n, ast.FunctionDef) and n.name == "load_file"
-    )
-    src = ast.get_source_segment(text, load)
-    assert src is not None
-    assert "restore after add failed" in src
-    assert "previous_loaded" in src
+    assert "f3d = None" in text or "import f3d" in text
