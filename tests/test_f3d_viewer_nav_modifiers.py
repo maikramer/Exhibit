@@ -22,6 +22,12 @@ def test_exb_view_has_orbit_pan_zoom_gestures():
     assert "orbit-sensitivity" in src
     assert "GDK_SHIFT_MASK" in src
     assert "GDK_CONTROL_MASK" in src
+    assert "zoom-to-cursor" in src
+    assert "orbit-around-cursor" in src
+    assert "_exb_engine_zoom_at_ndc" in (
+        VIEW_C.read_text(encoding="utf-8")
+        + (ROOT / "libexhibit" / "exb-engine.c").read_text(encoding="utf-8")
+    )
 
 
 def test_shim_stores_nav_settings():

@@ -530,6 +530,14 @@ class ExbWindow(ObjectTreeMixin, Adw.ApplicationWindow):
                 "pan-sensitivity",
                 settings.get_double("nav-pan-sensitivity"),
             )
+            self.viewer.set_property(
+                "zoom-to-cursor",
+                settings.get_boolean("nav-zoom-to-cursor"),
+            )
+            self.viewer.set_property(
+                "orbit-around-cursor",
+                settings.get_boolean("nav-orbit-around-cursor"),
+            )
         except Exception as exc:
             log.debug("nav settings: %s", exc)
 

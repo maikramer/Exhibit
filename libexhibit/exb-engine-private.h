@@ -28,4 +28,16 @@ G_BEGIN_DECLS
 void     _exb_engine_initialize (ExbEngine *self);
 void     _exb_engine_finalize   (ExbEngine *self);
 
+/* NDC in [-1, 1], y up. Used for zoom/orbit-under-cursor (fork nav). */
+void     _exb_engine_zoom_at_ndc   (ExbEngine *self,
+                                    gdouble     factor,
+                                    gdouble     ndc_x,
+                                    gdouble     ndc_y);
+void     _exb_engine_rotate_at_ndc (ExbEngine *self,
+                                    gdouble     dx,
+                                    gdouble     dy,
+                                    gdouble     ndc_x,
+                                    gdouble     ndc_y,
+                                    gboolean    with_limit);
+
 G_END_DECLS

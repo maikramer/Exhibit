@@ -24,6 +24,8 @@
 #include "exb-view.h"
 #include "exb-debug.h"
 
+#include <math.h>
+
 struct _ExbView {
   GtkGLArea parent_instance;
 };
@@ -35,11 +37,14 @@ typedef struct
   GtkGesture *drag_gesture;
   GtkGesture *zoom_gesture;
   GtkEventController *scroll_controller;
+  GtkEventController *motion_controller;
 
   bool always_point_up;
   bool interactive;
   bool invert_x;
   bool invert_y;
+  bool zoom_to_cursor;
+  bool orbit_around_cursor;
   gdouble orbit_sensitivity;
   gdouble zoom_sensitivity;
   gdouble pan_sensitivity;
@@ -47,6 +52,9 @@ typedef struct
   gdouble prev_scale;
   gdouble drag_prev_x;
   gdouble drag_prev_y;
+  gdouble pointer_x;
+  gdouble pointer_y;
+  bool pointer_valid;
 
   bool engine_is_initialized;
 
@@ -61,12 +69,36 @@ typedef enum
   PROP_INTERACTIVE,
   PROP_INVERT_X,
   PROP_INVERT_Y,
+  PROP_ZOOM_TO_CURSOR,
+  PROP_ORBIT_AROUND_CURSOR,
   PROP_ORBIT_SENSITIVITY,
   PROP_ZOOM_SENSITIVITY,
   PROP_PAN_SENSITIVITY,
 } ExbViewProps;
 
 static GParamSpec *props[PROP_PAN_SENSITIVITY + 1];
+
+static void on_pointer_motion (ExbView *self, gdouble x, gdouble y);
+
+static void
+exb_view_pointer_to_ndc (ExbView *self,
+                         gdouble *ndc_x,
+                         gdouble *ndc_y)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  int width = gtk_widget_get_width (GTK_WIDGET (self));
+  int height = gtk_widget_get_height (GTK_WIDGET (self));
+
+  if (!priv->pointer_valid || width <= 0 || height <= 0)
+    {
+      *ndc_x = 0.0;
+      *ndc_y = 0.0;
+      return;
+    }
+
+  *ndc_x = (priv->pointer_x / (gdouble) width) * 2.0 - 1.0;
+  *ndc_y = 1.0 - (priv->pointer_y / (gdouble) height) * 2.0;
+}
 
 static void
 exb_view_set_engine (ExbView   *self,
@@ -120,6 +152,14 @@ exb_view_get_property (GObject    *object,
       g_value_set_boolean (value, priv->invert_y);
       break;
 
+    case PROP_ZOOM_TO_CURSOR:
+      g_value_set_boolean (value, priv->zoom_to_cursor);
+      break;
+
+    case PROP_ORBIT_AROUND_CURSOR:
+      g_value_set_boolean (value, priv->orbit_around_cursor);
+      break;
+
     case PROP_ORBIT_SENSITIVITY:
       g_value_set_double (value, priv->orbit_sensitivity);
       break;
@@ -164,6 +204,14 @@ exb_view_set_property (GObject      *object,
 
     case PROP_INVERT_Y:
       priv->invert_y = g_value_get_boolean (value);
+      break;
+
+    case PROP_ZOOM_TO_CURSOR:
+      priv->zoom_to_cursor = g_value_get_boolean (value);
+      break;
+
+    case PROP_ORBIT_AROUND_CURSOR:
+      priv->orbit_around_cursor = g_value_get_boolean (value);
       break;
 
     case PROP_ORBIT_SENSITIVITY:
@@ -301,7 +349,16 @@ on_scroll (GtkEventControllerScroll *controller G_GNUC_UNUSED,
     gdouble factor = 1.0 - (0.1 * dy * priv->zoom_sensitivity);
     if (priv->invert_y)
       factor = 1.0 - (0.1 * (-dy) * priv->zoom_sensitivity);
-    exb_engine_zoom (priv->engine, factor);
+    if (priv->zoom_to_cursor)
+      {
+        gdouble ndc_x, ndc_y;
+        exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
+        _exb_engine_zoom_at_ndc (priv->engine, factor, ndc_x, ndc_y);
+      }
+    else
+      {
+        exb_engine_zoom (priv->engine, factor);
+      }
   }
 
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
@@ -392,10 +449,21 @@ on_drag_update (ExbView        *self,
       {
         dx *= priv->orbit_sensitivity;
         dy *= priv->orbit_sensitivity;
-        if (!priv->always_point_up)
-          exb_engine_rotate (priv->engine, dx, dy);
+        if (priv->orbit_around_cursor)
+          {
+            gdouble ndc_x, ndc_y;
+            exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
+            _exb_engine_rotate_at_ndc (priv->engine, dx, dy, ndc_x, ndc_y,
+                                      priv->always_point_up);
+          }
+        else if (!priv->always_point_up)
+          {
+            exb_engine_rotate (priv->engine, dx, dy);
+          }
         else
-          exb_engine_rotate_with_limit (priv->engine, dx, dy);
+          {
+            exb_engine_rotate_with_limit (priv->engine, dx, dy);
+          }
       }
   }
 
@@ -416,9 +484,12 @@ exb_view_init (ExbView *self)
   priv->interactive = TRUE;
   priv->invert_x = FALSE;
   priv->invert_y = FALSE;
+  priv->zoom_to_cursor = FALSE;
+  priv->orbit_around_cursor = FALSE;
   priv->orbit_sensitivity = 1.0;
   priv->zoom_sensitivity = 1.0;
   priv->pan_sensitivity = 1.0;
+  priv->pointer_valid = FALSE;
   priv->engine_is_initialized = FALSE;
 
   gtk_gl_area_set_allowed_apis (GTK_GL_AREA (self), GDK_GL_API_GL);
@@ -456,6 +527,23 @@ exb_view_init (ExbView *self)
                            G_CALLBACK (on_scroll), self, G_CONNECT_DEFAULT);
   gtk_widget_add_controller (GTK_WIDGET (self),
                              priv->scroll_controller);
+
+  priv->motion_controller = GTK_EVENT_CONTROLLER (gtk_event_controller_motion_new ());
+  g_signal_connect_object (priv->motion_controller, "motion",
+                           G_CALLBACK (on_pointer_motion), self, G_CONNECT_SWAPPED);
+  gtk_widget_add_controller (GTK_WIDGET (self), priv->motion_controller);
+}
+
+static void
+on_pointer_motion (ExbView *self,
+                   gdouble  x,
+                   gdouble  y)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+
+  priv->pointer_x = x;
+  priv->pointer_y = y;
+  priv->pointer_valid = TRUE;
 }
 
 static void
@@ -495,6 +583,18 @@ exb_view_class_init (ExbViewClass *klass)
 
   props[PROP_INVERT_Y] =
       g_param_spec_boolean ("invert-y",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_ZOOM_TO_CURSOR] =
+      g_param_spec_boolean ("zoom-to-cursor",
+                            NULL, NULL,
+                            FALSE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_ORBIT_AROUND_CURSOR] =
+      g_param_spec_boolean ("orbit-around-cursor",
                             NULL, NULL,
                             FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);

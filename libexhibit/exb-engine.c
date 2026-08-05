@@ -2075,3 +2075,129 @@ exb_engine_reset (ExbEngine *self)
 
   EXB_EXIT;
 }
+
+static void
+_exb_pivot_on_focal_plane (ExbEngine *self,
+                           gdouble    ndc_x,
+                           gdouble    ndc_y,
+                           gdouble    out_pivot[3])
+{
+  ExbEnginePrivate *priv = exb_engine_get_instance_private (self);
+  gdouble position[3];
+  gdouble focal[3];
+  gdouble view_up[3];
+  gdouble view_angle;
+  graphene_vec3_t pos_v, foc_v, up_v, forward, right, up_ortho;
+  graphene_vec3_t pivot_v, tmp;
+  gfloat dist, half_h, half_w, aspect;
+  gfloat f_pos[3], f_foc[3], f_up[3], f_pivot[3];
+
+  f3d_camera_get_position (priv->camera, position);
+  f3d_camera_get_focal_point (priv->camera, focal);
+  f3d_camera_get_view_up (priv->camera, view_up);
+  view_angle = f3d_camera_get_view_angle (priv->camera);
+
+  f_pos[0] = (gfloat) position[0];
+  f_pos[1] = (gfloat) position[1];
+  f_pos[2] = (gfloat) position[2];
+  f_foc[0] = (gfloat) focal[0];
+  f_foc[1] = (gfloat) focal[1];
+  f_foc[2] = (gfloat) focal[2];
+  f_up[0] = (gfloat) view_up[0];
+  f_up[1] = (gfloat) view_up[1];
+  f_up[2] = (gfloat) view_up[2];
+
+  graphene_vec3_init_from_float (&pos_v, f_pos);
+  graphene_vec3_init_from_float (&foc_v, f_foc);
+  graphene_vec3_init_from_float (&up_v, f_up);
+
+  graphene_vec3_subtract (&foc_v, &pos_v, &forward);
+  dist = graphene_vec3_length (&forward);
+  if (dist < 1e-6f)
+    dist = 1.0f;
+  graphene_vec3_normalize (&forward, &forward);
+
+  graphene_vec3_cross (&forward, &up_v, &right);
+  if (graphene_vec3_length (&right) < 1e-6f)
+    graphene_vec3_init (&right, 1.0f, 0.0f, 0.0f);
+  else
+    graphene_vec3_normalize (&right, &right);
+
+  graphene_vec3_cross (&right, &forward, &up_ortho);
+  graphene_vec3_normalize (&up_ortho, &up_ortho);
+
+  half_h = dist * tanf ((gfloat) (view_angle * G_PI / 360.0));
+  aspect = (priv->height > 0)
+               ? ((gfloat) priv->width / (gfloat) priv->height)
+               : 1.0f;
+  half_w = half_h * aspect;
+
+  graphene_vec3_scale (&right, (gfloat) ndc_x * half_w, &tmp);
+  graphene_vec3_add (&foc_v, &tmp, &pivot_v);
+  graphene_vec3_scale (&up_ortho, (gfloat) ndc_y * half_h, &tmp);
+  graphene_vec3_add (&pivot_v, &tmp, &pivot_v);
+
+  graphene_vec3_to_float (&pivot_v, f_pivot);
+  out_pivot[0] = f_pivot[0];
+  out_pivot[1] = f_pivot[1];
+  out_pivot[2] = f_pivot[2];
+}
+
+void
+_exb_engine_zoom_at_ndc (ExbEngine *self,
+                         gdouble    factor,
+                         gdouble    ndc_x,
+                         gdouble    ndc_y)
+{
+  ExbEnginePrivate *priv;
+  gdouble pivot[3];
+  gdouble old_focal[3];
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  priv = exb_engine_get_instance_private (self);
+  if (!priv->camera || factor == 0.0)
+    return;
+
+  f3d_camera_get_focal_point (priv->camera, old_focal);
+  _exb_pivot_on_focal_plane (self, ndc_x, ndc_y, pivot);
+  f3d_camera_set_focal_point (priv->camera, pivot);
+  exb_engine_zoom (self, factor);
+  f3d_camera_set_focal_point (priv->camera, old_focal);
+
+  /* Pan so the pivot stays under the cursor after dolly. */
+  if (factor != 0.0 && factor != 1.0)
+    {
+      gdouble dx = ndc_x * (priv->width * 0.5) * (1.0 - 1.0 / factor);
+      gdouble dy = ndc_y * (priv->height * 0.5) * (1.0 - 1.0 / factor);
+      exb_engine_pan (self, dx, -dy);
+    }
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+}
+
+void
+_exb_engine_rotate_at_ndc (ExbEngine *self,
+                           gdouble    dx,
+                           gdouble    dy,
+                           gdouble    ndc_x,
+                           gdouble    ndc_y,
+                           gboolean   with_limit)
+{
+  ExbEnginePrivate *priv;
+  gdouble pivot[3];
+
+  g_return_if_fail (EXB_IS_ENGINE (self));
+  priv = exb_engine_get_instance_private (self);
+  if (!priv->camera)
+    return;
+
+  _exb_pivot_on_focal_plane (self, ndc_x, ndc_y, pivot);
+  f3d_camera_set_focal_point (priv->camera, pivot);
+
+  if (with_limit)
+    exb_engine_rotate_with_limit (self, dx, dy);
+  else
+    exb_engine_rotate (self, dx, dy);
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
+}

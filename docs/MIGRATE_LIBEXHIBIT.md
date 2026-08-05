@@ -14,7 +14,7 @@ Branches:
 - [x] Viewport tool rail (sidebar/home/outliner)
 - [x] Inspect skin-weight heat (joint picker) + scivis-array-name
 - [x] Mesh stats overlay
-- [~] Camera presets + Shift/Ctrl nav + invert/sensitivity; zoom/orbit-to-cursor still TODO (needs ray pick)
+- [x] Camera presets + Shift/Ctrl nav + invert/sensitivity + zoom/orbit-to-cursor (focal-plane NDC)
 - [x] GLB prepare: meshopt + KHR_mesh_quantization + KTX2/BasisU (hooked in ExbWindow.load_file + F3DViewer shim)
 - [x] File watch / auto-reload + reload prompt dialog
 - [x] Headless CLI render + turntable video on Exb standalone path
