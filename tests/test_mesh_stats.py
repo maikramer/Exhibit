@@ -43,6 +43,23 @@ def test_overlay_contains_counts(tmp_path: Path):
     assert "Height" in text
 
 
+def test_overlay_uses_display_path_not_meshopt_temp(tmp_path: Path):
+    gltf, bin_chunk = plain_triangle_gltf()
+    source = write_glb(tmp_path / "hero-model.glb", gltf, bin_chunk)
+    prepared = write_glb(
+        tmp_path / "exhibit-meshopt-udhfilov.glb", gltf, bin_chunk
+    )
+    stats = collect_mesh_stats(
+        str(prepared),
+        already_prepared=True,
+        display_path=str(source),
+    )
+    text = format_overlay_text(stats)
+    assert "hero-model.glb" in text
+    assert "exhibit-meshopt" not in text
+    assert stats.file_bytes == source.stat().st_size
+
+
 def test_non_glb_size_only(tmp_path: Path):
     path = tmp_path / "box.stl"
     path.write_bytes(b"solid x\nendsolid x\n")

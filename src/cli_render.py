@@ -434,7 +434,10 @@ def _render_model_exb(args: argparse.Namespace) -> str:
 
     try:
         stats = collect_mesh_stats(
-            load_path, already_prepared=True, up=str(args.up)
+            load_path,
+            already_prepared=True,
+            up=str(args.up),
+            display_path=model_path,
         )
         width, height = args.size
         eng = Exb.Engine.new_standalone()
@@ -627,8 +630,12 @@ def render_model(args: argparse.Namespace) -> str:
     # Outer finally always frees prepare retain (Engine.create / pre-add can die).
     try:
         print("Collecting mesh stats", file=sys.stderr)
+        # Label overlay/JSON with the user path — load_path may be meshopt temp.
         stats = collect_mesh_stats(
-            load_path, already_prepared=True, up=str(args.up)
+            load_path,
+            already_prepared=True,
+            up=str(args.up),
+            display_path=model_path,
         )
         overlay_text = format_overlay_for_f3d(stats) if args.overlay else None
         options = _build_options(args, overlay_text=overlay_text)

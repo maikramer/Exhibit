@@ -582,25 +582,40 @@ def _stats_from_gltf(
 
 
 def collect_mesh_stats(
-    path: str, *, already_prepared: bool = False, up: str = "+Y"
+    path: str,
+    *,
+    already_prepared: bool = False,
+    up: str = "+Y",
+    display_path: str | None = None,
 ) -> MeshStats:
     """
     Collect stats for ``path``.
 
     For ``.glb`` / ``.gltf``, prepares (pack / meshopt / quantization / KTX2)
     when needed so counts match what F3D loads. Other formats return size only.
+
+    ``display_path`` labels the overlay (basename / size) when ``path`` is a
+    prepare-cache temp such as ``exhibit-meshopt-*.glb``.
     """
     abs_path = os.path.abspath(path)
+    label_path = (
+        os.path.abspath(display_path) if display_path else abs_path
+    )
     try:
-        file_bytes = int(os.path.getsize(abs_path))
+        file_bytes = int(os.path.getsize(label_path))
     except OSError:
-        file_bytes = 0
+        try:
+            file_bytes = int(os.path.getsize(abs_path))
+        except OSError:
+            file_bytes = 0
 
     if not is_gltf_or_glb(abs_path):
-        ext = os.path.splitext(abs_path)[1].lstrip(".").lower() or None
-        return MeshStats(path=abs_path, file_bytes=file_bytes, format=ext)
+        ext = os.path.splitext(label_path)[1].lstrip(".").lower() or None
+        return MeshStats(path=label_path, file_bytes=file_bytes, format=ext)
 
-    asset_format = "gltf" if abs_path.lower().endswith(".gltf") else "glb"
+    asset_format = (
+        "gltf" if label_path.lower().endswith(".gltf") else "glb"
+    )
     temp = None
     load_path = abs_path
     retained = False
@@ -610,7 +625,7 @@ def collect_mesh_stats(
             retained = load_path != abs_path and temp is None
         except (OSError, MeshoptError):
             return MeshStats(
-                path=abs_path, file_bytes=file_bytes, format=asset_format
+                path=label_path, file_bytes=file_bytes, format=asset_format
             )
 
     try:
@@ -622,13 +637,13 @@ def collect_mesh_stats(
                 gltf = _read_glb_json(load_path)
             except (OSError, MeshoptError):
                 return MeshStats(
-                    path=abs_path, file_bytes=file_bytes, format=asset_format
+                    path=label_path, file_bytes=file_bytes, format=asset_format
                 )
             return _stats_from_gltf(
-                abs_path, gltf, None, up=up, asset_format=asset_format
+                label_path, gltf, None, up=up, asset_format=asset_format
             )
         return _stats_from_gltf(
-            abs_path, gltf, bin_chunk, up=up, asset_format=asset_format
+            label_path, gltf, bin_chunk, up=up, asset_format=asset_format
         )
     finally:
         cleanup_decompressed(temp)

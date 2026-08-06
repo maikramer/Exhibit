@@ -315,6 +315,17 @@ def test_build_options_overlay_keys():
     assert opts["ui.metadata"] is True
 
 
+def test_cli_collect_mesh_stats_passes_display_path():
+    """--overlay / JSON stats must label the user model, not meshopt temp."""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[1] / "src" / "cli_render.py").read_text(
+        encoding="utf-8"
+    )
+    # Both Exb and F3D render paths collect stats after prepare_glb_for_load.
+    assert src.count("display_path=model_path") >= 2
+
+
 def test_build_options_bloom_final_shader():
     opts = _build_options(_ns(bloom=True, bloom_threshold=0.7))
     assert "render.effect.final_shader" in opts

@@ -49,6 +49,7 @@ def test_armature_and_stats_bodies_intact():
     src = MIXIN.read_text(encoding="utf-8")
     assert "No armature found in this model" in src
     assert "collect_mesh_stats" in src
+    assert "display_path" in src
     assert "format_overlay_text" in src
     assert "xray_opacity" in src
     assert "skin.skeleton" in src

@@ -29,15 +29,21 @@ class InspectMixin:
         if tab is None:
             self._mesh_stats = None
             return
-        path = tab.viewer.get_prepared_path() or tab.filepath
-        if not path or not os.path.isfile(path):
+        prepared = tab.viewer.get_prepared_path() or tab.filepath
+        source = tab.filepath or prepared
+        if not prepared or not os.path.isfile(prepared):
             self._mesh_stats = None
             tab.mesh_stats = None
             return
         up = self.window_settings.get_setting("up").value
         try:
-            # Path comes from the viewer post-load — do not re-prepare.
-            stats = collect_mesh_stats(path, already_prepared=True, up=up)
+            # Read prepared GLB (post-meshopt); label with the user-facing path.
+            stats = collect_mesh_stats(
+                prepared,
+                already_prepared=True,
+                up=up,
+                display_path=source,
+            )
         except Exception as exc:
             self.logger.error(f"Failed to collect mesh stats: {exc}")
             stats = None
@@ -96,13 +102,15 @@ class InspectMixin:
                     self.window_settings.set_setting("armature-enable", False, False)
                 finally:
                     self.window_settings.end_view_batch()
-                self.f3d_viewer.update_options({"armature-enable": False})
+                self._update_all_viewers_options({"armature-enable": False})
                 return
 
             if self.window_settings.get_setting("display-depth").value:
                 self.window_settings.set_setting("display-depth", False)
 
             if self._armature_xray_restore is None:
+                # Snapshot blending nick/bool — x-ray forces DDP; OFF must restore
+                # NONE/SORT (bool True alone would leave the UI stuck on DDP).
                 self._armature_xray_restore = {
                     "model-opacity": float(
                         self.window_settings.get_setting("model-opacity").value
@@ -112,6 +120,11 @@ class InspectMixin:
                     ),
                     "point-size": float(
                         self.window_settings.get_setting("point-size").value
+                    ),
+                    "translucency-support": (
+                        self.window_settings.get_setting(
+                            "translucency-support"
+                        ).value
                     ),
                 }
             if tab is not None:
@@ -135,13 +148,8 @@ class InspectMixin:
                 # Depth peeling so translucent mesh + bones composite correctly.
                 "translucency-support": True,
             }
-            self.f3d_viewer.update_options(armature_opts)
-            split = getattr(self, "_split_compare_viewer", None)
-            if split is not None:
-                try:
-                    split.update_options(armature_opts)
-                except Exception as exc:
-                    self.logger.debug("split armature options failed: %s", exc)
+            # Global setting — fan out like display-depth / normal-glyphs.
+            self._update_all_viewers_options(armature_opts)
 
             # Actors are created at load; missing skin.skeleton → empty overlay.
             if self._prepared_needs_skeleton_fix():
@@ -153,10 +161,12 @@ class InspectMixin:
             "model-opacity": 1.0,
             "edges-width": 1.0,
             "point-size": 1.0,
+            "translucency-support": True,
         }
         self._armature_xray_restore = None
         if tab is not None:
             tab.armature_xray_restore = None
+        blend = restore.get("translucency-support", True)
         self.window_settings.begin_view_batch()
         try:
             self.window_settings.set_setting(
@@ -166,6 +176,7 @@ class InspectMixin:
             self.window_settings.set_setting(
                 "point-size", restore.get("point-size", 1.0)
             )
+            self.window_settings.set_setting("translucency-support", blend)
         finally:
             self.window_settings.end_view_batch()
 
@@ -174,14 +185,9 @@ class InspectMixin:
             "model-opacity": restore["model-opacity"],
             "edges-width": restore["edges-width"],
             "point-size": restore.get("point-size", 1.0),
+            "translucency-support": blend,
         }
-        self.f3d_viewer.update_options(armature_opts)
-        split = getattr(self, "_split_compare_viewer", None)
-        if split is not None:
-            try:
-                split.update_options(armature_opts)
-            except Exception as exc:
-                self.logger.debug("inspect swallow: %s", exc)
+        self._update_all_viewers_options(armature_opts)
 
     def _apply_display_depth_mode(self, enabled: bool) -> None:
         """
@@ -470,16 +476,11 @@ class InspectMixin:
             "scalar": array_name,
             "scalar-bar": True,
             "model-opacity": 1.0,
+            "model-unlit": True,
         }
         # Only the active viewer (heat mesh / WEIGHTS_0) — not sibling tabs.
         self.f3d_viewer.update_options(opts)
-        # Clear base-color texture influence for a clean heat map when possible.
-        if self.f3d_viewer.engine:
-            try:
-                self.f3d_viewer.engine.options.update({"model.unlit": True})
-            except Exception as exc:
-                self.logger.debug("inspect swallow: %s", exc)
-            self.f3d_viewer.queue_render()
+        self.f3d_viewer.queue_render()
 
     def _apply_skin_weights_mode(self, enabled: bool) -> None:
         """Toggle WEIGHTS_0 / joint-heat scivis overlay."""
@@ -499,16 +500,25 @@ class InspectMixin:
                 "cells": True,
                 "scivis-component": -1,
                 "scalar-bar": False,
+                "model-opacity": float(
+                    self.window_settings.get_setting("model-opacity").value
+                ),
+                "model-unlit": False,
             }
             self._skin_weights_scivis_restore = None
             # Drop empty scalar — optional F3D option rejects "".
             restore.pop("scalar", None)
+            opacity = float(restore.pop("model-opacity", 1.0))
+            unlit = bool(restore.pop("model-unlit", False))
+            self.window_settings.begin_view_batch()
+            try:
+                self.window_settings.set_setting("model-opacity", opacity)
+                self.window_settings.set_setting("model-unlit", unlit, False)
+            finally:
+                self.window_settings.end_view_batch()
+            restore["model-opacity"] = opacity
+            restore["model-unlit"] = unlit
             self._update_all_viewers_options(restore)
-            if self.f3d_viewer.engine:
-                try:
-                    self.f3d_viewer.engine.options.update({"model.unlit": False})
-                except Exception as exc:
-                    self.logger.debug("inspect swallow: %s", exc)
             self._refresh_skin_weights_joint_combo()
             return
 
@@ -544,6 +554,12 @@ class InspectMixin:
                     self.window_settings.get_setting("scalar").value or ""
                 ),
                 "scalar-bar": False,
+                "model-opacity": float(
+                    self.window_settings.get_setting("model-opacity").value
+                ),
+                "model-unlit": bool(
+                    self.window_settings.get_setting("model-unlit").value
+                ),
             }
 
         mode = str(self.window_settings.get_setting("skin-weights-mode").value)
