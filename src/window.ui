@@ -208,7 +208,7 @@
                   <object class="AdwToolbarView">
                     <property name="top-bar-style">flat</property>
                     <property name="bottom-bar-style">flat</property>
-                    <property name="sensitive" bind-source="engine" bind-property="loading-file" bind-flags="invert-boolean">False</property>
+                    <property name="sensitive" bind-source="engine" bind-property="loading-file" bind-flags="invert-boolean | sync-create">True</property>
                     <child type="top">
                       <object class="AdwHeaderBar">
                         <property name="title-widget">
