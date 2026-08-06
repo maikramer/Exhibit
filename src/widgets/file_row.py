@@ -121,11 +121,65 @@ class FileRow(Adw.PreferencesRow):
             return
         self.file = Gio.File.new_for_path(str(filepath))
 
+    def _ensure_skybox_enabled(self) -> None:
+        """Match window.load_hdri: picking an HDRI must show the skybox."""
+        window = self.window
+        if window is None:
+            return
+        try:
+            settings = getattr(window, "window_settings", None)
+            if settings is not None:
+                settings.set_setting("hdri-skybox", True)
+            switch = getattr(window, "use_skybox_switch", None)
+            if switch is not None and not switch.get_active():
+                switch.set_active(True)
+            update = getattr(window, "_update_all_viewers_options", None)
+            if callable(update):
+                update({"hdri-skybox": True})
+            check = getattr(window, "check_for_options_change", None)
+            if callable(check):
+                check()
+        except Exception:
+            pass
+
     def on_open_clicked(self, btn):
         self.on_open_file_dialog()
 
     def on_delete_clicked(self, *args):
         self.file = None
+        # Pick enables skybox (r46); clear must disable it too or default HDRI shows.
+        window = self.window
+        if window is None:
+            return
+        clear = getattr(window, "on_delete_skybox", None)
+        if callable(clear):
+            try:
+                clear()
+            except Exception:
+                pass
+            return
+        self._ensure_skybox_disabled()
+
+    def _ensure_skybox_disabled(self) -> None:
+        """Fallback when window.on_delete_skybox is unavailable."""
+        window = self.window
+        if window is None:
+            return
+        try:
+            settings = getattr(window, "window_settings", None)
+            if settings is not None:
+                settings.set_setting("hdri-skybox", False)
+            switch = getattr(window, "use_skybox_switch", None)
+            if switch is not None and switch.get_active():
+                switch.set_active(False)
+            update = getattr(window, "_update_all_viewers_options", None)
+            if callable(update):
+                update({"hdri-skybox": False, "hdri-file": ""})
+            check = getattr(window, "check_for_options_change", None)
+            if callable(check):
+                check()
+        except Exception:
+            pass
 
     def on_drop_received(self, drop, value, x, y):
         try:
@@ -141,6 +195,7 @@ class FileRow(Adw.PreferencesRow):
         extension = os.path.splitext(filepath)[1][1:].lower()
         if extension in self.file_patterns:
             self.file = file
+            self._ensure_skybox_enabled()
 
     def add_suggested_file(self, filepath):
         if not os.path.isfile(filepath):
@@ -161,6 +216,7 @@ class FileRow(Adw.PreferencesRow):
 
     def on_image_activated(self, flow_box, child):
         self.file = child.hdri_file
+        self._ensure_skybox_enabled()
 
     def on_open_file_dialog(self, *args):
         file_filter = Gtk.FileFilter(name=_("All supported formats"))
@@ -187,6 +243,7 @@ class FileRow(Adw.PreferencesRow):
 
         if file:
             self.file = file
+            self._ensure_skybox_enabled()
 
     def generate_thumbnail(self, hdri_file_path, width=300, height=200):
         base_name = os.path.basename(hdri_file_path)
