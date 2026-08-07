@@ -17,10 +17,14 @@ Window glue: [ARCHITECTURE.md](ARCHITECTURE.md) (`PreferencesMixin`, `LifecycleM
 | Shift + drag / two-finger | Pan |
 | Ctrl + drag / two-finger | Zoom |
 | Scroll wheel (when touchpad-orbit off) | Zoom |
+| Pinch (two-finger scale) | Zoom (factor = scale ratio, clamped) |
+| **Ctrl+Shift+drag** (free-nav on) | Pan |
+| **Ctrl+Shift+scroll** (free-nav on) | Zoom (even with touchpad-orbit) |
 | **Alt** (hold) | Temporarily XOR-toggle cursor-orbit / zoom-to-cursor prefs |
 | Double-click LMB | Reset to bounds |
 | Middle-click (no drag) | Set orbit pivot under cursor (if pref on) |
 | Header home | Reset to bounds |
+| Navigation cube (face click) | Jump to front/back/left/right/top/bottom |
 
 ---
 
@@ -36,6 +40,38 @@ Existing user GSettings may still have old `nav-orbit-around-cursor=true` until 
 
 ---
 
+## Free navigation
+
+When `nav-free-navigation` is on (More → Navigation), **Ctrl+Shift** shortcuts are
+added on top of the usual Shift/Ctrl modifiers:
+
+- Ctrl+Shift+LMB drag → pan
+- Ctrl+Shift+scroll → zoom (always zoom, not orbit)
+
+---
+
+## Navigation cube
+
+Overlay in the top-right of each tab (`src/widgets/nav_cube.py`). Orientation
+tracks the camera; click a face for a named view. Toggle with `nav-show-cube`.
+
+**Fly** icon (airplane) under the cube: FPS free-fly. Turning it on snapshots the camera,
+disables orbit gestures, then:
+
+| Input | Action |
+|-------|--------|
+| Click view | Toggle mouse-look (1st enter, 2nd release) |
+| Mouse move (look on) | Look (low sens + short coast) |
+| Esc | Release mouse-look |
+| W / S | Forward / back (accel + drag) |
+| A / D | Strafe left / right (accel + drag) |
+| Shift + W / S | Up / down (world up) |
+
+Turning Fly off restores the snapshotted view and normal orbit navigation.
+(More → Free Navigation Ctrl+Shift shortcuts are separate.)
+
+---
+
 ## GSettings (`nav-*`)
 
 Defaults mirror `NAV_SETTING_DEFAULTS` in `src/camera_nav.py`.
@@ -46,8 +82,10 @@ Defaults mirror `NAV_SETTING_DEFAULTS` in `src/camera_nav.py`.
 | `nav-invert-y` | `false` | Flip vertical orbit/pan/zoom-drag |
 | `nav-zoom-to-cursor` | `true` | Zoom toward pointer (not view center) |
 | `nav-orbit-around-cursor` | `false` | Orbit under pointer on focal plane; off = classic center |
-| `nav-touchpad-orbit` | `true` | Two-finger scroll orbits; else zooms like mouse wheel |
+| `nav-touchpad-orbit` | `true` | Two-finger scroll orbits; else zooms like a mouse wheel |
 | `nav-mmb-click-pivot` | `true` | MMB click (no drag) recenters orbit target |
+| `nav-free-navigation` | `false` | Enable Ctrl+Shift pan/zoom shortcuts |
+| `nav-show-cube` | `true` | Show navigation cube overlay |
 | `nav-orbit-sensitivity` | `1.0` | Orbit multiplier (0.25–4.0) |
 | `nav-zoom-sensitivity` | `1.0` | Zoom multiplier (0.25–4.0) |
 | `nav-pan-sensitivity` | `1.0` | Pan multiplier (0.25–4.0) |
@@ -60,7 +98,9 @@ Defaults mirror `NAV_SETTING_DEFAULTS` in `src/camera_nav.py`.
 |------|------|
 | `src/camera_nav.py` | Math helpers + defaults |
 | `src/widgets/f3d_viewer.py` | Shim: `apply_nav_settings` → `Exb.View` props |
-| `libexhibit/exb-view.c` | Gestures (drag/scroll/click); touchpad-orbit, MMB pivot, double-click reset |
+| `src/widgets/nav_cube.py` | Clickable view cube overlay |
+| `libexhibit/exb-view.c` | Gestures (drag/scroll/pinch/click); free-nav modifiers |
+| `libexhibit/exb-engine.c` | Zoom/pan/rotate + dolly factor clamp |
 | `src/window_preferences.py` | PreferencesMixin / dialog / theme menu |
 | `src/window_lifecycle.py` | Header home → `reset_to_bounds` |
 | `data/io.github.nokse22.Exhibit.gschema.xml` | `nav-*` keys |
@@ -80,8 +120,11 @@ Defaults mirror `NAV_SETTING_DEFAULTS` in `src/camera_nav.py`.
 - Soft fix: `clamp_camera_polar(..., min_polar_deg=2)` after orbit; keep orbit
   path always available.
 
-### Scroll / dolly safety
-- Clamp scroll deltas and dolly factors; reject insane pivots (`is_sane_pivot`).
+### Scroll / dolly / pinch safety
+- Clamp scroll deltas and dolly factors (0.5…2.0) in C (`exb_engine_zoom`) and
+  Python (`clamp_dolly_factor`); reject insane pivots (`is_sane_pivot`).
+- Pinch must pass a **ratio** (`scale / prev_scale`), not a raw delta — deltas near
+  0 collapsed the camera (scene “disappears”).
 - Disable GTK kinetic scrolling on the viewer — fling made models “disappear”.
 
 ### Classic centering
@@ -103,5 +146,5 @@ Defaults mirror `NAV_SETTING_DEFAULTS` in `src/camera_nav.py`.
   the app during smoke tests.
 
 ### Preferences UI
-- Sidebar “More” tab removed; settings live in `AdwPreferencesDialog`.
-- Header: theme `GtkMenuButton` + preferences gear (`PreferencesMixin`).
+- Navigation prefs live in sidebar **More** (`PreferencesMixin.on_preferences_clicked`).
+- Free Navigation + Navigation Cube switches are wired via `WindowSettings`.
