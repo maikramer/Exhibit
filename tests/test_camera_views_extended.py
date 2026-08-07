@@ -88,11 +88,19 @@ def test_top_offset_along_up(up: str):
 
 @pytest.mark.parametrize(
     "bad",
-    ["diagonal", "FRONT", "iso", "side", "bottom", "orbit", ""],
+    ["diagonal", "FRONT", "iso", "side", "orbit", ""],
 )
 def test_unknown_view_raises(bad: str):
     with pytest.raises(ValueError, match="Unknown camera view"):
         offset_for_view(bad)
+
+
+@pytest.mark.parametrize("up", sorted(UP_DIRS.keys()))
+def test_bottom_offset_opposite_up(up: str):
+    offset, view_up = offset_for_view("bottom", up=up, distance=10.0)
+    up_v = UP_DIRS[up]
+    assert offset == pytest.approx(tuple(c * -10.0 for c in up_v), abs=1e-6)
+    assert v_mod(view_up) == pytest.approx(1.0, abs=1e-6)
 
 
 @pytest.mark.parametrize("yaw", [0.0, 45.0, 90.0, 180.0, 270.0, 359.0, -30.0])

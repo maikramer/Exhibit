@@ -19,6 +19,8 @@ def test_shortcuts_camera_matches_window_accels():
     assert ">1<" in ui or 'accelerator">1</' in ui or 'accelerator">1</property>' in ui
     assert "win.orthographic" in ui
     assert 'accelerator">5</property>' in ui
+    assert "Free Nav Pan" in ui
+    assert "Free Nav Zoom" in ui
     # Dead upstream claims must not return.
     assert "Primary&gt;1" not in ui
     assert "Primary&gt;5" not in ui

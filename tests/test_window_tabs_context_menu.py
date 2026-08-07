@@ -47,6 +47,39 @@ def test_close_page_pushes_closed_stack():
     body = ast.get_source_segment(src, close)
     assert body is not None
     assert "_push_closed_tab" in body
+    assert "_rescue_template_bridge_view" in body
+
+
+def test_close_other_recovers_kept_tab():
+    """Close-other must resync/reload kept tab after peer engine teardown."""
+    src = TABS.read_text(encoding="utf-8")
+    assert "_recover_active_tab_after_peer_close" in src
+    assert "_reload_tab_after_peer_close" in src
+    assert "_hard_recover_tab_viewer" in src
+    assert "_rescue_template_bridge_view" in src
+    tree = ast.parse(src)
+    mixin = next(n for n in tree.body if isinstance(n, ast.ClassDef))
+    for name in (
+        "_on_tab_close_other_action",
+        "_on_tab_close_before_action",
+        "_on_tab_close_after_action",
+    ):
+        fn = next(
+            n
+            for n in mixin.body
+            if isinstance(n, ast.FunctionDef) and n.name == name
+        )
+        body = ast.get_source_segment(src, fn)
+        assert body is not None
+        assert "_recover_active_tab_after_peer_close" in body
+    hard = next(
+        n
+        for n in mixin.body
+        if isinstance(n, ast.FunctionDef) and n.name == "_hard_recover_tab_viewer"
+    )
+    hard_body = ast.get_source_segment(src, hard)
+    assert hard_body is not None
+    assert "F3DViewer()" in hard_body
 
 
 def test_help_overlay_has_tab_shortcuts():

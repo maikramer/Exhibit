@@ -27,6 +27,8 @@ def test_gschema_lists_session_and_recent_keys():
         'name="nav-orbit-around-cursor"',
         'name="nav-touchpad-orbit"',
         'name="nav-mmb-click-pivot"',
+        'name="nav-free-navigation"',
+        'name="nav-show-cube"',
         'name="nav-orbit-sensitivity"',
         'name="nav-zoom-sensitivity"',
         'name="nav-pan-sensitivity"',
