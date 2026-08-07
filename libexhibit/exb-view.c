@@ -48,6 +48,7 @@ typedef struct
   bool orbit_around_cursor;
   bool touchpad_orbit;
   bool mmb_click_pivot;
+  bool free_navigation;
   gdouble orbit_sensitivity;
   gdouble zoom_sensitivity;
   gdouble pan_sensitivity;
@@ -77,12 +78,22 @@ typedef enum
   PROP_ORBIT_AROUND_CURSOR,
   PROP_TOUCHPAD_ORBIT,
   PROP_MMB_CLICK_PIVOT,
+  PROP_FREE_NAVIGATION,
   PROP_ORBIT_SENSITIVITY,
   PROP_ZOOM_SENSITIVITY,
   PROP_PAN_SENSITIVITY,
 } ExbViewProps;
 
 static GParamSpec *props[PROP_PAN_SENSITIVITY + 1];
+
+/* Mirror src/camera_nav.py clamp_dolly_factor. */
+static gdouble
+exb_view_clamp_dolly_factor (gdouble factor)
+{
+  if (!isfinite (factor) || factor <= 0.0)
+    return 1.0;
+  return CLAMP (factor, 0.5, 2.0);
+}
 
 static void on_pointer_motion (ExbView *self, gdouble x, gdouble y);
 static void on_click_pressed (ExbView *self, gint n_press, gdouble x, gdouble y);
@@ -176,6 +187,10 @@ exb_view_get_property (GObject    *object,
       g_value_set_boolean (value, priv->mmb_click_pivot);
       break;
 
+    case PROP_FREE_NAVIGATION:
+      g_value_set_boolean (value, priv->free_navigation);
+      break;
+
     case PROP_ORBIT_SENSITIVITY:
       g_value_set_double (value, priv->orbit_sensitivity);
       break;
@@ -238,6 +253,10 @@ exb_view_set_property (GObject      *object,
       priv->mmb_click_pivot = g_value_get_boolean (value);
       break;
 
+    case PROP_FREE_NAVIGATION:
+      priv->free_navigation = g_value_get_boolean (value);
+      break;
+
     case PROP_ORBIT_SENSITIVITY:
       priv->orbit_sensitivity = g_value_get_double (value);
       break;
@@ -266,6 +285,12 @@ exb_view_dispose (GObject *object)
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
 
   g_return_if_fail (EXB_IS_VIEW (self));
+
+  if (priv->engine != NULL && priv->engine_is_initialized)
+    {
+      _exb_engine_finalize (priv->engine);
+      priv->engine_is_initialized = FALSE;
+    }
 
   g_clear_object (&priv->engine);
 
@@ -297,12 +322,15 @@ exb_view_unrealize (GtkWidget *widget)
 
   EXB_ENTRY;
 
-  _exb_engine_finalize (priv->engine);
-  priv->engine_is_initialized = FALSE;
-
-  g_signal_handlers_disconnect_by_func (priv->engine,
-                                        gtk_gl_area_queue_render,
-                                        self);
+  /* Do not f3d_engine_delete here. Peer-tab close / temporary hide must not
+   * wipe a still-living ExbEngine (multi-tab + sidebar template bridge).
+   * Teardown stays in dispose. */
+  if (priv->engine != NULL)
+    {
+      g_signal_handlers_disconnect_by_func (priv->engine,
+                                            gtk_gl_area_queue_render,
+                                            self);
+    }
 
   EXB_EXIT;
 }
@@ -356,6 +384,30 @@ exb_view_snapshot (GtkWidget   *widget,
   GTK_WIDGET_CLASS (exb_view_parent_class)->snapshot (widget, snapshot);
 }
 
+static void
+exb_view_apply_scroll_zoom (ExbView *self,
+                            gdouble  dy,
+                            gboolean zoom_cursor)
+{
+  ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  gdouble factor = 1.0 - (0.1 * dy * priv->zoom_sensitivity);
+
+  if (priv->invert_y)
+    factor = 1.0 - (0.1 * (-dy) * priv->zoom_sensitivity);
+  factor = exb_view_clamp_dolly_factor (factor);
+
+  if (zoom_cursor)
+    {
+      gdouble ndc_x, ndc_y;
+      exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
+      _exb_engine_zoom_at_ndc (priv->engine, factor, ndc_x, ndc_y);
+    }
+  else
+    {
+      exb_engine_zoom (priv->engine, factor);
+    }
+}
+
 static gboolean
 on_scroll (GtkEventControllerScroll *controller,
            gdouble                   dx,
@@ -365,6 +417,8 @@ on_scroll (GtkEventControllerScroll *controller,
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
   GdkModifierType mods;
   gboolean alt;
+  gboolean ctrl;
+  gboolean shift;
   gboolean orbit;
   gboolean zoom_cursor;
   gdouble limit;
@@ -382,11 +436,18 @@ on_scroll (GtkEventControllerScroll *controller,
   mods = gtk_event_controller_get_current_event_state (
       GTK_EVENT_CONTROLLER (controller));
   alt = (mods & GDK_ALT_MASK) != 0;
+  ctrl = (mods & GDK_CONTROL_MASK) != 0;
+  shift = (mods & GDK_SHIFT_MASK) != 0;
   /* Alt temporarily XOR-toggles touchpad-orbit / zoom-to-cursor prefs. */
   orbit = priv->touchpad_orbit ^ alt;
   zoom_cursor = priv->zoom_to_cursor ^ alt;
 
-  if (orbit)
+  /* Free-nav: Ctrl+Shift+scroll always zooms (even with touchpad-orbit). */
+  if (priv->free_navigation && ctrl && shift)
+    {
+      exb_view_apply_scroll_zoom (self, dy, zoom_cursor);
+    }
+  else if (orbit)
     {
       gdouble odx = dx * priv->orbit_sensitivity;
       gdouble ody = dy * priv->orbit_sensitivity;
@@ -416,19 +477,7 @@ on_scroll (GtkEventControllerScroll *controller,
     }
   else
     {
-      gdouble factor = 1.0 - (0.1 * dy * priv->zoom_sensitivity);
-      if (priv->invert_y)
-        factor = 1.0 - (0.1 * (-dy) * priv->zoom_sensitivity);
-      if (zoom_cursor)
-        {
-          gdouble ndc_x, ndc_y;
-          exb_view_pointer_to_ndc (self, &ndc_x, &ndc_y);
-          _exb_engine_zoom_at_ndc (priv->engine, factor, ndc_x, ndc_y);
-        }
-      else
-        {
-          exb_engine_zoom (priv->engine, factor);
-        }
+      exb_view_apply_scroll_zoom (self, dy, zoom_cursor);
     }
 
   gtk_gl_area_queue_render (GTK_GL_AREA (self));
@@ -450,14 +499,26 @@ on_zoom_changed (ExbView *self,
                  gdouble scale)
 {
   ExbViewPrivate *priv = exb_view_get_instance_private (self);
+  gdouble ratio;
+  gdouble factor;
 
   g_return_if_fail (EXB_IS_VIEW (self));
 
   if (!priv->interactive)
     return;
 
-  exb_engine_zoom (priv->engine,
-                   (scale - priv->prev_scale) * 0.1 * priv->zoom_sensitivity);
+  /* GtkGestureZoom scale is cumulative; exb_engine_zoom wants a ~1.0 factor.
+   * Passing (scale - prev) * k produced ~0.005 and collapsed the scene. */
+  if (priv->prev_scale <= 1e-9 || scale <= 1e-9)
+    {
+      priv->prev_scale = scale > 1e-9 ? scale : 1.0;
+      return;
+    }
+
+  ratio = scale / priv->prev_scale;
+  factor = pow (ratio, priv->zoom_sensitivity);
+  factor = exb_view_clamp_dolly_factor (factor);
+  exb_engine_zoom (priv->engine, factor);
 
   priv->prev_scale = scale;
 
@@ -507,11 +568,19 @@ on_drag_update (ExbView        *self,
     gboolean ctrl = (mods & GDK_CONTROL_MASK) != 0;
     gboolean alt = (mods & GDK_ALT_MASK) != 0;
     gboolean around_cursor = priv->orbit_around_cursor ^ alt;
+    gboolean free_pan = priv->free_navigation && ctrl && shift;
 
-    /* Blender-ish: Shift+drag pans, Ctrl+drag zooms, else orbit / MMB pan. */
-    if (ctrl && (button == 1 || button == 2))
+    /* Free-nav adds Ctrl+Shift+drag → pan. Else Blender-ish Shift/Ctrl. */
+    if (free_pan && (button == 1 || button == 2))
       {
-        exb_engine_zoom (priv->engine, 1.0 - (0.01 * dy * priv->zoom_sensitivity));
+        exb_engine_pan (priv->engine,
+                        dx * priv->pan_sensitivity,
+                        dy * priv->pan_sensitivity);
+      }
+    else if (ctrl && (button == 1 || button == 2))
+      {
+        gdouble factor = 1.0 - (0.01 * dy * priv->zoom_sensitivity);
+        exb_engine_zoom (priv->engine, exb_view_clamp_dolly_factor (factor));
       }
     else if ((shift && button == 1) || button == 2)
       {
@@ -612,6 +681,7 @@ exb_view_init (ExbView *self)
   priv->orbit_around_cursor = FALSE;
   priv->touchpad_orbit = TRUE;
   priv->mmb_click_pivot = TRUE;
+  priv->free_navigation = FALSE;
   priv->orbit_sensitivity = 1.0;
   priv->zoom_sensitivity = 1.0;
   priv->pan_sensitivity = 1.0;
@@ -745,6 +815,12 @@ exb_view_class_init (ExbViewClass *klass)
       g_param_spec_boolean ("mmb-click-pivot",
                             NULL, NULL,
                             TRUE,
+                            G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
+
+  props[PROP_FREE_NAVIGATION] =
+      g_param_spec_boolean ("free-navigation",
+                            NULL, NULL,
+                            FALSE,
                             G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS);
 
   props[PROP_ORBIT_SENSITIVITY] =

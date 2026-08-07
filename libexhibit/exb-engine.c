@@ -2259,6 +2259,11 @@ exb_engine_zoom (ExbEngine *self,
       return;
     }
 
+  /* Match camera_nav.clamp_dolly_factor — reject 0 / negative / insane steps. */
+  if (!isfinite (factor) || factor <= 0.0)
+    return;
+  factor = CLAMP (factor, 0.5, 2.0);
+
   if (priv->orthographic)
     {
       f3d_camera_zoom (priv->camera, factor);
@@ -2267,6 +2272,8 @@ exb_engine_zoom (ExbEngine *self,
     {
       f3d_camera_dolly (priv->camera, factor);
     }
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 }
 
 /**
@@ -2295,6 +2302,8 @@ exb_engine_pan (ExbEngine *self,
   distance = f3d_get_distance(self);
   factor = 0.0000001 * priv->width + 0.001 * distance;
   f3d_camera_pan (priv->camera, -dx * factor, dy * factor, 0);
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 }
 
 /**
@@ -2325,6 +2334,8 @@ exb_engine_rotate (ExbEngine *self,
 
   f3d_camera_azimuth (priv->camera, azimuth);
   f3d_camera_elevation (priv->camera, elevation);
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 }
 
 /**
@@ -2473,6 +2484,8 @@ exb_engine_rotate_with_limit (ExbEngine *self,
   f3d_up_dir[1] = graphene_vec3_get_y (&world_up);
   f3d_up_dir[2] = graphene_vec3_get_z (&world_up);
   f3d_camera_set_view_up (priv->camera, f3d_up_dir);
+
+  g_signal_emit (self, signals[SIGNAL_CHANGED], 0);
 }
 
 /**
