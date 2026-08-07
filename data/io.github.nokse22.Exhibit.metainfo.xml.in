@@ -98,6 +98,22 @@
   </screenshots>
 
   <releases>
+    <release version="1.9.2" date="2026-08-06">
+      <description translate="no">
+        <p>Gamedev fork release on top of Nokse22/Exhibit: full asset-review workflow.</p>
+        <ul>
+          <li>Packed GLB prepare: meshopt, quantization, KTX2/BasisU→PNG, skin.skeleton, external glTF pack</li>
+          <li>Multi-tab AdwTabView, focus-existing, RMB close/reopen, session restore, file-watch reload</li>
+          <li>Outliner overlay (mesh/empty/bone/armature) with in-memory part hide</li>
+          <li>Inspect: armature X-ray, checkerboard, normal glyphs, linearized depth, skin-weight joint picker, stats HUD</li>
+          <li>PostFX: bloom, godrays, SSAO params (GUI + CLI)</li>
+          <li>Navigation cube, FPS free-fly, free-nav Ctrl+Shift shortcuts, pinch zoom, Blender view keys</li>
+          <li>Sync Cameras + experimental Split Compare; animation bind-pose default + keyframe scrubber</li>
+          <li>Headless exhibit render CLI (PNG / turntable video / manifest / inspect / PostFX)</li>
+          <li>Stack: libexhibit + F3D 3.5.0 / VTK 9.6.2, GNOME 50, OpenEXR + WebP</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.6.0" date="2026-07-24">
       <description translate="no">
         <ul>

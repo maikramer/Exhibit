@@ -40,8 +40,8 @@ Inventory of what [maikramer/Exhibit](https://github.com/maikramer/Exhibit) adds
 | **Tabs** | Multi-document `AdwTabView`; focus-existing path; RMB tab menu; shared sidebar; startup loading UI |
 | **Compare** | **Sync Cameras** + experimental **Split Compare** (side-by-side, Pin, Swap, sash width restore) |
 | **Recent / Session** | Welcome recent list; drop/Open Folder batch; optional **Restore Last Session** (queued opens) |
-| **Camera** | Blender-like view keys (`1`/`3`/`5`/`7`…); Sync + Split Compare shortcuts |
-| **Nav** | Touchpad orbit; invert / sensitivity; Shift pan / Ctrl zoom; zoom & orbit under cursor (focal-plane NDC); Alt toggle pivot |
+| **Camera** | Blender-like view keys (`1`/`3`/`5`/`7`…); Sync + Split Compare shortcuts; named-view offsets |
+| **Nav** | Touchpad orbit; invert / sensitivity; Shift pan / Ctrl zoom; zoom & orbit under cursor; Alt toggle; **nav cube**; **FPS free-fly**; free-nav Ctrl+Shift; pinch zoom |
 | **UI** | Follow OS theme/accent; Scene IA (Animation + Inspect); viewport tool rail + glass chrome; Preferences dialog |
 | **CLI** | `exhibit render` → multi-angle PNGs + turntable `--video` + `manifest.json` (+ inspect / PostFX flags) |
 | **Stack** | Upstream **libexhibit** (`Exb.View` / `Exb.Engine`) + Python fork modules; GNOME **50**; F3D **3.5.0** / VTK **9.6.2** |
@@ -215,6 +215,10 @@ Blender-like controls with **classic Exhibit centering** as the default (model s
 | Double-click LMB | Reset to bounds (frame model) |
 | Middle-click (no drag) | Set orbit pivot under cursor (optional pref) |
 | Header home | Same as reset to bounds |
+| Navigation cube (face click) | Jump to front/back/left/right/top/bottom |
+| Fly (airplane under cube) | FPS free-fly: click for look, WASD + Shift up/down |
+| Pinch (two-finger scale) | Zoom (clamped dolly factor) |
+| Ctrl+Shift+drag / scroll (free-nav on) | Pan / zoom shortcuts |
 | `1` / `Shift+1` | Front / Back |
 | `3` / `Shift+3` | Right / Left |
 | `7` / `Shift+7` | Top / Isometric |
@@ -222,7 +226,7 @@ Blender-like controls with **classic Exhibit centering** as the default (model s
 | `Ctrl+Shift+C` | Sync cameras across tabs |
 | `Ctrl+Shift+D` / `Ctrl+Shift+X` | Split Compare toggle / Swap with pin |
 
-Preferences → **Navigation** (or GSettings `nav-*` keys) for invert axes, sensitivities, touchpad orbit, zoom/orbit-to-cursor (focal-plane NDC on `ExbView`), middle-click pivot.
+Preferences → **Navigation** (or GSettings `nav-*` keys) for invert axes, sensitivities, touchpad orbit, zoom/orbit-to-cursor, free-nav, show-cube, middle-click pivot.
 
 ### 10. Preview performance & memory
 
