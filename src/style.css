@@ -213,6 +213,29 @@ file-row {
   box-shadow: 0 4px 18px alpha(black, 0.2);
 }
 
+.nav-cube {
+  border-radius: 48px;
+}
+
+.nav-chrome {
+  padding: 4px;
+}
+
+.free-fly-button {
+  min-width: 28px;
+  min-height: 28px;
+  padding: 4px;
+  color: var(--view-fg-color);
+  background-color: alpha(var(--window-bg-color), 0.85);
+  border: 1px solid alpha(var(--border-color), 0.6);
+}
+
+.free-fly-button:checked {
+  color: var(--accent-color);
+  background-color: alpha(var(--accent-bg-color), 0.35);
+  border-color: alpha(var(--accent-color), 0.7);
+}
+
 /* Object tree (canvas overlay) ------------------------------------------ */
 /*
  * No fill anywhere: the GL viewport shows through. Only glyphs are drawn,

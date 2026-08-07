@@ -87,6 +87,10 @@ class SettingsReactMixin:
             # controls silent reload of the active tab vs (modified) + prompt.
             if any(t.loaded for t in self._iter_tabs()):
                 self.change_checker.run()
+        elif setting.name == "nav-show-cube":
+            apply_cube = getattr(self, "_apply_nav_cube_visibility", None)
+            if callable(apply_cube):
+                apply_cube()
         elif setting.name.startswith("nav-"):
             self._apply_nav_settings_to_viewers()
 

@@ -22,7 +22,7 @@ UP_DIRS: dict[str, tuple[float, float, float]] = {
     "+Z": (0.0, 0.0, 1.0),
 }
 
-PRESET_VIEWS = ("front", "right", "back", "left", "top", "isometric")
+PRESET_VIEWS = ("front", "right", "back", "left", "top", "bottom", "isometric")
 
 
 def _up_vector(up: str) -> tuple[float, float, float]:
@@ -75,6 +75,11 @@ def offset_for_view(
         return offset, up_v
     if name == "top":
         offset = v_mul(up_v, distance)
+        view_up = v_norm(tuple([up_v[1], up_v[2], up_v[0]]))
+        return offset, view_up
+    if name == "bottom":
+        offset = v_mul(up_v, -distance)
+        # Same screen-up as top so the "front" edge stays consistent when flipping.
         view_up = v_norm(tuple([up_v[1], up_v[2], up_v[0]]))
         return offset, view_up
     if name == "isometric":

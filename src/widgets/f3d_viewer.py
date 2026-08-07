@@ -637,6 +637,7 @@ class F3DViewer(Gtk.Box):
             "nav-orbit-around-cursor": "orbit-around-cursor",
             "nav-touchpad-orbit": "touchpad-orbit",
             "nav-mmb-click-pivot": "mmb-click-pivot",
+            "nav-free-navigation": "free-navigation",
             "nav-orbit-sensitivity": "orbit-sensitivity",
             "nav-zoom-sensitivity": "zoom-sensitivity",
             "nav-pan-sensitivity": "pan-sensitivity",
@@ -649,31 +650,81 @@ class F3DViewer(Gtk.Box):
             except Exception as exc:
                 log.debug("apply_nav %s: %s", prop, exc)
 
-    def _named_orbit(self, yaw: float, pitch: float) -> None:
+    def _engine_up_key(self) -> str:
+        """Map Exb.Direction / int to camera_views up string (default +Y)."""
+        try:
+            val = self.engine.get_property("up")
+        except Exception:
+            return "+Y"
+        nick = getattr(val, "value_nick", None) or str(val)
+        nick = str(nick).replace("_", "-").lower()
+        mapping = {
+            "positive-x": "+X",
+            "negative-x": "-X",
+            "positive-y": "+Y",
+            "negative-y": "-Y",
+            "positive-z": "+Z",
+            "negative-z": "-Z",
+        }
+        if nick in mapping:
+            return mapping[nick]
+        try:
+            # Exb.Direction order: +X -X +Y -Y +Z -Z
+            return ("+X", "-X", "+Y", "-Y", "+Z", "-Z")[int(val)]
+        except Exception:
+            return "+Y"
+
+    def apply_named_view(self, name: str) -> None:
+        """Jump to a cardinal/isometric view via offset_for_view (not rotate deltas).
+
+        ``exb_engine_rotate`` treats args as pointer deltas (×0.5), so passing
+        yaw/pitch degrees (old ``_named_orbit``) produced half-angle / broken top.
+        """
+        from ..camera_views import offset_for_view
+        from ..vector_math import v_add, v_mod, v_sub
+
         try:
             self.engine.reset_camera()
-            if yaw or pitch:
-                self.engine.rotate(float(yaw), float(pitch))
         except Exception as exc:
-            log.debug("named orbit: %s", exc)
+            log.debug("apply_named_view reset: %s", exc)
+        state = self.get_camera_state()
+        if state is None or len(state) < 6:
+            return
+        pos = (float(state[0]), float(state[1]), float(state[2]))
+        focal = (float(state[3]), float(state[4]), float(state[5]))
+        dist = v_mod(v_sub(pos, focal))
+        if dist < 1e-6:
+            dist = 1.0
+        try:
+            offset, view_up = offset_for_view(
+                name, up=self._engine_up_key(), distance=dist
+            )
+        except ValueError as exc:
+            log.debug("apply_named_view: %s", exc)
+            return
+        new_pos = v_add(focal, offset)
+        self.set_camera_state((*new_pos, *focal, *view_up))
 
     def front_view(self, *args) -> None:
-        self._named_orbit(0.0, 0.0)
+        self.apply_named_view("front")
 
     def right_view(self, *args) -> None:
-        self._named_orbit(90.0, 0.0)
+        self.apply_named_view("right")
 
     def back_view(self, *args) -> None:
-        self._named_orbit(180.0, 0.0)
+        self.apply_named_view("back")
 
     def left_view(self, *args) -> None:
-        self._named_orbit(-90.0, 0.0)
+        self.apply_named_view("left")
 
     def top_view(self, *args) -> None:
-        self._named_orbit(0.0, -80.0)
+        self.apply_named_view("top")
+
+    def bottom_view(self, *args) -> None:
+        self.apply_named_view("bottom")
 
     def isometric_view(self, *args) -> None:
-        self._named_orbit(35.0, -30.0)
+        self.apply_named_view("isometric")
 
     def get_camera_state(self) -> Any:
         eng = self.engine

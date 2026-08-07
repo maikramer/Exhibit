@@ -12,6 +12,8 @@ _NAV_BOOL_KEYS = (
     "nav-orbit-around-cursor",
     "nav-touchpad-orbit",
     "nav-mmb-click-pivot",
+    "nav-free-navigation",
+    "nav-show-cube",
 )
 _NAV_FLOAT_KEYS = (
     "nav-orbit-sensitivity",
@@ -105,10 +107,29 @@ class PreferencesMixin:
 
     def _apply_nav_settings_to_viewers(self) -> None:
         opts = self._nav_settings_dict()
+        # Cube visibility is UI-only — not an Exb.View property.
+        view_opts = {
+            k: v for k, v in opts.items() if k != "nav-show-cube"
+        }
         for tab in self._iter_tabs():
             viewer = getattr(tab, "viewer", None)
             if viewer is not None and hasattr(viewer, "apply_nav_settings"):
-                viewer.apply_nav_settings(opts)
+                viewer.apply_nav_settings(view_opts)
         split = getattr(self, "_split_compare_viewer", None)
         if split is not None and hasattr(split, "apply_nav_settings"):
-            split.apply_nav_settings(opts)
+            split.apply_nav_settings(view_opts)
+        apply_cube = getattr(self, "_apply_nav_cube_visibility", None)
+        if callable(apply_cube):
+            apply_cube()
+
+    def _apply_nav_cube_visibility(self) -> None:
+        try:
+            show = bool(
+                self.window_settings.get_setting("nav-show-cube").value
+            )
+        except Exception:
+            show = True
+        for tab in self._iter_tabs():
+            setter = getattr(tab, "set_nav_cube_visible", None)
+            if callable(setter):
+                setter(show)

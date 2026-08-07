@@ -113,6 +113,8 @@ class ExbWindow(
     hdri_file_row = Gtk.Template.Child()
     up_direction_combo = Gtk.Template.Child()
     point_up_switch = Gtk.Template.Child()
+    free_navigation_switch = Gtk.Template.Child()
+    show_nav_cube_switch = Gtk.Template.Child()
     model_scivis_component_combo = Gtk.Template.Child()
     model_color_row = Gtk.Template.Child()
     startup_stack = Gtk.Template.Child()
@@ -392,6 +394,8 @@ class ExbWindow(
             (self.skin_weights_switch, "skin-weights"),
             (self.stats_overlay_switch, "stats-overlay"),
             (self.point_up_switch, "point-up"),
+            (self.free_navigation_switch, "nav-free-navigation"),
+            (self.show_nav_cube_switch, "nav-show-cube"),
         ]
         for switch, name in switches:
             switch.connect("notify::active", self.on_switch_toggled, name)

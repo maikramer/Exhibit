@@ -26,6 +26,10 @@ class LifecycleMixin:
         reset = getattr(viewer, "reset_to_bounds", None)
         if callable(reset):
             reset()
+        tab = getattr(self, "_active_tab", lambda: None)()
+        sync = getattr(tab, "sync_nav_cube", None) if tab is not None else None
+        if callable(sync):
+            sync()
 
     def on_restore_session_toggled(self, switch, *_args):
         if not switch.get_active():

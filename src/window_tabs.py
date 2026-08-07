@@ -164,16 +164,206 @@ class TabsMixin:
         page = self._tab_menu_target_page()
         if page is not None:
             self.tab_view.close_other_pages(page)
+            self._recover_active_tab_after_peer_close()
 
     def _on_tab_close_before_action(self, *_args) -> None:
         page = self._tab_menu_target_page()
         if page is not None:
             self.tab_view.close_pages_before(page)
+            self._recover_active_tab_after_peer_close()
 
     def _on_tab_close_after_action(self, *_args) -> None:
         page = self._tab_menu_target_page()
         if page is not None:
             self.tab_view.close_pages_after(page)
+            self._recover_active_tab_after_peer_close()
+
+    def _rescue_template_bridge_view(self, tab: ViewerTab) -> bool:
+        """Reparent window.ui Exb.View before bridge tab dies (keeps sidebar engine)."""
+        viewer = getattr(tab, "viewer", None)
+        if viewer is None or not getattr(viewer, "_bridge", False):
+            return False
+        # Still counting the page being closed.
+        if self.tab_view.get_n_pages() <= 1:
+            return False
+        view = viewer.get_view()
+        holder = getattr(self, "seed_holder", None)
+        overlay = getattr(self, "viewport_overlay", None)
+        if view is None or holder is None:
+            return False
+        try:
+            parent = view.get_parent()
+            if parent is not None:
+                view.unparent()
+            if overlay is not None and holder.get_parent() is None:
+                holder.set_visible(False)
+                overlay.add_overlay(holder)
+            if view.get_parent() is not holder:
+                holder.append(view)
+            return True
+        except Exception as exc:
+            self.logger.warning("bridge rescue failed: %s", exc)
+            return False
+
+    def _recover_active_tab_after_peer_close(self) -> None:
+        """Peers' Exb.View dispose runs f3d_engine_delete; kept GL can go black."""
+        tab = self._active_tab()
+        if tab is None:
+            return
+        # Selection often unchanged on close-other — still resync chrome.
+        if not getattr(self, "_switching_tab", False):
+            self.on_tab_selected_page()
+        if not tab.loaded or not tab.filepath:
+            try:
+                tab.viewer.queue_render()
+            except Exception:
+                pass
+            return
+        self.logger.info(
+            "close-other: recovering kept tab %s",
+            os.path.basename(tab.filepath),
+        )
+        # Idle: let Adw finish page teardown before touching the kept engine.
+        GLib.idle_add(self._reload_tab_after_peer_close, tab)
+
+    def _wire_tab_viewer(self, tab: ViewerTab, viewer: F3DViewer) -> None:
+        """Shared post-create wiring for a tab viewer (new tab or hard recover)."""
+        if not getattr(viewer, "_bridge", False):
+            viewer.update_options(self.window_settings.get_view_settings())
+            self._copy_template_engine_to_viewer(viewer)
+        viewer.camera_changed_cb = self._on_viewer_camera_changed
+        if hasattr(viewer, "apply_nav_settings"):
+            opts = getattr(self, "_nav_settings_dict", lambda: {})()
+            viewer.apply_nav_settings(
+                {k: v for k, v in opts.items() if k != "nav-show-cube"}
+            )
+        seed_point = getattr(self, "_apply_point_up_to_viewer", None)
+        if callable(seed_point):
+            seed_point(viewer)
+        try:
+            tab.nav_cube.set_viewer(viewer)
+        except Exception as exc:
+            self.logger.debug("nav_cube set_viewer: %s", exc)
+
+    def _hard_recover_tab_viewer(self, tab: ViewerTab) -> None:
+        """Replace secondary F3DViewer after peer teardown blanked shared GL."""
+        filepath = tab.filepath
+        if not filepath:
+            return
+        old = tab.viewer
+        if getattr(old, "_bridge", False):
+            # Template Exb.View must stay. Bounce realize so a dead peer GL
+            # context can re-init; then soft-reload scene into the same engine.
+            try:
+                view = old.get_view()
+                if view is not None and view.get_parent() is tab:
+                    view.unparent()
+                    tab.set_child(view)
+            except Exception as exc:
+                self.logger.debug("bridge realize bounce: %s", exc)
+            self._reload_tab(tab, preserve_orientation=True)
+            self.logger.info(
+                "close-other: soft-recovered bridge for %s",
+                os.path.basename(filepath),
+            )
+            return
+        try:
+            if tab.is_free_fly():
+                # Avoid restoring orbit cam onto the about-to-die viewer.
+                tab._free_fly_camera_restore = None
+                if tab.free_fly_button.get_active():
+                    tab.free_fly_button.set_active(False)
+                else:
+                    tab._exit_free_fly()
+        except Exception as exc:
+            self.logger.debug("peer-close exit fly: %s", exc)
+        cam = None
+        try:
+            cam = old.get_camera_state()
+        except Exception:
+            pass
+        prepared = None
+        try:
+            prepared = old.get_prepared_path()
+            if prepared and retain_prepared(prepared):
+                pass
+            else:
+                prepared = None
+        except Exception:
+            prepared = None
+        try:
+            old.release_resources()
+        except Exception as exc:
+            self.logger.debug("peer-close old release: %s", exc)
+        new = F3DViewer()
+        new.add_css_class("f3d-render")
+        new.set_hexpand(True)
+        new.set_vexpand(True)
+        tab.viewer = new
+        tab.engine = new.engine
+        tab.set_child(new)
+        self._wire_tab_viewer(tab, new)
+        apply_cube = getattr(self, "_apply_nav_cube_visibility", None)
+        if callable(apply_cube):
+            apply_cube()
+        load_path = (
+            prepared
+            if prepared and os.path.isfile(prepared)
+            else None
+        )
+        ok = False
+        try:
+            ok = bool(new.load_file(filepath, prepared_path=load_path))
+        except Exception as exc:
+            self.logger.warning("peer-close hard load failed: %s", exc)
+        if prepared:
+            # Balance retain above; load_file owns its own retain on success.
+            try:
+                release_prepared(prepared)
+            except Exception:
+                pass
+        if ok and cam is not None:
+            try:
+                new.set_camera_state(cam)
+            except Exception as exc:
+                self.logger.debug("peer-close restore camera: %s", exc)
+        if self._active_tab() is tab:
+            self._bind_animation_controls(new)
+            self._sync_window_from_tab(tab)
+            if tab.loaded:
+                try:
+                    self.refresh_object_tree()
+                except Exception:
+                    pass
+        self.logger.info(
+            "close-other: hard-recovered viewer for %s ok=%s",
+            os.path.basename(filepath),
+            ok,
+        )
+        GLib.idle_add(new.queue_render)
+
+    def _reload_tab_after_peer_close(self, tab: ViewerTab) -> bool:
+        if self._active_tab() is not tab:
+            return GLib.SOURCE_REMOVE
+        if not tab.loaded or not tab.filepath:
+            return GLib.SOURCE_REMOVE
+        # Peer close can leave block_reload stuck from an in-flight open.
+        saved_block = bool(getattr(self, "block_reload", False))
+        self.block_reload = False
+        try:
+            if getattr(tab.viewer, "_bridge", False):
+                self._reload_tab(tab, preserve_orientation=True)
+            else:
+                self._hard_recover_tab_viewer(tab)
+        except Exception as exc:
+            self.logger.warning("peer-close reload failed: %s", exc)
+            try:
+                tab.viewer.queue_render()
+            except Exception:
+                pass
+        finally:
+            self.block_reload = saved_block
+        return GLib.SOURCE_REMOVE
 
     def _on_tab_reopen_closed_action(self, *_args) -> None:
         closed = getattr(self, "_closed_tabs", None)
@@ -551,6 +741,7 @@ class TabsMixin:
         # Explicit hide when single-doc — avoids phantom tab-bar border over GL.
         self.tab_bar.set_visible(bool(want_bar))
         self._sync_object_tree_overlay_margin(want_bar)
+        self._sync_nav_cube_overlay_margin(want_bar)
         chrome_changed = was_extend != (not want_bar)
         if chrome_changed:
             GLib.timeout_add(100, self._reframe_after_chrome_change)
@@ -567,6 +758,7 @@ class TabsMixin:
 
         def _resync(*_args):
             self._sync_object_tree_overlay_margin()
+            self._sync_nav_cube_overlay_margin()
             return GLib.SOURCE_REMOVE
 
         hb.connect("notify::mapped", lambda *_a: GLib.idle_add(_resync))
@@ -582,6 +774,8 @@ class TabsMixin:
         overlay = getattr(self, "viewport_overlay", None)
         if overlay is not None:
             overlay.connect("map", lambda *_a: GLib.idle_add(_resync))
+        # First measure after realize.
+        GLib.idle_add(_resync)
 
     def _header_bar_content_height(self) -> int:
         hb = getattr(self, "header_bar", None)
@@ -613,6 +807,21 @@ class TabsMixin:
         else:
             shell.set_margin_top(8)
         self._sync_object_tree_overlay_start(shell)
+
+    def _sync_nav_cube_overlay_margin(self, tab_bar_visible: bool | None = None) -> None:
+        """Keep nav cube below HeaderBar / windowcontrols (same chrome as outliner)."""
+        if tab_bar_visible is None:
+            tab_bar_visible = self.tab_view.get_n_pages() > 1
+        extend = bool(self.toolbar_view.get_extend_content_to_top_edge())
+        if extend and not tab_bar_visible:
+            # Header height + small gap so cube clears close/maximize.
+            top = self._header_bar_content_height() + 8
+        else:
+            top = 8
+        for tab in self._iter_tabs():
+            setter = getattr(tab, "set_nav_cube_chrome_inset", None)
+            if callable(setter):
+                setter(top, 12)
 
     def _sync_object_tree_overlay_start(self, shell) -> None:
         """Match outliner column to sidebar toggle X (HeaderBar padding ≠ 8)."""
@@ -787,12 +996,27 @@ class TabsMixin:
             self._copy_template_engine_to_viewer(tab.viewer)
         tab.viewer.camera_changed_cb = self._on_viewer_camera_changed
         if hasattr(tab.viewer, "apply_nav_settings"):
+            opts = getattr(self, "_nav_settings_dict", lambda: {})()
             tab.viewer.apply_nav_settings(
-                getattr(self, "_nav_settings_dict", lambda: {})()
+                {k: v for k, v in opts.items() if k != "nav-show-cube"}
             )
         seed_point = getattr(self, "_apply_point_up_to_viewer", None)
         if callable(seed_point):
             seed_point(tab.viewer)
+        apply_cube = getattr(self, "_apply_nav_cube_visibility", None)
+        if callable(apply_cube):
+            apply_cube()
+        else:
+            try:
+                show = bool(
+                    self.window_settings.get_setting("nav-show-cube").value
+                )
+            except Exception:
+                show = True
+            tab.set_nav_cube_visible(show)
+        sync_cube_chrome = getattr(self, "_sync_nav_cube_overlay_margin", None)
+        if callable(sync_cube_chrome):
+            sync_cube_chrome()
         if select:
             self.tab_view.set_selected_page(page)
             self._bind_animation_controls(tab.viewer)
@@ -1311,6 +1535,13 @@ class TabsMixin:
         self._apply_camera_state_to_peers(active.viewer, state)
 
     def _on_viewer_camera_changed(self, viewer) -> None:
+        # Always keep the owning tab's nav cube aligned with the camera.
+        for tab in self._iter_tabs():
+            if getattr(tab, "viewer", None) is viewer:
+                sync = getattr(tab, "sync_nav_cube", None)
+                if callable(sync):
+                    sync()
+                break
         if not getattr(self, "_camera_sync", False) and not getattr(
             self, "_split_compare", False
         ):
@@ -1388,6 +1619,9 @@ class TabsMixin:
                 handoff()
             self._bind_animation_controls(tab.viewer)
             self._sync_window_from_tab(tab)
+            sync_cube = getattr(tab, "sync_nav_cube", None)
+            if callable(sync_cube):
+                sync_cube()
             if tab.loaded:
                 self.no_file_loaded = False
                 self.refresh_animation_combo()
@@ -1438,9 +1672,15 @@ class TabsMixin:
         # Block notify::selected-page re-entrancy while pages reshuffle.
         self._switching_tab = True
         created_empty = False
+        rescued_bridge = False
         try:
             if was_selected:
                 self._unbind_animation_controls(closing_viewer)
+
+            # Bridge wraps window.ui Exb.View — rescue before page teardown
+            # so sibling tabs do not inherit a finalized sidebar engine.
+            if isinstance(tab, ViewerTab):
+                rescued_bridge = self._rescue_template_bridge_view(tab)
 
             self.tab_view.close_page_finish(page, True)
             if isinstance(tab, ViewerTab):
@@ -1465,7 +1705,20 @@ class TabsMixin:
                     self._skin_weights_heat_temp = None
                     self._skin_weights_base_path = None
                 try:
-                    tab.viewer.release_resources()
+                    if rescued_bridge:
+                        # Template view still alive in seed_holder — drop temps
+                        # only; full release_resources/reset would race unrealize.
+                        release = getattr(
+                            tab.viewer, "_release_prepared_path", None
+                        )
+                        if callable(release):
+                            release()
+                        tab.viewer._loaded_filepath = None
+                        tab.viewer._scene_tree = []
+                        tab.viewer._scene_parts = []
+                        tab.viewer._hidden_parts.clear()
+                    else:
+                        tab.viewer.release_resources()
                 except Exception as exc:
                     self.logger.warning(
                         "tab close: release_resources failed: %s", exc
@@ -1495,6 +1748,20 @@ class TabsMixin:
         # Empty-tab path already bound via _add_viewer_tab(select=True).
         if was_selected and not created_empty and self.tab_view.get_n_pages() > 0:
             self.on_tab_selected_page()
+        elif (
+            not was_selected
+            and not created_empty
+            and self.tab_view.get_n_pages() > 0
+        ):
+            # Kept tab stayed selected — peer teardown can blank shared GL.
+            kept = self._active_tab()
+            if kept is not None and kept.loaded:
+                try:
+                    GLib.idle_add(kept.viewer.queue_render)
+                except Exception as exc:
+                    self.logger.debug("peer-close queue_render: %s", exc)
+        if rescued_bridge:
+            self.logger.debug("rescued template bridge view after tab close")
         self._update_tab_bar_visibility()
         return Gdk.EVENT_STOP
 

@@ -17,6 +17,8 @@ src/window_tabs.py
 src/shortcuts-dialog.ui
 src/widgets/file_row.py
 src/widgets/file_row.ui
+src/widgets/nav_cube.py
 src/widgets/object_tree_row.py
+src/widgets/viewer_tab.py
 src/widgets/settings_dialog.ui
 src/widgets/theme_switcher.ui

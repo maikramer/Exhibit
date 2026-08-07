@@ -990,6 +990,18 @@
                                             </property>
                                           </object>
                                         </child>
+                                        <child>
+                                          <object class="AdwSwitchRow" id="free_navigation_switch">
+                                            <property name="title" translatable="yes">Free Navigation</property>
+                                            <property name="subtitle" translatable="yes">Ctrl+Shift+drag pans; Ctrl+Shift+scroll zooms (Shift/Ctrl alone still work)</property>
+                                          </object>
+                                        </child>
+                                        <child>
+                                          <object class="AdwSwitchRow" id="show_nav_cube_switch">
+                                            <property name="title" translatable="yes">Navigation Cube</property>
+                                            <property name="subtitle" translatable="yes">Show a clickable view cube in the viewport corner</property>
+                                          </object>
+                                        </child>
                                       </object>
                                     </child>
                                     <child>

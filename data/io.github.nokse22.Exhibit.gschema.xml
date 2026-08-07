@@ -109,6 +109,16 @@
       <summary>Pan sensitivity</summary>
       <description>Multiplier for pan pointer/scroll deltas (0.25–4.0).</description>
     </key>
+	  <key name="nav-free-navigation" type="b">
+      <default>false</default>
+      <summary>Free navigation shortcuts</summary>
+      <description>When enabled, Ctrl+Shift+drag pans and Ctrl+Shift+scroll zooms (in addition to Shift/Ctrl alone).</description>
+    </key>
+	  <key name="nav-show-cube" type="b">
+      <default>true</default>
+      <summary>Show navigation cube</summary>
+      <description>Show the 3D navigation cube overlay in the viewport corner.</description>
+    </key>
 	  <key name="auto-reload" type="b">
       <default>true</default>
       <summary>Auto-reload on disk change</summary>

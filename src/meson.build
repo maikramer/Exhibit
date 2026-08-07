@@ -60,6 +60,7 @@ exhibit_sources = [
   'window_lifecycle.py',
   'vector_math.py',
   'camera_nav.py',
+  'camera_fly.py',
   'camera_views.py',
   'camera_sync.py',
   'cli_render.py',

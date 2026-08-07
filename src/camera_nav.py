@@ -282,6 +282,8 @@ NAV_SETTING_DEFAULTS = {
     "nav-orbit-around-cursor": False,
     "nav-touchpad-orbit": True,
     "nav-mmb-click-pivot": True,
+    "nav-free-navigation": False,
+    "nav-show-cube": True,
     "nav-orbit-sensitivity": 1.0,
     "nav-zoom-sensitivity": 1.0,
     "nav-pan-sensitivity": 1.0,
