@@ -67,7 +67,10 @@ class InspectMixin:
             self.stats_overlay_label.set_visible(True)
             return
 
-        self.stats_overlay_label.set_visible(False)
+        # Hide every tab — enable+switch leaves sibling HUDs visible; active-only
+        # OFF would leave ghosts on the others.
+        for tab in self._iter_tabs():
+            tab.stats_overlay_label.set_visible(False)
 
     def _prepared_needs_skeleton_fix(self) -> bool:
         path = self.f3d_viewer.get_prepared_path() or self.filepath
